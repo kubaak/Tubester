@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using Xunit;
 using YouTubester.Application.Contracts.Replies;
 using YouTubester.Domain;
@@ -148,7 +149,7 @@ public class RepliesTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task BatchApprove_ValidDecisions_ReturnsSuccessResult()
+    public async Task BatchApprove_ValidDecisions_CallsYoutubeService()
     {
         // Arrange
         await fixture.ResetDbAsync();
@@ -176,13 +177,31 @@ public class RepliesTests(TestFixture fixture)
             await databaseContext.SaveChangesAsync();
         }
 
-        var decisions = new[]
-        {
-            new DraftDecisionDto("comment1", "Approved text 1"), new DraftDecisionDto("comment2", "Approved text 2")
-        };
+        var decision1 = new DraftDecisionDto("comment1", "Approved text 1");
+        var decision2 = new DraftDecisionDto("comment2", "Approved text 2");
+
+        var decisions = new[] { decision1, decision2 };
 
         var json = JsonSerializer.Serialize(decisions, _serializerOptions);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var sequence = new MockSequence();
+
+        fixture.ApiFactory.MockYouTubeIntegration
+            .InSequence(sequence)
+            .Setup(x => x.ReplyAsync(
+                reply1.CommentId,
+                decision1.ApprovedText,
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        fixture.ApiFactory.MockYouTubeIntegration
+            .InSequence(sequence)
+            .Setup(x => x.ReplyAsync(
+                reply2.CommentId,
+                decision2.ApprovedText,
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/replies/approve", content);
@@ -207,11 +226,13 @@ public class RepliesTests(TestFixture fixture)
             .ToListAsync();
 
         Assert.Equal(2, approvedReplies.Count);
-        Assert.All(approvedReplies, r => Assert.Equal(ReplyStatus.Approved, r.Status));
+        Assert.All(approvedReplies, r => Assert.Equal(ReplyStatus.Posted, r.Status));
         Assert.Contains(approvedReplies,
-            r => r.CommentId == "comment1" && r.FinalText == "Approved text 1");
+            r => r.CommentId == "comment1" && r.FinalText == decision1.ApprovedText);
         Assert.Contains(approvedReplies,
-            r => r.CommentId == "comment2" && r.FinalText == "Approved text 2");
+            r => r.CommentId == "comment2" && r.FinalText == decision2.ApprovedText);
+
+        fixture.ApiFactory.MockYouTubeIntegration.VerifyAll();
     }
 
     [Fact]
@@ -219,6 +240,7 @@ public class RepliesTests(TestFixture fixture)
     {
         // Arrange
         await fixture.ResetDbAsync();
+        fixture.ApiFactory.MockYouTubeIntegration.Reset();
 
         var decisions = Array.Empty<DraftDecisionDto>();
         var json = JsonSerializer.Serialize(decisions, _serializerOptions);

@@ -41,7 +41,7 @@ public partial class CommentScanWorker(
 
     private static bool IsEmojiOnly(string text)
     {
-        return !MyRegex().IsMatch(text);
+        return !_nonEmojiRegex.IsMatch(text);
     }
 
     private async Task<int> ScanOnceAsync(CancellationToken cancellationToken)
@@ -134,6 +134,6 @@ public partial class CommentScanWorker(
         return drafted;
     }
 
-    [GeneratedRegex(@"\p{L}|\p{N}")]
-    private static partial Regex MyRegex();
+
+    private static readonly Regex _nonEmojiRegex = new(@"\p{L}|\p{N}", RegexOptions.Compiled);
 }

@@ -48,8 +48,6 @@ public static class ServiceCollectionExtensions
         // App services & jobs
         services.AddScoped<IChannelSyncService, ChannelSyncService>();
         services.AddScoped<IVideoTemplatingService, VideoTemplatingService>();
-        services.AddScoped<PostApprovedRepliesJob>();
-        services.AddScoped<CopyVideoTemplateJob>();
 
         // Hangfire storage (no server yet)
         services.AddHangFireStorage(config, contentRootPath);

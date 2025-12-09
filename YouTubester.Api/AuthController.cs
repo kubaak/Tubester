@@ -31,9 +31,28 @@ public sealed class AuthController : ControllerBase
             returnUrl = "/";
         }
 
-        var props = new AuthenticationProperties { RedirectUri = returnUrl };
+        var authenticationProperties = new AuthenticationProperties { RedirectUri = returnUrl };
 
-        return Challenge(props, GoogleDefaults.AuthenticationScheme);
+        return Challenge(authenticationProperties, "GoogleRead");
+    }
+
+    /// <summary>
+    /// Starts the explicit Google write-consent flow.
+    /// </summary>
+    /// <param name="returnUrl">Local URL to redirect to after consent is granted.</param>
+    /// <returns></returns>
+    [HttpGet("login/google/write")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public IActionResult StartWriteConsent([FromQuery] string? returnUrl = "/")
+    {
+        if (string.IsNullOrWhiteSpace(returnUrl) || !Url.IsLocalUrl(returnUrl))
+        {
+            returnUrl = "/";
+        }
+
+        var authenticationProperties = new AuthenticationProperties { RedirectUri = returnUrl };
+
+        return Challenge(authenticationProperties, "GoogleWrite");
     }
 
     /// <summary>
@@ -68,6 +87,8 @@ public sealed class AuthController : ControllerBase
             ? googlePicture
             : channelPicture;
 
+        var hasWriteAccess = User.HasClaim("yt_write_granted", "true");
+
         return Ok(new
         {
             name,
@@ -75,7 +96,8 @@ public sealed class AuthController : ControllerBase
             sub = subject,
             channelId,
             channelTitle,
-            picture
+            picture,
+            hasWriteAccess
         });
     }
 }

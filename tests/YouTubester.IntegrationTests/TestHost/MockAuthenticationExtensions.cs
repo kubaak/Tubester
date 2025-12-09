@@ -34,11 +34,18 @@ public static class MockAuthenticationExtensions
             .AddScheme<AuthenticationSchemeOptions, MockAuthenticationHandler>(
                 GoogleDefaults.AuthenticationScheme, _ => { });
 
+        var policy = new AuthorizationPolicyBuilder();
         services.AddAuthorizationBuilder()
-            .SetDefaultPolicy(new AuthorizationPolicyBuilder()
+            .SetDefaultPolicy(policy
                 .RequireAuthenticatedUser()
                 .AddAuthenticationSchemes(TestScheme)
-                .Build());
+                .Build())
+            .AddPolicy("RequiresYouTubeWrite", writePolicy =>
+            {
+                writePolicy.RequireAuthenticatedUser();
+                writePolicy.AddAuthenticationSchemes(TestScheme);
+                writePolicy.RequireClaim("yt_write_granted", "true");
+            });
 
         return services;
     }
@@ -59,7 +66,7 @@ public sealed class MockAuthenticationHandler(
             new Claim(ClaimTypes.Email, MockAuthenticationExtensions.TestEmail),
             new Claim("picture", MockAuthenticationExtensions.TestPicture),
             new Claim(ClaimTypes.NameIdentifier, MockAuthenticationExtensions.TestSub),
-            new Claim("email_verified", "true")
+            new Claim("email_verified", "true"), new Claim("yt_write_granted", "true")
         };
 
         var identity = new ClaimsIdentity(claims, MockAuthenticationExtensions.TestScheme);

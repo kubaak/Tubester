@@ -4,8 +4,6 @@ using Google.Apis.YouTube.v3;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OAuth;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi;
 using YouTubester.Integration;
 
@@ -35,26 +33,21 @@ public static class ServiceCollectionExtensions
                 o.Cookie.SameSite = SameSiteMode.Lax;
                 o.SlidingExpiration = true;
                 o.ExpireTimeSpan = TimeSpan.FromHours(12);
-                o.LoginPath = "/auth/login/google";
-                o.LogoutPath = "/auth/logout";
+                o.LoginPath = "/api/auth/login/google";
+                o.LogoutPath = "/api/auth/logout";
 
                 o.Events = new CookieAuthenticationEvents
                 {
                     OnRedirectToLogin = ctx =>
                     {
-                        var isApiRequest =
-                            ctx.Request.Path.StartsWithSegments("/auth") ||
-                            ctx.Request.Path.StartsWithSegments("/api") ||
-                            ctx.Request.Path.StartsWithSegments("/swagger");
-
-                        if (isApiRequest)
+                        if (ctx.Request.Path.StartsWithSegments("/api"))
                         {
                             ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
                             return Task.CompletedTask;
                         }
 
                         var returnUrl = ctx.Request.Path + ctx.Request.QueryString;
-                        var redirectUri = $"/auth/login/google?returnUrl={Uri.EscapeDataString(returnUrl)}";
+                        var redirectUri = $"/api/auth/login/google?returnUrl={Uri.EscapeDataString(returnUrl)}";
                         ctx.Response.Redirect(redirectUri);
                         return Task.CompletedTask;
                     },
@@ -65,53 +58,91 @@ public static class ServiceCollectionExtensions
                     }
                 };
             })
-            .AddGoogle(o =>
+            .AddGoogle("GoogleRead", o =>
             {
                 o.ClientId = configuration["GoogleAuth:ClientId"]!;
                 o.ClientSecret = configuration["GoogleAuth:ClientSecret"]!;
                 o.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
                 o.SaveTokens = true;
-                o.AccessType = "offline";
-                o.CallbackPath = "/auth/callback/google";
+                o.AccessType = "offline"; //kept for saving the readonly tokens to the db
+                o.CallbackPath = "/api/auth/google/callback";
                 o.CorrelationCookie.SameSite = SameSiteMode.None;
                 o.CorrelationCookie.SecurePolicy = CookieSecurePolicy.Always;
                 o.Scope.Add("openid");
                 o.Scope.Add("profile");
                 o.Scope.Add("email");
                 o.Scope.Add(YouTubeService.Scope.YoutubeReadonly);
-                o.ClaimActions.MapJsonKey("picture", "picture");
+                o.Events = CreateOAuthEvents(false);
+            })
+            .AddGoogle("GoogleWrite", o =>
+            {
+                o.ClientId = configuration["GoogleAuth:ClientId"]!;
+                o.ClientSecret = configuration["GoogleAuth:ClientSecret"]!;
+                o.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+                o.SaveTokens = true;
+                o.AccessType = "online";
+                o.CallbackPath = "/api/auth/google/write/callback";
+                o.CorrelationCookie.SameSite = SameSiteMode.None;
+                o.CorrelationCookie.SecurePolicy = CookieSecurePolicy.Always;
+                o.Scope.Add("openid");
+                o.Scope.Add("profile");
+                o.Scope.Add("email");
+                o.Scope.Add(YouTubeService.Scope.YoutubeForceSsl);
 
-                o.Events = new OAuthEvents
-                {
-                    OnTicketReceived = async context =>
-                    {
-                        var accessToken = context.Properties?.GetTokenValue("access_token");
-                        if (string.IsNullOrWhiteSpace(accessToken))
-                        {
-                            var loggerFactory = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>();
-                            var logger = loggerFactory.CreateLogger("YouTubester.Api.Authentication");
-                            logger.LogWarning("Access token was not available during Google login; skipping channel enrichment.");
-                            return;
-                        }
-
-                        var youTubeIntegration = context.HttpContext.RequestServices.GetRequiredService<IYouTubeIntegration>();
-                        var userChannel = await youTubeIntegration.GetCurrentChannelAsync(accessToken, context.HttpContext.RequestAborted);
-
-                        if (userChannel is null)
-                        {
-                            return;
-                        }
-
-                        var claimsIdentity = (ClaimsIdentity)context.Principal!.Identity!;
-                        claimsIdentity.AddClaim(new Claim("yt_channel_id", userChannel.Id));
-                        claimsIdentity.AddClaim(new Claim("yt_channel_title", userChannel.Title ?? string.Empty));
-                        claimsIdentity.AddClaim(new Claim("yt_channel_picture", userChannel.Picture ?? string.Empty));
-                    }
-                };
+                o.Events = CreateOAuthEvents(true);
             });
 
-        services.AddAuthorization();
+        services.AddAuthorization(options =>
+        {
+            options.AddPolicy("RequiresYouTubeWrite", policy =>
+            {
+                policy.RequireAuthenticatedUser();
+                policy.RequireClaim("yt_write_granted", "true");
+            });
+        });
+
         return services;
+
+        OAuthEvents CreateOAuthEvents(bool markWriteAccess)
+        {
+            return new OAuthEvents
+            {
+                OnTicketReceived = async context =>
+                {
+                    var accessToken = context.Properties?.GetTokenValue("access_token");
+                    if (string.IsNullOrWhiteSpace(accessToken))
+                    {
+                        var loggerFactory = context.HttpContext.RequestServices
+                            .GetRequiredService<ILoggerFactory>();
+                        var logger = loggerFactory.CreateLogger("YouTubester.Api.Authentication");
+                        logger.LogWarning(
+                            "Access token was not available during Google login; skipping channel enrichment.");
+                        return;
+                    }
+
+                    var youTubeIntegration = context.HttpContext.RequestServices
+                        .GetRequiredService<IYouTubeIntegration>();
+                    var userChannel = await youTubeIntegration.GetCurrentChannelAsync(
+                        accessToken,
+                        context.HttpContext.RequestAborted);
+
+                    if (userChannel is null)
+                    {
+                        return;
+                    }
+
+                    var claimsIdentity = (ClaimsIdentity)context.Principal!.Identity!;
+                    claimsIdentity.AddClaim(new Claim("yt_channel_id", userChannel.Id));
+                    claimsIdentity.AddClaim(new Claim("yt_channel_title", userChannel.Title ?? string.Empty));
+                    claimsIdentity.AddClaim(new Claim("yt_channel_picture", userChannel.Picture ?? string.Empty));
+
+                    if (markWriteAccess)
+                    {
+                        claimsIdentity.AddClaim(new Claim("yt_write_granted", "true"));
+                    }
+                }
+            };
+        }
     }
 
     /// <summary>
@@ -131,7 +162,8 @@ public static class ServiceCollectionExtensions
                 Version = "v1",
                 Description =
                     "To access protected endpoints, first log in:\n\n" +
-                    "[🔐 Login with Google](/api/auth/login/google?returnUrl=/swagger/index.html)"
+                    "[🔐 read only Login with Google](/api/auth/login/google?returnUrl=/swagger/index.html)\n\n" +
+                    "[🔐 write Login with Google](/api/auth/login/google/write?returnUrl=/swagger/index.html)"
             });
 
             var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
@@ -140,6 +172,8 @@ public static class ServiceCollectionExtensions
             {
                 options.IncludeXmlComments(xmlPath);
             }
+
+            options.OperationFilter<Swagger.RequiresYouTubeWriteOperationFilter>();
         });
         return services;
     }

@@ -3,10 +3,14 @@ using YouTubester.Abstractions.Replies;
 using YouTubester.Application.Contracts.Replies;
 using YouTubester.Application.Jobs;
 using YouTubester.Domain;
+using YouTubester.Integration;
 
 namespace YouTubester.Application;
 
-public class ReplyService(IReplyRepository repository, IBackgroundJobClient backgroundJobClient)
+public class ReplyService(
+    IReplyRepository repository,
+    IBackgroundJobClient backgroundJobClient,
+    IYouTubeIntegration youTubeIntegration)
     : IReplyService
 {
     public Task<IEnumerable<Reply>> GetRepliesForApprovalAsync(CancellationToken cancellationToken)
@@ -94,8 +98,8 @@ public class ReplyService(IReplyRepository repository, IBackgroundJobClient back
 
                 draft.ApproveText(d.ApprovedText, DateTimeOffset.Now);
 
-                backgroundJobClient.Enqueue<PostApprovedRepliesJob>(
-                    job => job.Run(userId, draft.CommentId, JobCancellationToken.Null));
+                await youTubeIntegration.ReplyAsync(draft.CommentId, draft.FinalText!, cancellationToken);
+                draft.Post(DateTimeOffset.Now);
 
                 await repository.AddOrUpdateReplyAsync(draft, cancellationToken);
                 results.Add(new DraftDecisionResultDto(d.CommentId, true));

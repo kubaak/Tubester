@@ -24,19 +24,22 @@ namespace YouTubester.Api;
 public sealed class VideosController(
     IBackgroundJobClient jobClient,
     IVideoService service,
-    IChannelRepository channelRepository
+    IChannelRepository channelRepository,
+    IVideoTemplatingService videoTemplatingService
 ) : ControllerBase
 {
     /// <summary>
     /// Copies video template metadata from source to target video using cached data.
     /// </summary>
     /// <param name="request">Request containing source and target video IDs.</param>
+    /// <param name="ct"></param>
     /// <returns>Job ID for the background operation.</returns>
     [HttpPost("copy-template")]
+    [Authorize(Policy = "RequiresYouTubeWrite")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public IActionResult CopyTemplate(
-        [FromBody] CopyVideoTemplateRequest request)
+    public async Task<IActionResult> CopyTemplate(
+        [FromBody] CopyVideoTemplateRequest request, CancellationToken ct = default)
     {
         // Validation
         if (string.IsNullOrWhiteSpace(request.SourceVideoId))
@@ -61,9 +64,8 @@ public sealed class VideosController(
             return Unauthorized();
         }
 
-        var res = jobClient.Enqueue<CopyVideoTemplateJob>(
-            j => j.Run(userId, request, JobCancellationToken.Null));
-        return Ok(res);
+        var result = await videoTemplatingService.CopyTemplateAsync(userId, request, ct);
+        return Ok(result);
     }
 
     /// <summary>

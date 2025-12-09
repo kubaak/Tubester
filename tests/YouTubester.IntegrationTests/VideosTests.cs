@@ -1,7 +1,9 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using AutoFixture;
 using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using Xunit;
 using YouTubester.Application;
 using YouTubester.Application.Contracts;
@@ -9,6 +11,7 @@ using YouTubester.Application.Contracts.Videos;
 using YouTubester.Domain;
 using YouTubester.IntegrationTests.TestHost;
 using YouTubester.Persistence;
+using StringContent = System.Net.Http.StringContent;
 
 namespace YouTubester.IntegrationTests;
 
@@ -92,14 +95,43 @@ public class VideosTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task CopyTemplate_ValidRequest_ReturnsJobId()
+    public async Task CopyTemplate_ValidRequest_CallsYoutubeService()
     {
+        const string channelId = "Channel-XYZ";
+        const string userId = MockAuthenticationExtensions.TestSub;
         // Arrange
         await fixture.ResetDbAsync();
 
+        var sourceVideo = GetSourceVideo();
+        var targetVideo = GetTargetVideo();
+
+        using (var scope = fixture.ApiServices.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<YouTubesterDb>();
+            var user = User.Create(
+                userId,
+                MockAuthenticationExtensions.TestEmail,
+                MockAuthenticationExtensions.TestName,
+                MockAuthenticationExtensions.TestPicture,
+                TestFixture.TestingDateTimeOffset);
+            await dbContext.Users.AddAsync(user);
+            await dbContext.Channels.AddAsync(Channel.Create(channelId, userId, "Channel A",
+                targetVideo.UploadsPlaylistId, TestFixture.TestingDateTimeOffset));
+            dbContext.Videos.AddRange(sourceVideo, targetVideo);
+            await dbContext.SaveChangesAsync();
+        }
+
+        fixture.ApiFactory.MockYouTubeIntegration.Setup(x =>
+                x.UpdateVideoAsync(targetVideo.VideoId, sourceVideo.Title!, sourceVideo.Description!,
+                    sourceVideo.Tags, targetVideo.CategoryId, sourceVideo.DefaultLanguage,
+                    sourceVideo.DefaultAudioLanguage,
+                    It.IsAny<(double lat, double lng)?>(),
+                    targetVideo.LocationDescription, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
         var request = new CopyVideoTemplateRequest(
-            "sourceVideoId123",
-            "targetVideoId456",
+            sourceVideo.VideoId,
+            targetVideo.VideoId,
             true,
             false,
             true,
@@ -120,9 +152,20 @@ public class VideosTests(TestFixture fixture)
         var responseContent = await response.Content.ReadAsStringAsync();
         Assert.False(string.IsNullOrWhiteSpace(responseContent));
 
-        // Verify job was enqueued
-        var enqueuedJobs = fixture.CapturingJobClient.GetEnqueued<Application.Jobs.CopyVideoTemplateJob>();
-        Assert.Single(enqueuedJobs);
+        fixture.ApiFactory.MockYouTubeIntegration.Verify(x =>
+                x.UpdateVideoAsync(
+                    targetVideo.VideoId,
+                    sourceVideo.Title!,
+                    sourceVideo.Description!,
+                    It.Is<IReadOnlyList<string>>(tags =>
+                        tags.SequenceEqual(sourceVideo.Tags)),
+                    targetVideo.CategoryId,
+                    sourceVideo.DefaultLanguage,
+                    sourceVideo.DefaultAudioLanguage,
+                    It.IsAny<(double lat, double lng)?>(),
+                    targetVideo.LocationDescription,
+                    It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -375,5 +418,49 @@ public class VideosTests(TestFixture fixture)
         }
 
         await Task.CompletedTask;
+    }
+
+    private Video GetTargetVideo()
+    {
+        return Video.Create(
+            "ULTestPlaylist456",
+            $"target{fixture.Auto.Create<string>()}"[..11],
+            "Target Video Title",
+            "Target Video Description",
+            TestFixture.TestingDateTimeOffset.AddDays(-2),
+            TimeSpan.FromMinutes(3),
+            VideoVisibility.Private,
+            ["target"],
+            "23",
+            "fr",
+            "fr",
+            null,
+            null,
+            TestFixture.TestingDateTimeOffset,
+            "etag-target",
+            false
+        );
+    }
+
+    private Video GetSourceVideo()
+    {
+        return Video.Create(
+            "ULTestPlaylist123",
+            $"source{fixture.Auto.Create<string>()}"[..11],
+            "Source Video Title",
+            "Source Video Description",
+            TestFixture.TestingDateTimeOffset.AddDays(-1),
+            TimeSpan.FromMinutes(5),
+            VideoVisibility.Public,
+            ["source", "template"],
+            "22",
+            "en",
+            "en",
+            new GeoLocation(37.7749, -122.4194),
+            "San Francisco, CA",
+            TestFixture.TestingDateTimeOffset,
+            "etag-source",
+            true
+        );
     }
 }

@@ -40,6 +40,7 @@ public class RepliesController(IReplyService service) : ControllerBase
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
     [HttpPost("approve")]
+    [Authorize(Policy = "RequiresYouTubeWrite")]
     [Consumes("application/json")]
     [ProducesResponseType(typeof(BatchDecisionResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]

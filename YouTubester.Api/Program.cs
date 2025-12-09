@@ -38,6 +38,7 @@ builder.Services.AddSingleton<IAiClient, AiClient>();
 builder.Services.AddScoped<IReplyService, ReplyService>();
 builder.Services.AddScoped<IVideoService, VideoService>();
 builder.Services.AddScoped<IChannelSyncService, ChannelSyncService>();
+builder.Services.AddScoped<IVideoTemplatingService, VideoTemplatingService>();
 builder.Services.AddVideoListingOptions(builder.Configuration);
 builder.Services.AddCookieWithGoogle(builder.Configuration);
 
