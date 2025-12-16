@@ -21,26 +21,15 @@ public class YouTubesterDb(DbContextOptions<YouTubesterDb> options) : DbContext(
         //todo indexes
         b.Entity<Reply>().HasKey(x => x.CommentId);
         b.Entity<Reply>().HasIndex(x => x.VideoId);
-        //.HasConversion because Sqlite doesn't support DateTimeOffset
-        b.Entity<Reply>().Property(x => x.PulledAt).HasConversion(
-            v => v.UtcDateTime,
-            v => new DateTimeOffset(v, TimeSpan.Zero));
-        b.Entity<Reply>().Property(x => x.PostedAt).HasConversion(
-            v => !v.HasValue ? (DateTime?)null : v.Value.UtcDateTime,
-            v => v.HasValue ? new DateTimeOffset(v.Value, TimeSpan.Zero) : null);
+        b.Entity<Reply>().Property(x => x.PulledAt);
+        b.Entity<Reply>().Property(x => x.PostedAt);
 
         b.Entity<User>().HasKey(x => x.Id);
-        b.Entity<User>().Property(x => x.CreatedAt).HasConversion(
-            v => v.UtcDateTime,
-            v => new DateTimeOffset(v, TimeSpan.Zero));
-        b.Entity<User>().Property(x => x.LastLoginAt).HasConversion(
-            v => !v.HasValue ? (DateTime?)null : v.Value.UtcDateTime,
-            v => v.HasValue ? new DateTimeOffset(v.Value, TimeSpan.Zero) : null);
+        b.Entity<User>().Property(x => x.CreatedAt);
+        b.Entity<User>().Property(x => x.LastLoginAt);
 
         b.Entity<UserToken>().HasKey(x => x.UserId);
-        b.Entity<UserToken>().Property(x => x.ExpiresAt).HasConversion(
-            v => !v.HasValue ? (DateTime?)null : v.Value.UtcDateTime,
-            v => v.HasValue ? new DateTimeOffset(v.Value, TimeSpan.Zero) : null);
+        b.Entity<UserToken>().Property(x => x.ExpiresAt);
         b.Entity<UserToken>()
             .HasOne<User>()
             .WithOne()
@@ -50,12 +39,8 @@ public class YouTubesterDb(DbContextOptions<YouTubesterDb> options) : DbContext(
         b.Entity<Channel>().HasKey(x => x.ChannelId);
         b.Entity<Channel>().Property(x => x.UserId).IsRequired();
         b.Entity<Channel>().Property(x => x.ETag).HasMaxLength(128);
-        b.Entity<Channel>().Property(x => x.UpdatedAt).HasConversion(
-            v => v.UtcDateTime,
-            v => new DateTimeOffset(v, TimeSpan.Zero));
-        b.Entity<Channel>().Property(x => x.LastUploadsCutoff).HasConversion(
-            v => !v.HasValue ? (DateTime?)null : v.Value.UtcDateTime,
-            v => v.HasValue ? new DateTimeOffset(v.Value, TimeSpan.Zero) : null);
+        b.Entity<Channel>().Property(x => x.UpdatedAt);
+        b.Entity<Channel>().Property(x => x.LastUploadsCutoff);
         //todo
         // b.Entity<Channel>()
         //     .HasOne<User>()
@@ -68,16 +53,9 @@ public class YouTubesterDb(DbContextOptions<YouTubesterDb> options) : DbContext(
         // Composite index for video listing performance (PublishedAt DESC, VideoId DESC)
         b.Entity<Video>().HasIndex(v => new { v.PublishedAt, v.VideoId });
         b.Entity<Video>().Property(x => x.ETag).HasMaxLength(128);
-        //.HasConversion because Sqlite doesn't support DateTimeOffset
-        b.Entity<Video>().Property(x => x.CachedAt).HasConversion(
-            v => v.UtcDateTime,
-            v => new DateTimeOffset(v, TimeSpan.Zero));
-        b.Entity<Video>().Property(x => x.UpdatedAt).HasConversion(
-            v => v.UtcDateTime,
-            v => new DateTimeOffset(v, TimeSpan.Zero));
-        b.Entity<Video>().Property(x => x.PublishedAt).HasConversion(
-            v => v.UtcDateTime,
-            v => new DateTimeOffset(v, TimeSpan.Zero));
+        b.Entity<Video>().Property(x => x.CachedAt);
+        b.Entity<Video>().Property(x => x.UpdatedAt);
+        b.Entity<Video>().Property(x => x.PublishedAt);
         b.Entity<Video>()
             .OwnsOne(v => v.Location, x =>
             {
@@ -91,12 +69,8 @@ public class YouTubesterDb(DbContextOptions<YouTubesterDb> options) : DbContext(
         b.Entity<Playlist>().Property(x => x.ETag).HasMaxLength(128);
         b.Entity<Playlist>().HasOne<Channel>().WithMany().HasForeignKey(p => p.ChannelId)
             .OnDelete(DeleteBehavior.Cascade);
-        b.Entity<Playlist>().Property(x => x.UpdatedAt).HasConversion(
-            v => v.UtcDateTime,
-            v => new DateTimeOffset(v, TimeSpan.Zero));
-        b.Entity<Playlist>().Property(x => x.LastMembershipSyncAt).HasConversion(
-            v => !v.HasValue ? (DateTime?)null : v.Value.UtcDateTime,
-            v => v.HasValue ? new DateTimeOffset(v.Value, TimeSpan.Zero) : null);
+        b.Entity<Playlist>().Property(x => x.UpdatedAt);
+        b.Entity<Playlist>().Property(x => x.LastMembershipSyncAt);
 
         b.Entity<VideoPlaylist>().HasKey(x => new { x.VideoId, x.PlaylistId });
         b.Entity<VideoPlaylist>().HasIndex(x => x.PlaylistId);

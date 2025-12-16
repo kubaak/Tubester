@@ -15,27 +15,18 @@ namespace YouTubester.IntegrationTests.TestHost;
 public sealed class WorkerTestHostFactory : IDisposable
 {
     public IHost TestHost { get; }
-    public string TestDatabasePath { get; }
+    public string TestDatabaseConnectionString { get; private set; } = default!;
     public Mock<IAiClient> MockAiClient { get; }
     public Mock<IYouTubeIntegration> MockYouTubeIntegration { get; }
 
-    public WorkerTestHostFactory(CapturingBackgroundJobClient capturingJobClient, string testDatabasePath)
+    public WorkerTestHostFactory(CapturingBackgroundJobClient capturingJobClient)
     {
-        TestDatabasePath = testDatabasePath;
         MockAiClient = new Mock<IAiClient>(MockBehavior.Strict);
         MockYouTubeIntegration = new Mock<IYouTubeIntegration>(MockBehavior.Strict);
 
         var hostBuilder = Host.CreateDefaultBuilder([]);
 
         hostBuilder.UseEnvironment("Test");
-        hostBuilder.ConfigureAppConfiguration(config =>
-        {
-            config.Sources.Clear();
-            config.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                { "ConnectionStrings:DefaultConnection", $"Data Source={TestDatabasePath}" }
-            });
-        });
 
         hostBuilder.ConfigureServices((context, services) =>
         {
@@ -52,34 +43,46 @@ public sealed class WorkerTestHostFactory : IDisposable
         TestHost = hostBuilder.Build();
     }
 
-    private void ConfigureServices(IServiceCollection services, IConfiguration configuration,
+    private void ConfigureServices(
+        IServiceCollection services,
+        IConfiguration configuration,
         CapturingBackgroundJobClient capturingJobClient)
     {
-        // Use the same core registrations, but without hosted services & server
-        services.AddWorkerCore(configuration, Path.GetDirectoryName(TestDatabasePath)!, false);
+        // Resolve test connection string from config (appsettings.Test.json) with optional env override
+        var csFromConfig = configuration.GetConnectionString("YouTubesterDb");
+        var envOverride =
+            Environment.GetEnvironmentVariable("YOUTUBESTER_INTEGRATIONTESTS_CONNECTION_STRING");
 
-        // Replace the DB with the test DB (overrides AddDatabase rootPath)
+        TestDatabaseConnectionString = envOverride ?? csFromConfig
+            ?? throw new InvalidOperationException(
+                "Test DB connection string is not configured. " +
+                "Set ConnectionStrings:YouTubesterDb in appsettings.Test.json " +
+                "or YOUTUBESTER_INTEGRATIONTESTS_CONNECTION_STRING.");
+
+        // Use the same core registrations, but without hosted services & Hangfire server
+        services.AddWorkerCore(configuration, false);
+
+        // Replace the DB with the test DB
+        services.RemoveAll<DbContextOptions<YouTubesterDb>>();
         services.RemoveAll<YouTubesterDb>();
         services.AddDbContext<YouTubesterDb>(options =>
         {
-            options.UseSqlite($"Data Source={TestDatabasePath}");
+            options.UseNpgsql(TestDatabaseConnectionString);
             options.EnableSensitiveDataLogging();
+            options.EnableDetailedErrors();
         });
 
         // Override background job client + external integrations with mocks
         services.Replace(ServiceDescriptor.Singleton<IBackgroundJobClient>(capturingJobClient));
         services.Replace(ServiceDescriptor.Singleton(MockAiClient.Object));
         services.Replace(ServiceDescriptor.Singleton(MockYouTubeIntegration.Object));
-
-        // If AddWorkerCore added any IHostedService (we disabled, but as a guard):
-        services.RemoveAll<IHostedService>();
     }
 
     public async Task EnsureDatabaseCreatedAsync()
     {
         using var scope = TestHost.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<YouTubesterDb>();
-        await dbContext.Database.EnsureCreatedAsync();
+        await dbContext.Database.MigrateAsync();
     }
 
     public void Dispose()

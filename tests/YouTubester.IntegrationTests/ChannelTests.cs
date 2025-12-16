@@ -91,8 +91,9 @@ public sealed class ChannelTests(TestFixture fixture)
         {
             var databaseContext = scope.ServiceProvider.GetRequiredService<YouTubesterDb>();
             var user = User.Create(MockAuthenticationExtensions.TestSub, MockAuthenticationExtensions.TestEmail,
-                MockAuthenticationExtensions.TestName, MockAuthenticationExtensions.TestPicture, DateTimeOffset.Now);
+                MockAuthenticationExtensions.TestName, MockAuthenticationExtensions.TestPicture, DateTimeOffset.UtcNow);
             databaseContext.Users.Add(user);
+            await databaseContext.SaveChangesAsync();
             var userTokens = UserToken.Create(
                 MockAuthenticationExtensions.TestSub,
                 "refresh-token",
@@ -313,8 +314,7 @@ public sealed class ChannelTests(TestFixture fixture)
 
         var mockPlaylistVideoIds = new Dictionary<string, List<string>>
         {
-            ["playlist123"] = ["video123", "video456"],
-            ["playlist456"] = ["video456"]
+            ["playlist123"] = ["video123", "video456"], ["playlist456"] = ["video456"]
         };
 
         // Setup MockYouTubeIntegration

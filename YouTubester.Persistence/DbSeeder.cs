@@ -12,7 +12,7 @@ public static class DbSeeder
             db.Replies.AddRange(
                 Reply.Create(
                     "demo-1", "demo-video-1", "Compilation", "This is amazing!",
-                    DateTimeOffset.Now)
+                    DateTimeOffset.UtcNow)
             );
 
             await db.SaveChangesAsync(cancellationToken);

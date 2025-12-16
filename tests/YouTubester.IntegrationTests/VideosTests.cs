@@ -251,7 +251,7 @@ public class VideosTests(TestFixture fixture)
 
         var testChannelID = "testChannelID123";
         var channel = Channel.Create(testChannelID, "testUserId123", "testChannelName123",
-            testUploadsPlaylistId, DateTimeOffset.Now);
+            testUploadsPlaylistId, DateTimeOffset.UtcNow);
 
         fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
             .Returns(testChannelID);
