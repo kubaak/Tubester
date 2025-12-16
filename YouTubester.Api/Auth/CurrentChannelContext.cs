@@ -1,5 +1,3 @@
-using System.Security.Claims;
-using Microsoft.AspNetCore.Http;
 using YouTubester.Abstractions.Channels;
 
 namespace YouTubester.Api.Auth;

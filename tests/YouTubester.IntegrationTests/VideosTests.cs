@@ -5,6 +5,7 @@ using AutoFixture;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Xunit;
+using YouTubester.Abstractions.Users;
 using YouTubester.Application;
 using YouTubester.Application.Contracts;
 using YouTubester.Application.Contracts.Videos;

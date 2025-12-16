@@ -16,11 +16,6 @@ public interface IYouTubeIntegration
         DateTimeOffset? publishedAfter,
         CancellationToken cancellationToken);
 
-    IAsyncEnumerable<CommentThreadDto> GetUnansweredTopLevelCommentsAsync(
-        string channelId,
-        string videoId,
-        CancellationToken cancellationToken);
-
     Task ReplyAsync(string parentCommentId, string text, CancellationToken cancellationToken);
 
     Task UpdateVideoAsync(

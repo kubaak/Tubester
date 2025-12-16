@@ -17,6 +17,7 @@ public sealed class ChannelSyncService(
     IVideoRepository videoRepository,
     IChannelRepository channelRepository,
     ICurrentChannelContext channelContext,
+    ICommentScanService commentScanService,
     ILogger<ChannelSyncService> logger) : IChannelSyncService
 {
     private const int VideoBatchSize = 100;
@@ -78,13 +79,11 @@ public sealed class ChannelSyncService(
     public async Task<ChannelSyncResult> SyncChannelAsync(string userId, CancellationToken cancellationToken)
     {
         var channelId = channelContext.GetRequiredChannelId();
-        var channel = await channelRepository.GetChannelAsync(channelId, cancellationToken);
-        if (channel is null)
-        {
-            channel = await PullChannelAsync(userId, channelId, cancellationToken);
-        }
+        var channel = await channelRepository.GetChannelAsync(channelId, cancellationToken) ??
+                      await PullChannelAsync(userId, channelId, cancellationToken);
 
         var currentTime = DateTimeOffset.UtcNow;
+        commentScanService.ScanCommentsAsync(cancellationToken);
         return await SyncInternalAsync(channel, currentTime, cancellationToken);
     }
 

@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Xunit;
 using YouTubester.Abstractions.Channels;
+using YouTubester.Abstractions.Users;
 using YouTubester.Application.Channels;
 using YouTubester.Domain;
 using YouTubester.Integration.Dtos;
@@ -312,7 +313,8 @@ public sealed class ChannelTests(TestFixture fixture)
 
         var mockPlaylistVideoIds = new Dictionary<string, List<string>>
         {
-            ["playlist123"] = ["video123", "video456"], ["playlist456"] = ["video456"]
+            ["playlist123"] = ["video123", "video456"],
+            ["playlist456"] = ["video456"]
         };
 
         // Setup MockYouTubeIntegration

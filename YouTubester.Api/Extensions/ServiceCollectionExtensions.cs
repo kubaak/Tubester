@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.OpenApi;
+using YouTubester.Abstractions.Auth;
+using YouTubester.Abstractions.Users;
 using YouTubester.Integration;
 
 namespace YouTubester.Api.Extensions;
@@ -64,7 +66,7 @@ public static class ServiceCollectionExtensions
                 o.ClientSecret = configuration["GoogleAuth:ClientSecret"]!;
                 o.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
                 o.SaveTokens = true;
-                o.AccessType = "offline"; //kept for saving the readonly tokens to the db
+                o.AccessType = "offline";
                 o.CallbackPath = "/api/auth/google/callback";
                 o.CorrelationCookie.SameSite = SameSiteMode.None;
                 o.CorrelationCookie.SecurePolicy = CookieSecurePolicy.Always;
@@ -72,7 +74,75 @@ public static class ServiceCollectionExtensions
                 o.Scope.Add("profile");
                 o.Scope.Add("email");
                 o.Scope.Add(YouTubeService.Scope.YoutubeReadonly);
-                o.Events = CreateOAuthEvents(false);
+                o.Events = new OAuthEvents
+                {
+                    OnTicketReceived = async context =>
+                    {
+                        var accessToken = context.Properties?.GetTokenValue("access_token");
+                        var refreshToken = context.Properties?.GetTokenValue("refresh_token");
+                        var expiresAtRaw = context.Properties?.GetTokenValue("expires_at");
+                        DateTimeOffset? expiresAt = null;
+                        if (!string.IsNullOrWhiteSpace(expiresAtRaw) &&
+                            DateTimeOffset.TryParse(expiresAtRaw, out var parsedExpiresAt))
+                        {
+                            expiresAt = parsedExpiresAt;
+                        }
+
+                        if (string.IsNullOrWhiteSpace(accessToken))
+                        {
+                            var loggerFactory = context.HttpContext.RequestServices
+                                .GetRequiredService<ILoggerFactory>();
+                            var logger = loggerFactory.CreateLogger("YouTubester.Api.Authentication");
+                            logger.LogWarning(
+                                "Access token was not available during Google login; skipping channel enrichment");
+                            return;
+                        }
+
+                        var youTubeIntegration = context.HttpContext.RequestServices
+                            .GetRequiredService<IYouTubeIntegration>();
+                        var userChannel = await youTubeIntegration.GetCurrentChannelAsync(
+                            accessToken, context.HttpContext.RequestAborted);
+
+                        if (userChannel is null)
+                        {
+                            return;
+                        }
+
+                        var claimsIdentity = (ClaimsIdentity)context.Principal!.Identity!;
+                        claimsIdentity.AddClaim(new Claim("yt_channel_id", userChannel.Id));
+                        claimsIdentity.AddClaim(new Claim("yt_channel_title", userChannel.Title ?? string.Empty));
+                        claimsIdentity.AddClaim(new Claim("yt_channel_picture", userChannel.Picture ?? string.Empty));
+
+                        var principal = context.Principal;
+                        if (principal is null)
+                        {
+                            return;
+                        }
+
+                        var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+                        if (string.IsNullOrWhiteSpace(userId))
+                        {
+                            return;
+                        }
+
+                        var email = principal.FindFirstValue(ClaimTypes.Email);
+                        var name = principal.Identity?.Name;
+                        var picture = principal.FindFirst("picture")?.Value;
+
+                        var requestServices = context.HttpContext.RequestServices;
+                        var userRepository = requestServices.GetRequiredService<IUserRepository>();
+                        var userTokenStore = requestServices.GetRequiredService<IUserTokenStore>();
+                        var cancellationToken = context.HttpContext.RequestAborted;
+                        var now = DateTimeOffset.UtcNow;
+                        await userRepository.UpsertUserAsync(userId, email, name, picture, now, cancellationToken);
+                        await userTokenStore.UpsertAsync(
+                            userId,
+                            accessToken,
+                            refreshToken,
+                            expiresAt,
+                            cancellationToken);
+                    }
+                };
             })
             .AddGoogle("GoogleWrite", o =>
             {
@@ -89,7 +159,7 @@ public static class ServiceCollectionExtensions
                 o.Scope.Add("email");
                 o.Scope.Add(YouTubeService.Scope.YoutubeForceSsl);
 
-                o.Events = CreateOAuthEvents(true);
+                o.Events = CreateOAuthEvents();
             });
 
         services.AddAuthorization(options =>
@@ -103,7 +173,7 @@ public static class ServiceCollectionExtensions
 
         return services;
 
-        OAuthEvents CreateOAuthEvents(bool markWriteAccess)
+        OAuthEvents CreateOAuthEvents()
         {
             return new OAuthEvents
             {
@@ -136,10 +206,7 @@ public static class ServiceCollectionExtensions
                     claimsIdentity.AddClaim(new Claim("yt_channel_title", userChannel.Title ?? string.Empty));
                     claimsIdentity.AddClaim(new Claim("yt_channel_picture", userChannel.Picture ?? string.Empty));
 
-                    if (markWriteAccess)
-                    {
-                        claimsIdentity.AddClaim(new Claim("yt_write_granted", "true"));
-                    }
+                    claimsIdentity.AddClaim(new Claim("yt_write_granted", "true"));
                 }
             };
         }

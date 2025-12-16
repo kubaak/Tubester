@@ -6,11 +6,26 @@ namespace YouTubester.Persistence.Replies;
 
 public class ReplyRepository(YouTubesterDb db) : IReplyRepository
 {
-    public async Task<IEnumerable<Reply>> GetRepliesForApprovalAsync(CancellationToken cancellationToken)
+    public async Task<IEnumerable<Reply>> GetRepliesForApprovalAsync(string channelId,
+        CancellationToken cancellationToken)
     {
-        return await db.Replies.AsNoTracking()
+        return await db.Replies
+            .AsNoTracking()
             .Where(r => r.Status == ReplyStatus.Suggested)
-            .OrderByDescending(d => d.PostedAt).ToListAsync(cancellationToken);
+            .Join(
+                db.Videos,
+                r => r.VideoId,
+                v => v.VideoId,
+                (r, v) => new { r, v }
+            )
+            .Join(
+                db.Channels.Where(c => c.ChannelId == channelId),
+                rv => rv.v.UploadsPlaylistId,
+                c => c.UploadsPlaylistId,
+                (rv, c) => rv.r
+            )
+            .OrderByDescending(r => r.PostedAt)
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<Reply?> GetReplyAsync(string commentId, CancellationToken cancellationToken)

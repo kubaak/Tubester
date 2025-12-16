@@ -1,8 +1,8 @@
 using System.Security.Claims;
-using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using YouTubester.Abstractions.Channels;
+using YouTubester.Application;
 using YouTubester.Application.Channels;
 using YouTubester.Domain;
 
@@ -15,7 +15,7 @@ namespace YouTubester.Api;
 [Authorize]
 public sealed class ChannelsController(
     IChannelSyncService channelSyncService,
-    IBackgroundJobClient backgroundJobClient,
+    ICommentScanService commentScanService,
     IChannelRepository channelRepository)
     : ControllerBase
 {

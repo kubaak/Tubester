@@ -4,7 +4,7 @@ namespace YouTubester.Abstractions.Videos;
 
 public interface IVideoRepository
 {
-    Task<List<Video>> GetCommentableVideosAsync(CancellationToken cancellationToken);
+    Task<List<Video>> GetCommentableVideosAsync(string channelId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Gets a video by its ID from the database.

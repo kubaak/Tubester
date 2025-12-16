@@ -11,7 +11,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using YouTubester.Abstractions.Channels;
-using YouTubester.Api;
 using YouTubester.Integration;
 using YouTubester.Persistence;
 

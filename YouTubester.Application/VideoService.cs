@@ -79,7 +79,10 @@ public class VideoService(
 
         var items = itemsToReturn.Select(v => new VideoListItemDto
         {
-            VideoId = v.VideoId, Title = v.Title, PublishedAt = v.PublishedAt, ThumbnailUrl = v.ThumbnailUrl
+            VideoId = v.VideoId,
+            Title = v.Title,
+            PublishedAt = v.PublishedAt,
+            ThumbnailUrl = v.ThumbnailUrl
         }).ToList();
 
         return new PagedResult<VideoListItemDto> { Items = items, NextPageToken = nextPageToken };

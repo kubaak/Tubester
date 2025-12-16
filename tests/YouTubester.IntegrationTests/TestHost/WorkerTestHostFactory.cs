@@ -56,8 +56,7 @@ public sealed class WorkerTestHostFactory : IDisposable
         CapturingBackgroundJobClient capturingJobClient)
     {
         // Use the same core registrations, but without hosted services & server
-        services.AddWorkerCore(configuration, Path.GetDirectoryName(TestDatabasePath)!,
-            false, false);
+        services.AddWorkerCore(configuration, Path.GetDirectoryName(TestDatabasePath)!, false);
 
         // Replace the DB with the test DB (overrides AddDatabase rootPath)
         services.RemoveAll<YouTubesterDb>();

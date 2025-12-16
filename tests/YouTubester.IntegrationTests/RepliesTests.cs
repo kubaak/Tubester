@@ -24,6 +24,10 @@ public class RepliesTests(TestFixture fixture)
         // Arrange
         await fixture.ResetDbAsync();
 
+        var testChannelID = "testChannelID123";
+        fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
+            .Returns(testChannelID);
+
         // Act
         var response = await fixture.HttpClient.GetAsync("/api/replies");
 
@@ -39,6 +43,31 @@ public class RepliesTests(TestFixture fixture)
     {
         // Arrange
         await fixture.ResetDbAsync();
+
+        var testChannelID = "testChannelID123";
+        var testUploadsPlaylistId = "PLTestUploads123";
+        fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
+            .Returns(testChannelID);
+
+        var channel = Channel.Create(testChannelID, "testUserId123", "testChannelName123",
+            testUploadsPlaylistId, DateTimeOffset.Now);
+        var video1 = Video.Create(
+            testUploadsPlaylistId,
+            "video1",
+            "Cooking Tutorial",
+            "Learn how to cook",
+            TestFixture.TestingDateTimeOffset,
+            TimeSpan.FromMinutes(10),
+            VideoVisibility.Public,
+            new[] { "cooking", "tutorial" },
+            "22",
+            "en",
+            "en",
+            null,
+            null,
+            TestFixture.TestingDateTimeOffset,
+            "etag1"
+        );
 
         var suggestedReply = Reply.Create(
             "comment1",
@@ -68,6 +97,8 @@ public class RepliesTests(TestFixture fixture)
         using (var scope = fixture.ApiServices.CreateScope())
         {
             var databaseContext = scope.ServiceProvider.GetRequiredService<YouTubesterDb>();
+            databaseContext.Channels.Add(channel);
+            databaseContext.Videos.AddRange(video1);
             databaseContext.Replies.AddRange(suggestedReply, pulledReply, postedReply);
             await databaseContext.SaveChangesAsync();
         }

@@ -1,4 +1,4 @@
-namespace YouTubester.Domain;
+namespace YouTubester.Abstractions.Users;
 
 public sealed class User
 {

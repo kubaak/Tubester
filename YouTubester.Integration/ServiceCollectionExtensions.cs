@@ -2,16 +2,30 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Options;
+using YouTubester.Abstractions.Auth;
 using YouTubester.Integration.Configuration;
 
 namespace YouTubester.Integration;
 
 public static class ServiceCollectionExtensions
 {
-    public static IServiceCollection AddYoutubeServices(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddOnlineYoutubeServices(this IServiceCollection services,
+        IConfiguration configuration)
     {
-        services.Configure<YouTubeAuthOptions>(configuration.GetSection("YouTubeAuth"));
+        services.Configure<GoogleAuthOptions>(configuration.GetSection("GoogleAuth"));
         services.AddScoped<IYouTubeIntegration, YouTubeIntegration>();
+
+        return services;
+    }
+
+    public static IServiceCollection AddBackgroundYoutubeServices(this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services.Configure<GoogleAuthOptions>(configuration.GetSection("GoogleAuth"));
+        services.Configure<YouTubeApiOptions>(configuration.GetSection("YouTubeApi"));
+        services.AddHttpClient<IGoogleTokenRefresher, GoogleTokenRefresher>();
+        services.AddScoped<IBackgroundYoutubeIntegration, BackgroundYoutubeIntegration>();
+
         return services;
     }
 
