@@ -12,7 +12,7 @@ using YouTubester.Integration.Exceptions;
 namespace YouTubester.Integration;
 
 public sealed class YouTubeServiceFactory(
-    IOptions<YouTubeAuthOptions> options,
+    IOptions<GoogleAuthOptions> options,
     IUserTokenStore userTokenStore,
     ILogger<YouTubeServiceFactory> logger) : IYouTubeServiceFactory
 {

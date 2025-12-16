@@ -4,8 +4,6 @@ using YouTubester.Abstractions.Channels;
 using YouTubester.Abstractions.Playlists;
 using YouTubester.Abstractions.Replies;
 using YouTubester.Abstractions.Videos;
-using YouTubester.Application;
-using YouTubester.Application.Channels;
 using YouTubester.Application.Jobs;
 using YouTubester.Integration;
 using YouTubester.Persistence;
@@ -26,7 +24,6 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration config,
         string contentRootPath,
-        bool addHostedServices = true,
         bool addHangfireServer = true)
     {
         services.Configure<WorkerOptions>(config.GetSection("Worker"));
@@ -35,7 +32,7 @@ public static class ServiceCollectionExtensions
         services.AddDatabase(contentRootPath);
 
         // External integrations
-        services.AddYoutubeServices(config);
+        services.AddBackgroundYoutubeServices(config);
         services.AddAiClient(config);
 
         // Repositories
@@ -46,20 +43,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserTokenStore, UserTokenStore>();
 
         // App services & jobs
-        services.AddScoped<IChannelSyncService, ChannelSyncService>();
-        services.AddScoped<IVideoTemplatingService, VideoTemplatingService>();
+        services.AddScoped<CommentScanJob>();
 
         // Hangfire storage (no server yet)
         services.AddHangFireStorage(config, contentRootPath);
 
-        if (addHostedServices)
-        {
-            services.AddHostedService<CommentScanWorker>();
-        }
-
         if (addHangfireServer)
         {
-            services.AddHangfireServer(o => o.Queues = ["replies", "templating", "default"]);
+            services.AddHangfireServer(o => o.Queues = ["scanning", "default"]);
         }
 
         return services;

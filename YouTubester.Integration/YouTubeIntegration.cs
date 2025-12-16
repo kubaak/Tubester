@@ -423,59 +423,6 @@ public sealed class YouTubeIntegration(
         return result;
     }
 
-    public async IAsyncEnumerable<CommentThreadDto> GetUnansweredTopLevelCommentsAsync(
-        string channelId,
-        string videoId,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        var youTubeService = CreateReadOnlyServiceAsync(await GetCurrentUsersAccessToken(cancellationToken));
-
-        string? page = null;
-        do
-        {
-            var ctReq = youTubeService.CommentThreads.List("snippet,replies");
-            ctReq.VideoId = videoId;
-            ctReq.MaxResults = 50;
-            ctReq.PageToken = page;
-            ctReq.TextFormat = CommentThreadsResource.ListRequest.TextFormatEnum.PlainText;
-
-            var ctRes = await ctReq.ExecuteAsync(cancellationToken);
-
-            foreach (var t in ctRes.Items)
-            {
-                var top = t.Snippet?.TopLevelComment;
-                if (top is null)
-                {
-                    continue;
-                }
-
-                var author = top.Snippet?.AuthorChannelId?.Value ?? "";
-                // skip our own comments
-                if (!string.IsNullOrEmpty(author) && author == channelId)
-                {
-                    continue;
-                }
-
-                // already answered by us?
-                var anyOwnerReply = (t.Replies?.Comments ?? new List<Comment>()).Any(r =>
-                    r.Snippet?.AuthorChannelId?.Value == channelId);
-                if (anyOwnerReply)
-                {
-                    continue;
-                }
-
-                yield return new CommentThreadDto(
-                    top.Id!,
-                    videoId,
-                    author,
-                    top.Snippet?.TextDisplay ?? ""
-                );
-            }
-
-            page = ctRes.NextPageToken;
-        } while (page != null);
-    }
-
     public async Task ReplyAsync(string parentCommentId, string text,
         CancellationToken cancellationToken)
     {
@@ -515,7 +462,8 @@ public sealed class YouTubeIntegration(
         {
             video.RecordingDetails.Location = new GeoPoint
             {
-                Latitude = location.Value.lat, Longitude = location.Value.lng
+                Latitude = location.Value.lat,
+                Longitude = location.Value.lng
             };
             video.RecordingDetails.LocationDescription = locationDescription;
         }
@@ -653,7 +601,8 @@ public sealed class YouTubeIntegration(
 
         var initializer = new BaseClientService.Initializer
         {
-            HttpClientInitializer = googleCredential, ApplicationName = "YouTubester"
+            HttpClientInitializer = googleCredential,
+            ApplicationName = "YouTubester"
         };
 
         return new YouTubeService(initializer);

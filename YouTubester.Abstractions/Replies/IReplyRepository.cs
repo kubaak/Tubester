@@ -4,7 +4,7 @@ namespace YouTubester.Abstractions.Replies;
 
 public interface IReplyRepository
 {
-    Task<IEnumerable<Reply>> GetRepliesForApprovalAsync(CancellationToken cancellationToken);
+    Task<IEnumerable<Reply>> GetRepliesForApprovalAsync(string channelId, CancellationToken cancellationToken);
 
     Task<Reply?> GetReplyAsync(string commentId, CancellationToken cancellationToken);
 

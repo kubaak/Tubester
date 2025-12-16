@@ -1,7 +1,6 @@
-﻿using Hangfire;
+﻿using YouTubester.Abstractions.Channels;
 using YouTubester.Abstractions.Replies;
 using YouTubester.Application.Contracts.Replies;
-using YouTubester.Application.Jobs;
 using YouTubester.Domain;
 using YouTubester.Integration;
 
@@ -9,13 +8,19 @@ namespace YouTubester.Application;
 
 public class ReplyService(
     IReplyRepository repository,
-    IBackgroundJobClient backgroundJobClient,
-    IYouTubeIntegration youTubeIntegration)
+    IYouTubeIntegration youTubeIntegration,
+    ICurrentChannelContext currentChannelContext)
     : IReplyService
 {
     public Task<IEnumerable<Reply>> GetRepliesForApprovalAsync(CancellationToken cancellationToken)
     {
-        return repository.GetRepliesForApprovalAsync(cancellationToken);
+        var channelId = currentChannelContext.GetRequiredChannelId();
+        if (channelId == null)
+        {
+            throw new ArgumentNullException(nameof(channelId));
+        }
+
+        return repository.GetRepliesForApprovalAsync(channelId, cancellationToken);
     }
 
     public async Task<Reply?> DeleteAsync(string commentId, CancellationToken cancellationToken)

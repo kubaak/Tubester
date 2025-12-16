@@ -8,11 +8,23 @@ namespace YouTubester.Persistence.Videos;
 
 public sealed class VideoRepository(YouTubesterDb db) : IVideoRepository
 {
-    public async Task<List<Video>> GetCommentableVideosAsync(CancellationToken cancellationToken)
+    public async Task<List<Video>> GetCommentableVideosAsync(string channelId, CancellationToken cancellationToken)
     {
         return await db.Videos
             .AsNoTracking()
             .Where(v => v.CommentsAllowed ?? true)
+            .Join(
+                db.Videos,
+                r => r.VideoId,
+                v => v.VideoId,
+                (r, v) => new { r, v }
+            )
+            .Join(
+                db.Channels.Where(c => c.ChannelId == channelId),
+                rv => rv.v.UploadsPlaylistId,
+                c => c.UploadsPlaylistId,
+                (rv, c) => rv.r
+            )
             .OrderByDescending(v => v.PublishedAt)
             .ThenByDescending(v => v.UpdatedAt)
             .ToListAsync(cancellationToken);

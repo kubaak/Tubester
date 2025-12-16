@@ -17,10 +17,7 @@ public sealed class UserToken
 
         var userTokens = new UserToken
         {
-            UserId = userId,
-            RefreshToken = refreshToken,
-            AccessToken = accessToken,
-            ExpiresAt = expiresAt
+            UserId = userId, RefreshToken = refreshToken, AccessToken = accessToken, ExpiresAt = expiresAt
         };
 
         return userTokens;
@@ -28,7 +25,11 @@ public sealed class UserToken
 
     public void UpdateTokens(string? refreshToken, string? accessToken, DateTimeOffset? expiresAt)
     {
-        RefreshToken = refreshToken;
+        if (!string.IsNullOrWhiteSpace(refreshToken))
+        {
+            RefreshToken = refreshToken;
+        }
+
         AccessToken = accessToken;
         ExpiresAt = expiresAt;
     }
