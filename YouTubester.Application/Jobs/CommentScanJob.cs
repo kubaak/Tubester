@@ -5,7 +5,6 @@ using YouTubester.Abstractions.Replies;
 using YouTubester.Abstractions.Videos;
 using YouTubester.Domain;
 using YouTubester.Integration;
-using YouTubester.Integration.Exceptions;
 
 namespace YouTubester.Application.Jobs;
 
@@ -79,8 +78,8 @@ public sealed class CommentScanJob(
                 }
 
                 var reply = Reply.Create(thread.ParentCommentId, thread.VideoId, video.Title, thread.Text,
-                    DateTimeOffset.Now);
-                reply.SuggestText(replyText, DateTimeOffset.Now);
+                    DateTimeOffset.UtcNow);
+                reply.SuggestText(replyText, DateTimeOffset.UtcNow);
 
                 await replyRepository.AddOrUpdateReplyAsync(reply, cancellationToken);
 

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -18,7 +19,6 @@ namespace YouTubester.IntegrationTests.TestHost;
 
 public class ApiTestWebAppFactory : WebApplicationFactory<Program>
 {
-    public string TestDatabasePath { get; }
     private CapturingBackgroundJobClient CapturingJobClient { get; }
     public Mock<IAiClient> MockAiClient { get; }
     public Mock<IYouTubeIntegration> MockYouTubeIntegration { get; }
@@ -26,14 +26,6 @@ public class ApiTestWebAppFactory : WebApplicationFactory<Program>
 
     public ApiTestWebAppFactory(CapturingBackgroundJobClient capturingJobClient)
     {
-        TestDatabasePath = Path.Combine(
-            Path.GetTempPath(),
-            "YouTubester.IntegrationTests",
-            "integration-test.db");
-
-        var testDir = Path.GetDirectoryName(TestDatabasePath)!;
-        Directory.CreateDirectory(testDir);
-
         CapturingJobClient = capturingJobClient;
         MockAiClient = new Mock<IAiClient>(MockBehavior.Strict);
         MockYouTubeIntegration = new Mock<IYouTubeIntegration>(MockBehavior.Strict);
@@ -45,8 +37,15 @@ public class ApiTestWebAppFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Test");
 
-        builder.ConfigureServices(services =>
+        builder.ConfigureServices((context, services) =>
         {
+            // Get connection string from appsettings.Test.json, with optional env override
+            var csFromConfig = context.Configuration.GetConnectionString("YouTubesterDb");
+            var envOverride = Environment.GetEnvironmentVariable("YOUTUBESTER_INTEGRATIONTESTS_CONNECTION_STRING");
+            var testConnectionString = envOverride ?? csFromConfig
+                ?? throw new InvalidOperationException(
+                    "Test DB connection string is not configured.");
+
             // Remove app registrations we're replacing
             services.RemoveAll<DbContextOptions<YouTubesterDb>>();
             services.RemoveAll<YouTubesterDb>();
@@ -62,13 +61,10 @@ public class ApiTestWebAppFactory : WebApplicationFactory<Program>
             services.RemoveAll<IAuthorizationHandlerProvider>();
             services.RemoveAll<ICurrentChannelContext>();
 
-            // Nuke ALL hosted services (covers Hangfire server and any BackgroundService)
-            services.RemoveAll<IHostedService>();
-
             // Add test database
             services.AddDbContext<YouTubesterDb>(options =>
             {
-                options.UseSqlite($"Data Source={TestDatabasePath}");
+                options.UseNpgsql(testConnectionString);
                 options.EnableSensitiveDataLogging();
                 options.EnableDetailedErrors();
             });
@@ -82,7 +78,6 @@ public class ApiTestWebAppFactory : WebApplicationFactory<Program>
             services.AddSingleton(MockCurrentChannelContext.Object);
         });
 
-        // Reduce logging noise in tests
         builder.ConfigureLogging(logging =>
         {
             logging.ClearProviders();
@@ -95,26 +90,6 @@ public class ApiTestWebAppFactory : WebApplicationFactory<Program>
     {
         using var scope = Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<YouTubesterDb>();
-        await dbContext.Database.EnsureCreatedAsync();
-    }
-
-    protected override void Dispose(bool disposing)
-    {
-        if (disposing)
-        {
-            if (File.Exists(TestDatabasePath))
-            {
-                try
-                {
-                    File.Delete(TestDatabasePath);
-                }
-                catch
-                {
-                    // Best effort cleanup
-                }
-            }
-        }
-
-        base.Dispose(disposing);
+        await dbContext.Database.MigrateAsync();
     }
 }

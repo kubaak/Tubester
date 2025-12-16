@@ -21,7 +21,7 @@ public sealed class TestFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         ApiFactory = new ApiTestWebAppFactory(CapturingJobClient);
-        WorkerFactory = new WorkerTestHostFactory(CapturingJobClient, ApiFactory.TestDatabasePath);
+        WorkerFactory = new WorkerTestHostFactory(CapturingJobClient);
         HttpClient = ApiFactory.CreateClient();
 
         // Ensure database is created once
@@ -33,7 +33,7 @@ public sealed class TestFixture : IAsyncLifetime
     {
         using var scope = ApiServices.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<YouTubesterDb>();
-        await SqliteCleaner.CleanAsync(dbContext.Database.GetDbConnection());
+        await PostgresCleaner.CleanAsync(dbContext.Database.GetDbConnection());
 
         // Clear capturing job client
         CapturingJobClient.Clear();

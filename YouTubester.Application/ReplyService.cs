@@ -101,10 +101,10 @@ public class ReplyService(
                     continue;
                 }
 
-                draft.ApproveText(d.ApprovedText, DateTimeOffset.Now);
+                draft.ApproveText(d.ApprovedText, DateTimeOffset.UtcNow);
 
                 await youTubeIntegration.ReplyAsync(draft.CommentId, draft.FinalText!, cancellationToken);
-                draft.Post(DateTimeOffset.Now);
+                draft.Post(DateTimeOffset.UtcNow);
 
                 await repository.AddOrUpdateReplyAsync(draft, cancellationToken);
                 results.Add(new DraftDecisionResultDto(d.CommentId, true));

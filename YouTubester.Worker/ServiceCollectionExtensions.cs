@@ -23,13 +23,12 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddWorkerCore(
         this IServiceCollection services,
         IConfiguration config,
-        string contentRootPath,
         bool addHangfireServer = true)
     {
         services.Configure<WorkerOptions>(config.GetSection("Worker"));
 
-        // DB (prod uses builder.Services.AddDatabase(rootPath))
-        services.AddDatabase(contentRootPath);
+        // DB
+        services.AddDatabase(config);
 
         // External integrations
         services.AddBackgroundYoutubeServices(config);
@@ -46,7 +45,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<CommentScanJob>();
 
         // Hangfire storage (no server yet)
-        services.AddHangFireStorage(config, contentRootPath);
+        services.AddHangFireStorage(config);
 
         if (addHangfireServer)
         {

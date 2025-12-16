@@ -1,5 +1,5 @@
 ﻿using Hangfire;
-using Hangfire.Storage.SQLite;
+using Hangfire.PostgreSql;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -8,27 +8,32 @@ namespace YouTubester.Persistence;
 
 public static class ServiceCollectionExtensions
 {
-    public static IServiceCollection AddDatabase(this IServiceCollection services, string projectFolder)
+    public static IServiceCollection AddDatabase(this IServiceCollection services, IConfiguration configuration)
     {
-        var dbPath = GetDbPath(projectFolder);
+        var connectionString = configuration.GetConnectionString("YouTubesterDb");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException("Missing connection string 'ConnectionStrings:YouTubesterDb'.");
+        }
 
-        services.AddDbContext<YouTubesterDb>(opt =>
-            opt.UseSqlite($"Data Source={Path.GetFullPath(dbPath)}"));
+        services.AddDbContext<YouTubesterDb>(options => options.UseNpgsql(connectionString));
         return services;
     }
 
-    public static IServiceCollection AddHangFireStorage(this IServiceCollection services, IConfiguration configuration, string projectFolder)
+    public static IServiceCollection AddHangFireStorage(this IServiceCollection services, IConfiguration configuration)
     {
-        var path = GetDbPath(projectFolder);
-        services.AddHangfire(x => x.UseSQLiteStorage(path));
+        var connectionString = configuration.GetConnectionString("YouTubesterDb");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException("Missing connection string 'ConnectionStrings:YouTubesterDb'.");
+        }
+
+        services.AddHangfire(configurationExpression =>
+            configurationExpression.UsePostgreSqlStorage(options =>
+            {
+                options.UseNpgsqlConnection(connectionString);
+            }));
+
         return services;
-    }
-    public static string GetDbPath(string projectFolder)
-    {
-        var solutionRoot = Directory.GetParent(projectFolder)!.FullName; // up one
-        var dataDir = Path.Combine(solutionRoot, ".data");
-        Directory.CreateDirectory(dataDir);
-        var dbPath = Path.Combine(dataDir, "youtubester.db");
-        return dbPath;
     }
 }

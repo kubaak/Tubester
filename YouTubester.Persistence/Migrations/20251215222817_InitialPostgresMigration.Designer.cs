@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using YouTubester.Persistence;
 
 #nullable disable
@@ -11,41 +12,70 @@ using YouTubester.Persistence;
 namespace YouTubester.Persistence.Migrations
 {
     [DbContext(typeof(YouTubesterDb))]
-    [Migration("20251121190144_UserToken")]
-    partial class UserToken
+    [Migration("20251215222817_InitialPostgresMigration")]
+    partial class InitialPostgresMigration
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "9.0.10");
+            modelBuilder
+                .HasAnnotation("ProductVersion", "10.0.0")
+                .HasAnnotation("Relational:MaxIdentifierLength", 63);
+
+            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("YouTubester.Abstractions.Users.User", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("LastLoginAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Picture")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Users");
+                });
 
             modelBuilder.Entity("YouTubester.Domain.Channel", b =>
                 {
                     b.Property<string>("ChannelId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("ETag")
                         .HasMaxLength(128)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(128)");
 
-                    b.Property<DateTime?>("LastUploadsCutoff")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset?>("LastUploadsCutoff")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("UploadsPlaylistId")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("UserId")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.HasKey("ChannelId");
 
@@ -55,24 +85,24 @@ namespace YouTubester.Persistence.Migrations
             modelBuilder.Entity("YouTubester.Domain.Playlist", b =>
                 {
                     b.Property<string>("PlaylistId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("ChannelId")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("ETag")
                         .HasMaxLength(128)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(128)");
 
-                    b.Property<DateTime?>("LastMembershipSyncAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset?>("LastMembershipSyncAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Title")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("PlaylistId");
 
@@ -84,40 +114,40 @@ namespace YouTubester.Persistence.Migrations
             modelBuilder.Entity("YouTubester.Domain.Reply", b =>
                 {
                     b.Property<string>("CommentId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<DateTimeOffset?>("ApprovedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("CommentText")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("FinalText")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
-                    b.Property<DateTime?>("PostedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset?>("PostedAt")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime>("PulledAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("PulledAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset?>("SuggestedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("SuggestedText")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("VideoId")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("VideoTitle")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.HasKey("CommentId");
 
@@ -126,102 +156,58 @@ namespace YouTubester.Persistence.Migrations
                     b.ToTable("Replies");
                 });
 
-            modelBuilder.Entity("YouTubester.Domain.User", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Email")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("LastLoginAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Name")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Picture")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Users");
-                });
-
-            modelBuilder.Entity("YouTubester.Domain.UserTokens", b =>
-                {
-                    b.Property<string>("UserId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("AccessToken")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("ExpiresAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("RefreshToken")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("UserId");
-
-                    b.ToTable("UserTokens");
-                });
-
             modelBuilder.Entity("YouTubester.Domain.Video", b =>
                 {
                     b.Property<string>("VideoId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
-                    b.Property<DateTime>("CachedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("CachedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("CategoryId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<bool?>("CommentsAllowed")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
                     b.Property<string>("DefaultAudioLanguage")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("DefaultLanguage")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("Description")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<TimeSpan>("Duration")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("interval");
 
                     b.Property<string>("ETag")
                         .HasMaxLength(128)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(128)");
 
                     b.Property<string>("LocationDescription")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
-                    b.Property<DateTime>("PublishedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("PublishedAt")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.PrimitiveCollection<string>("Tags")
+                    b.PrimitiveCollection<string[]>("Tags")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text[]");
 
                     b.Property<string>("Title")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("UploadsPlaylistId")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<int>("Visibility")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("VideoId");
 
@@ -235,16 +221,35 @@ namespace YouTubester.Persistence.Migrations
             modelBuilder.Entity("YouTubester.Domain.VideoPlaylist", b =>
                 {
                     b.Property<string>("VideoId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("PlaylistId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.HasKey("VideoId", "PlaylistId");
 
                     b.HasIndex("PlaylistId");
 
                     b.ToTable("VideoPlaylists");
+                });
+
+            modelBuilder.Entity("YouTubester.Persistence.Users.UserToken", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("AccessToken")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RefreshToken")
+                        .HasColumnType("text");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("UserTokens");
                 });
 
             modelBuilder.Entity("YouTubester.Domain.Playlist", b =>
@@ -256,27 +261,18 @@ namespace YouTubester.Persistence.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("YouTubester.Domain.UserTokens", b =>
-                {
-                    b.HasOne("YouTubester.Domain.User", null)
-                        .WithOne()
-                        .HasForeignKey("YouTubester.Domain.UserTokens", "UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("YouTubester.Domain.Video", b =>
                 {
                     b.OwnsOne("YouTubester.Domain.GeoLocation", "Location", b1 =>
                         {
                             b1.Property<string>("VideoId")
-                                .HasColumnType("TEXT");
+                                .HasColumnType("text");
 
                             b1.Property<double>("Latitude")
-                                .HasColumnType("REAL");
+                                .HasColumnType("double precision");
 
                             b1.Property<double>("Longitude")
-                                .HasColumnType("REAL");
+                                .HasColumnType("double precision");
 
                             b1.HasKey("VideoId");
 
@@ -300,6 +296,15 @@ namespace YouTubester.Persistence.Migrations
                     b.HasOne("YouTubester.Domain.Video", null)
                         .WithMany()
                         .HasForeignKey("VideoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("YouTubester.Persistence.Users.UserToken", b =>
+                {
+                    b.HasOne("YouTubester.Abstractions.Users.User", null)
+                        .WithOne()
+                        .HasForeignKey("YouTubester.Persistence.Users.UserToken", "UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

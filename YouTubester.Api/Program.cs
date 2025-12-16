@@ -46,9 +46,8 @@ builder.Services.AddScoped<ICommentScanService, CommentScanService>();
 builder.Services.AddVideoListingOptions(builder.Configuration);
 builder.Services.AddCookieWithGoogle(builder.Configuration);
 
-var rootPath = builder.Environment.ContentRootPath;
-builder.Services.AddDatabase(rootPath);
-builder.Services.AddHangFireStorage(builder.Configuration, rootPath);
+builder.Services.AddDatabase(builder.Configuration);
+builder.Services.AddHangFireStorage(builder.Configuration);
 
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();

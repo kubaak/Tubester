@@ -50,7 +50,7 @@ public class RepliesTests(TestFixture fixture)
             .Returns(testChannelID);
 
         var channel = Channel.Create(testChannelID, "testUserId123", "testChannelName123",
-            testUploadsPlaylistId, DateTimeOffset.Now);
+            testUploadsPlaylistId, DateTimeOffset.UtcNow);
         var video1 = Video.Create(
             testUploadsPlaylistId,
             "video1",

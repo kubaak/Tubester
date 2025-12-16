@@ -1,5 +1,3 @@
-using System.Text;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using YouTubester.Abstractions.Videos;
 using YouTubester.Domain;
@@ -34,51 +32,51 @@ public sealed class VideoRepository(YouTubesterDb db) : IVideoRepository
     {
         return await db.Videos
             .AsNoTracking()
-            .FirstOrDefaultAsync(v => v.VideoId == videoId, cancellationToken);
+            .FirstOrDefaultAsync(video => video.VideoId == videoId, cancellationToken);
     }
 
     public async Task<(int inserted, int updated)> UpsertAsync(IEnumerable<Video> videos,
         CancellationToken cancellationToken)
     {
-        var list = videos.ToList();
-        if (list.Count == 0)
+        var videoList = videos.ToList();
+        if (videoList.Count == 0)
         {
             return (0, 0);
         }
 
-        var ids = list.Select(i => i.VideoId).ToHashSet();
+        var videoIds = videoList.Select(video => video.VideoId).ToHashSet();
 
-        var existing = await db.Videos.Where(v => ids.Contains(v.VideoId))
-            .ToDictionaryAsync(v => v.VideoId, v => v, cancellationToken);
+        var existingVideosById = await db.Videos.Where(video => videoIds.Contains(video.VideoId))
+            .ToDictionaryAsync(video => video.VideoId, video => video, cancellationToken);
 
-        var now = DateTimeOffset.UtcNow; //todo provider
-        var inserts = 0;
-        var updates = 0;
+        var currentTimeUtc = DateTimeOffset.UtcNow; //todo provider
+        var inserted = 0;
+        var updated = 0;
 
-        foreach (var video in list)
+        foreach (var video in videoList)
         {
-            if (!existing.TryGetValue(video.VideoId, out var row))
+            if (!existingVideosById.TryGetValue(video.VideoId, out var existingVideo))
             {
                 db.Add(video);
-                inserts++;
+                inserted++;
             }
             else
             {
-                var changed = row.ApplyDetails(
+                var changed = existingVideo.ApplyDetails(
                     video.Title, video.Description, video.PublishedAt, video.Duration,
                     video.Visibility, video.Tags, video.CategoryId, video.DefaultLanguage,
-                    video.DefaultAudioLanguage, video.Location, video.LocationDescription, now, video.ETag,
+                    video.DefaultAudioLanguage, video.Location, video.LocationDescription, currentTimeUtc, video.ETag,
                     video.CommentsAllowed
                 );
                 if (changed)
                 {
-                    updates++;
+                    updated++;
                 }
             }
         }
 
         await db.SaveChangesAsync(cancellationToken);
-        return (inserts, updates);
+        return (inserted, updated);
     }
 
     public async Task<List<Video>> GetVideosPageAsync(
@@ -88,58 +86,40 @@ public sealed class VideoRepository(YouTubesterDb db) : IVideoRepository
         DateTimeOffset? afterPublishedAtUtc,
         string? afterVideoId,
         int take,
-        CancellationToken ct)
+        CancellationToken cancellationToken)
     {
-        var sb = new StringBuilder();
-        sb.AppendLine("SELECT *");
-        sb.AppendLine("FROM Videos v");
-        sb.AppendLine("INNER JOIN Channels c ON c.UploadsPlaylistId = v.UploadsPlaylistId");
-        sb.AppendLine("WHERE 1=1");
-        sb.AppendLine("  AND c.ChannelId = @channelId");
-
-        var parameters = new List<object> { new SqliteParameter("@channelId", channelId) };
+        var videosQuery = db.Videos
+            .AsNoTracking()
+            .Join(
+                db.Channels.Where(channel => channel.ChannelId == channelId),
+                video => video.UploadsPlaylistId,
+                channel => channel.UploadsPlaylistId,
+                (video, channel) => video
+            );
 
         if (!string.IsNullOrWhiteSpace(title))
         {
-            sb.AppendLine("  AND v.Title IS NOT NULL AND v.Title COLLATE NOCASE LIKE '%' || @title || '%'");
-            parameters.Add(new SqliteParameter("@title", title));
+            videosQuery = videosQuery.Where(video => video.Title != null &&
+                                                     EF.Functions.ILike(video.Title, $"%{title}%"));
         }
 
         if (visibilities is { Count: > 0 })
         {
-            var inParams = new List<string>();
-            var i = 0;
-            foreach (var v in visibilities)
-            {
-                var name = $"@vis{i++}";
-                inParams.Add(name);
-                parameters.Add(new SqliteParameter(name, (int)v));
-            }
-
-            sb.AppendLine($"  AND v.Visibility IN ({string.Join(", ", inParams)})");
+            videosQuery = videosQuery.Where(video => visibilities.Contains(video.Visibility));
         }
 
-        if (afterPublishedAtUtc.HasValue && !string.IsNullOrEmpty(afterVideoId))
+        if (afterPublishedAtUtc.HasValue && !string.IsNullOrWhiteSpace(afterVideoId))
         {
-            sb.AppendLine("  AND (v.PublishedAt < @afterPub");
-            sb.AppendLine("       OR (v.PublishedAt = @afterPub AND v.VideoId COLLATE BINARY < @afterId))");
-
-            // With Microsoft.Data.Sqlite it’s safest to pass the DateTime value EF maps to
-            parameters.Add(new SqliteParameter("@afterPub", afterPublishedAtUtc.Value.UtcDateTime));
-            parameters.Add(new SqliteParameter("@afterId", afterVideoId));
+            videosQuery = videosQuery.Where(video =>
+                video.PublishedAt < afterPublishedAtUtc.Value ||
+                (video.PublishedAt == afterPublishedAtUtc.Value && video.VideoId.CompareTo(afterVideoId) < 0));
         }
 
-        sb.AppendLine("ORDER BY v.PublishedAt DESC, v.VideoId DESC");
-        sb.AppendLine("LIMIT @take");
-
-        parameters.Add(new SqliteParameter("@take", take));
-
-        var sql = sb.ToString();
-
-        return await db.Videos
-            .FromSqlRaw(sql, parameters.ToArray())
-            .AsNoTracking()
-            .ToListAsync(ct);
+        return await videosQuery
+            .OrderByDescending(video => video.PublishedAt)
+            .ThenByDescending(video => video.VideoId)
+            .Take(take)
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<Dictionary<string, string?>> GetVideoETagsAsync(IEnumerable<string> videoIds,
@@ -153,7 +133,7 @@ public sealed class VideoRepository(YouTubesterDb db) : IVideoRepository
 
         return await db.Videos
             .AsNoTracking()
-            .Where(v => videoIdsList.Contains(v.VideoId))
-            .ToDictionaryAsync(v => v.VideoId, v => v.ETag, cancellationToken);
+            .Where(video => videoIdsList.Contains(video.VideoId))
+            .ToDictionaryAsync(video => video.VideoId, video => video.ETag, cancellationToken);
     }
 }
