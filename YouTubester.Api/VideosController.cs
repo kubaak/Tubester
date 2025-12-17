@@ -13,15 +13,14 @@ namespace YouTubester.Api;
 /// <summary>
 /// 
 /// </summary>
-/// <param name="jobClient"></param>
-/// <param name="service"></param>
+/// <param name="videoService"></param>
+/// <param name="videoTemplatingService"></param>
 [ApiController]
 [Route("api/videos")]
 [Tags("Videos")]
 [Authorize]
 public sealed class VideosController(
-    IVideoService service,
-    IChannelRepository channelRepository,
+    IVideoService videoService,
     IVideoTemplatingService videoTemplatingService
 ) : ControllerBase
 {
@@ -90,7 +89,7 @@ public sealed class VideosController(
     {
         try
         {
-            var result = await service.GetVideosAsync(title, visibility, pageSize, pageToken, ct);
+            var result = await videoService.GetVideosAsync(title, visibility, pageSize, pageToken, ct);
             return Ok(result);
         }
         catch (InvalidPageSizeException ex)
