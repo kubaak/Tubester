@@ -6,4 +6,9 @@ public interface IVideoTemplatingService
         string userId,
         CopyVideoTemplateRequest request,
         CancellationToken cancellationToken);
+
+    Task GenerateAiTemplateAsync(
+        string userId,
+        AiVideoTemplateRequest request,
+        CancellationToken cancellationToken);
 }

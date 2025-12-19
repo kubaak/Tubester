@@ -9,12 +9,14 @@ public interface IVideoRepository
     /// <summary>
     /// Gets a video by its ID from the database.
     /// </summary>
+    /// <param name="channelId">Channel id to filter videos by.</param>
     /// <param name="videoId">The video ID to search for.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The video if found, null otherwise.</returns>
-    Task<Video?> GetVideoByIdAsync(string videoId, CancellationToken cancellationToken);
+    Task<Video?> GetVideoByIdAsync(string channelId, string videoId, CancellationToken cancellationToken);
 
     Task<(int inserted, int updated)> UpsertAsync(
+        string channelId,
         IEnumerable<Video> videos,
         CancellationToken cancellationToken = default);
 
@@ -45,6 +47,12 @@ public interface IVideoRepository
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Dictionary mapping video ID to ETag.</returns>
     Task<Dictionary<string, string?>> GetVideoETagsAsync(
+        string channelId,
         IEnumerable<string> videoIds,
+        CancellationToken cancellationToken);
+
+    Task<bool> VideoExistsForChannelAsync(
+        string channelId,
+        string videoId,
         CancellationToken cancellationToken);
 }

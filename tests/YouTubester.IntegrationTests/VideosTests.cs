@@ -9,6 +9,7 @@ using YouTubester.Abstractions.Users;
 using YouTubester.Application;
 using YouTubester.Application.Contracts;
 using YouTubester.Application.Contracts.Videos;
+using YouTubester.Application.Jobs;
 using YouTubester.Domain;
 using YouTubester.IntegrationTests.TestHost;
 using YouTubester.Persistence;
@@ -99,12 +100,15 @@ public class VideosTests(TestFixture fixture)
     public async Task CopyTemplate_ValidRequest_CallsYoutubeService()
     {
         const string channelId = "Channel-XYZ";
+        const string uploadPlaylistId = "ULTestPlaylist123";
         const string userId = MockAuthenticationExtensions.TestSub;
         // Arrange
         await fixture.ResetDbAsync();
+        fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
+            .Returns(channelId);
 
-        var sourceVideo = GetSourceVideo();
-        var targetVideo = GetTargetVideo();
+        var sourceVideo = GetSourceVideo(uploadPlaylistId);
+        var targetVideo = GetTargetVideo(uploadPlaylistId);
 
         using (var scope = fixture.ApiServices.CreateScope())
         {
@@ -117,7 +121,7 @@ public class VideosTests(TestFixture fixture)
                 TestFixture.TestingDateTimeOffset);
             await dbContext.Users.AddAsync(user);
             await dbContext.Channels.AddAsync(Channel.Create(channelId, userId, "Channel A",
-                targetVideo.UploadsPlaylistId, TestFixture.TestingDateTimeOffset));
+                uploadPlaylistId, TestFixture.TestingDateTimeOffset));
             dbContext.Videos.AddRange(sourceVideo, targetVideo);
             await dbContext.SaveChangesAsync();
         }
@@ -137,8 +141,7 @@ public class VideosTests(TestFixture fixture)
             false,
             true,
             false,
-            true,
-            null
+            true
         );
 
         var json = JsonSerializer.Serialize(request, _serializerOptions);
@@ -239,6 +242,157 @@ public class VideosTests(TestFixture fixture)
 
         var responseContent = await response.Content.ReadAsStringAsync();
         Assert.Contains("SourceVideoId and TargetVideoId must be different", responseContent);
+    }
+
+    [Fact]
+    public async Task AiTemplate_ValidRequest_EnqueuesAiTemplateJob()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        var channelId = "ai-template-channel";
+        var uploadPlaylistId = "ULTestPlaylist456";
+        var userId = MockAuthenticationExtensions.TestSub;
+
+        fixture.ApiFactory.MockCurrentChannelContext
+            .Setup(channelContext => channelContext.GetRequiredChannelId())
+            .Returns(channelId);
+
+        var targetVideo = GetTargetVideo(uploadPlaylistId);
+
+        using (var serviceScope = fixture.ApiServices.CreateScope())
+        {
+            var databaseContext = serviceScope.ServiceProvider.GetRequiredService<YouTubesterDb>();
+            var user = User.Create(
+                userId,
+                MockAuthenticationExtensions.TestEmail,
+                MockAuthenticationExtensions.TestName,
+                MockAuthenticationExtensions.TestPicture,
+                TestFixture.TestingDateTimeOffset);
+
+            await databaseContext.Users.AddAsync(user);
+            await databaseContext.Channels.AddAsync(Channel.Create(
+                channelId,
+                userId,
+                "AI Template Channel",
+                targetVideo.UploadsPlaylistId,
+                TestFixture.TestingDateTimeOffset));
+
+            databaseContext.Videos.Add(targetVideo);
+            await databaseContext.SaveChangesAsync();
+        }
+
+        var request = new AiVideoTemplateRequest(
+            targetVideo.VideoId,
+            "Generate a better title, description, and tags"
+        );
+
+        var serializedRequest = JsonSerializer.Serialize(request, _serializerOptions);
+        var requestContent = new StringContent(serializedRequest, Encoding.UTF8, "application/json");
+
+        // Act
+        var videosEndpointResponse = await fixture.HttpClient.PostAsync("/api/videos/ai-template", requestContent);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, videosEndpointResponse.StatusCode);
+
+        var videosEndpointResponseBody = await videosEndpointResponse.Content.ReadAsStringAsync();
+        var enqueueResult =
+            JsonSerializer.Deserialize<AiTemplateEnqueueResult>(videosEndpointResponseBody, _serializerOptions);
+
+        Assert.NotNull(enqueueResult);
+        Assert.False(string.IsNullOrWhiteSpace(enqueueResult!.JobId));
+
+        var capturedJobs = fixture.CapturingJobClient.GetEnqueued<AiTemplateJob>();
+        Assert.Single(capturedJobs);
+        Assert.Equal(enqueueResult.JobId, capturedJobs[0].JobId);
+
+        Assert.Equal(nameof(AiTemplateJob.Run), capturedJobs[0].Job.Method.Name);
+        Assert.Equal(userId, capturedJobs[0].Job.Args[0]);
+
+        var enqueuedRequest = Assert.IsType<AiVideoTemplateRequest>(capturedJobs[0].Job.Args[1]);
+        Assert.Equal(request.TargetVideoId, enqueuedRequest.TargetVideoId);
+        Assert.Equal(request.PromptEnrichment, enqueuedRequest.PromptEnrichment);
+        Assert.Equal(request.GenerateTitle, enqueuedRequest.GenerateTitle);
+        Assert.Equal(request.GenerateDescription, enqueuedRequest.GenerateDescription);
+        Assert.Equal(request.GenerateTags, enqueuedRequest.GenerateTags);
+    }
+
+    [Fact]
+    public async Task AiTemplate_EmptyTargetVideoId_ReturnsBadRequest()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        var request = new AiVideoTemplateRequest(
+            "",
+            "Generate metadata"
+        );
+
+        var serializedRequest = JsonSerializer.Serialize(request, _serializerOptions);
+        var requestContent = new StringContent(serializedRequest, Encoding.UTF8, "application/json");
+
+        // Act
+        var videosEndpointResponse = await fixture.HttpClient.PostAsync("/api/videos/ai-template", requestContent);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.BadRequest, videosEndpointResponse.StatusCode);
+
+        var responseContent = await videosEndpointResponse.Content.ReadAsStringAsync();
+        Assert.Contains("TargetVideoId is required", responseContent);
+    }
+
+    [Fact]
+    public async Task AiTemplate_EmptyPromptEnrichment_ReturnsBadRequest()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        var request = new AiVideoTemplateRequest(
+            "targetVideoId123",
+            ""
+        );
+
+        var serializedRequest = JsonSerializer.Serialize(request, _serializerOptions);
+        var requestContent = new StringContent(serializedRequest, Encoding.UTF8, "application/json");
+
+        // Act
+        var videosEndpointResponse = await fixture.HttpClient.PostAsync("/api/videos/ai-template", requestContent);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.BadRequest, videosEndpointResponse.StatusCode);
+
+        var responseContent = await videosEndpointResponse.Content.ReadAsStringAsync();
+        Assert.Contains("PromptEnrichment is required", responseContent);
+    }
+
+    [Fact]
+    public async Task AiTemplate_TargetVideoNotFound_ReturnsBadRequest()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        var channelId = "ai-template-channel";
+        fixture.ApiFactory.MockCurrentChannelContext
+            .Setup(channelContext => channelContext.GetRequiredChannelId())
+            .Returns(channelId);
+
+        var request = new AiVideoTemplateRequest(
+            "missingTargetVideoId",
+            "Generate metadata"
+        );
+
+        var serializedRequest = JsonSerializer.Serialize(request, _serializerOptions);
+        var requestContent = new StringContent(serializedRequest, Encoding.UTF8, "application/json");
+
+        // Act
+        var videosEndpointResponse = await fixture.HttpClient.PostAsync("/api/videos/ai-template", requestContent);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.BadRequest, videosEndpointResponse.StatusCode);
+
+        var responseContent = await videosEndpointResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Target video not found for current channel", responseContent);
     }
 
     [Fact]
@@ -421,10 +575,10 @@ public class VideosTests(TestFixture fixture)
         await Task.CompletedTask;
     }
 
-    private Video GetTargetVideo()
+    private Video GetTargetVideo(string uploadPlaylistId)
     {
         return Video.Create(
-            "ULTestPlaylist456",
+            uploadPlaylistId,
             $"target{fixture.Auto.Create<string>()}"[..11],
             "Target Video Title",
             "Target Video Description",
@@ -443,10 +597,10 @@ public class VideosTests(TestFixture fixture)
         );
     }
 
-    private Video GetSourceVideo()
+    private Video GetSourceVideo(string uploadPlaylistId)
     {
         return Video.Create(
-            "ULTestPlaylist123",
+            uploadPlaylistId,
             $"source{fixture.Auto.Create<string>()}"[..11],
             "Source Video Title",
             "Source Video Description",

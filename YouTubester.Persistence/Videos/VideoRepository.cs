@@ -10,32 +10,34 @@ public sealed class VideoRepository(YouTubesterDb db) : IVideoRepository
     {
         return await db.Videos
             .AsNoTracking()
-            .Where(v => v.CommentsAllowed ?? true)
+            .Where(video => video.CommentsAllowed ?? true)
             .Join(
-                db.Videos,
-                r => r.VideoId,
-                v => v.VideoId,
-                (r, v) => new { r, v }
+                db.Channels.Where(channel => channel.ChannelId == channelId),
+                video => video.UploadsPlaylistId,
+                channel => channel.UploadsPlaylistId,
+                (video, channel) => video
             )
-            .Join(
-                db.Channels.Where(c => c.ChannelId == channelId),
-                rv => rv.v.UploadsPlaylistId,
-                c => c.UploadsPlaylistId,
-                (rv, c) => rv.r
-            )
-            .OrderByDescending(v => v.PublishedAt)
-            .ThenByDescending(v => v.UpdatedAt)
+            .OrderByDescending(video => video.PublishedAt)
+            .ThenByDescending(video => video.UpdatedAt)
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<Video?> GetVideoByIdAsync(string videoId, CancellationToken cancellationToken)
+    public async Task<Video?> GetVideoByIdAsync(string channelId, string videoId, CancellationToken cancellationToken)
     {
         return await db.Videos
             .AsNoTracking()
+            .Join(
+                db.Channels.Where(channel => channel.ChannelId == channelId),
+                video => video.UploadsPlaylistId,
+                channel => channel.UploadsPlaylistId,
+                (video, channel) => video
+            )
             .FirstOrDefaultAsync(video => video.VideoId == videoId, cancellationToken);
     }
 
-    public async Task<(int inserted, int updated)> UpsertAsync(IEnumerable<Video> videos,
+    public async Task<(int inserted, int updated)> UpsertAsync(
+        string channelId,
+        IEnumerable<Video> videos,
         CancellationToken cancellationToken)
     {
         var videoList = videos.ToList();
@@ -46,7 +48,14 @@ public sealed class VideoRepository(YouTubesterDb db) : IVideoRepository
 
         var videoIds = videoList.Select(video => video.VideoId).ToHashSet();
 
-        var existingVideosById = await db.Videos.Where(video => videoIds.Contains(video.VideoId))
+        var existingVideosById = await db.Videos
+            .Join(
+                db.Channels.Where(channel => channel.ChannelId == channelId),
+                video => video.UploadsPlaylistId,
+                channel => channel.UploadsPlaylistId,
+                (video, channel) => video
+            )
+            .Where(video => videoIds.Contains(video.VideoId))
             .ToDictionaryAsync(video => video.VideoId, video => video, cancellationToken);
 
         var currentTimeUtc = DateTimeOffset.UtcNow; //todo provider
@@ -122,7 +131,9 @@ public sealed class VideoRepository(YouTubesterDb db) : IVideoRepository
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<Dictionary<string, string?>> GetVideoETagsAsync(IEnumerable<string> videoIds,
+    public async Task<Dictionary<string, string?>> GetVideoETagsAsync(
+        string channelId,
+        IEnumerable<string> videoIds,
         CancellationToken cancellationToken)
     {
         var videoIdsList = videoIds.ToList();
@@ -133,7 +144,29 @@ public sealed class VideoRepository(YouTubesterDb db) : IVideoRepository
 
         return await db.Videos
             .AsNoTracking()
+            .Join(
+                db.Channels.Where(channel => channel.ChannelId == channelId),
+                video => video.UploadsPlaylistId,
+                channel => channel.UploadsPlaylistId,
+                (video, channel) => video
+            )
             .Where(video => videoIdsList.Contains(video.VideoId))
             .ToDictionaryAsync(video => video.VideoId, video => video.ETag, cancellationToken);
+    }
+
+    public async Task<bool> VideoExistsForChannelAsync(
+        string channelId,
+        string videoId,
+        CancellationToken cancellationToken)
+    {
+        return await db.Videos
+            .AsNoTracking()
+            .Join(
+                db.Channels.Where(channel => channel.ChannelId == channelId),
+                video => video.UploadsPlaylistId,
+                channel => channel.UploadsPlaylistId,
+                (video, channel) => video
+            )
+            .AnyAsync(video => video.VideoId == videoId, cancellationToken);
     }
 }
