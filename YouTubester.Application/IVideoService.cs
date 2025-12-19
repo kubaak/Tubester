@@ -19,4 +19,6 @@ public interface IVideoService
     /// <exception cref="Exceptions.InvalidPageTokenException">When pageToken is malformed.</exception>
     Task<PagedResult<VideoListItemDto>> GetVideosAsync(string? title, VideoVisibility[]? visibility, int? pageSize,
         string? pageToken, CancellationToken ct);
+
+    Task<bool> HasAccessToVideo(string videoId, CancellationToken cancellationToken);
 }

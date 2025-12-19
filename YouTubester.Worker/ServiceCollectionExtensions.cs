@@ -4,6 +4,7 @@ using YouTubester.Abstractions.Channels;
 using YouTubester.Abstractions.Playlists;
 using YouTubester.Abstractions.Replies;
 using YouTubester.Abstractions.Videos;
+using YouTubester.Application;
 using YouTubester.Application.Jobs;
 using YouTubester.Integration;
 using YouTubester.Persistence;
@@ -42,14 +43,16 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserTokenStore, UserTokenStore>();
 
         // App services & jobs
+        services.AddScoped<IVideoTemplatingService, VideoTemplatingService>();
         services.AddScoped<CommentScanJob>();
+        services.AddScoped<AiTemplateJob>();
 
         // Hangfire storage (no server yet)
         services.AddHangFireStorage(config);
 
         if (addHangfireServer)
         {
-            services.AddHangfireServer(o => o.Queues = ["scanning", "default"]);
+            services.AddHangfireServer(o => o.Queues = ["scanning", "ai-templating", "default"]);
         }
 
         return services;

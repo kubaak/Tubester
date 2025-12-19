@@ -1,11 +1,12 @@
 using System.Security.Claims;
+using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using YouTubester.Abstractions.Channels;
 using YouTubester.Application;
 using YouTubester.Application.Contracts;
 using YouTubester.Application.Contracts.Videos;
 using YouTubester.Application.Exceptions;
+using YouTubester.Application.Jobs;
 using YouTubester.Domain;
 
 namespace YouTubester.Api;
@@ -15,13 +16,15 @@ namespace YouTubester.Api;
 /// </summary>
 /// <param name="videoService"></param>
 /// <param name="videoTemplatingService"></param>
+/// <param name="backgroundJobClient"></param>
 [ApiController]
 [Route("api/videos")]
 [Tags("Videos")]
 [Authorize]
 public sealed class VideosController(
     IVideoService videoService,
-    IVideoTemplatingService videoTemplatingService
+    IVideoTemplatingService videoTemplatingService,
+    IBackgroundJobClient backgroundJobClient
 ) : ControllerBase
 {
     /// <summary>
@@ -62,6 +65,43 @@ public sealed class VideosController(
 
         var result = await videoTemplatingService.CopyTemplateAsync(userId, request, ct);
         return Ok(result);
+    }
+
+    [HttpPost("ai-template")]
+    [Authorize(Policy = "RequiresYouTubeWrite")]
+    [ProducesResponseType(typeof(AiTemplateEnqueueResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> AiTemplate(
+        [FromBody] AiVideoTemplateRequest request,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.TargetVideoId))
+        {
+            return BadRequest(new { error = "TargetVideoId is required and cannot be empty." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.PromptEnrichment))
+        {
+            return BadRequest(new { error = "PromptEnrichment is required and cannot be empty." });
+        }
+
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return Unauthorized();
+        }
+
+        var exists = await videoService.HasAccessToVideo(request.TargetVideoId, ct);
+
+        if (!exists)
+        {
+            return BadRequest(new { error = "Target video not found for current channel." });
+        }
+
+        var jobId = backgroundJobClient.Enqueue<AiTemplateJob>(
+            job => job.Run(userId, request, JobCancellationToken.Null));
+
+        return Ok(new AiTemplateEnqueueResult(jobId));
     }
 
     /// <summary>

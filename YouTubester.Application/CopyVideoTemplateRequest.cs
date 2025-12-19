@@ -7,13 +7,5 @@ public sealed record CopyVideoTemplateRequest(
     bool CopyLocation = true,
     bool CopyPlaylists = true,
     bool CopyCategory = true,
-    bool CopyDefaultLanguages = true,
-    AiSuggestionOptions? AiSuggestionOptions = null
-);
-
-public sealed record AiSuggestionOptions(
-    string PromptEnrichment,
-    bool GenerateTitle = true,
-    bool GenerateDescription = true,
-    bool GenerateTags = true //Overrides CopyVideoTemplateRequest.CopyTags
+    bool CopyDefaultLanguages = true
 );

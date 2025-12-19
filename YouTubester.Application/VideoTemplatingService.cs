@@ -1,3 +1,4 @@
+using YouTubester.Abstractions.Channels;
 using YouTubester.Abstractions.Playlists;
 using YouTubester.Abstractions.Videos;
 using YouTubester.Domain;
@@ -9,6 +10,7 @@ public sealed class VideoTemplatingService(
     IYouTubeIntegration youTubeIntegration,
     IAiClient aiClient,
     IVideoRepository videoRepository,
+    ICurrentChannelContext channelContext,
     IPlaylistRepository playlistRepository)
     : IVideoTemplatingService
 {
@@ -22,11 +24,13 @@ public sealed class VideoTemplatingService(
             throw new ArgumentException("User id is required.", nameof(userId));
         }
 
+        var channelId = channelContext.GetRequiredChannelId();
+
         // Load source and target videos from DB
-        var sourceVideo = await videoRepository.GetVideoByIdAsync(request.SourceVideoId, cancellationToken)
+        var sourceVideo = await videoRepository.GetVideoByIdAsync(channelId, request.SourceVideoId, cancellationToken)
                           ?? throw new ArgumentException($"Source video {request.SourceVideoId} not found in cache.");
 
-        var targetVideo = await videoRepository.GetVideoByIdAsync(request.TargetVideoId, cancellationToken)
+        var targetVideo = await videoRepository.GetVideoByIdAsync(channelId, request.TargetVideoId, cancellationToken)
                           ?? throw new ArgumentException($"Target video {request.TargetVideoId} not found in cache.");
 
         // Build effective metadata starting from source
@@ -44,27 +48,6 @@ public sealed class VideoTemplatingService(
             ? sourceVideo.DefaultAudioLanguage
             : targetVideo.DefaultAudioLanguage;
 
-        // Apply AI suggestions if provided
-        if (request.AiSuggestionOptions is not null)
-        {
-            var (suggestedTitle, suggestedDescription, suggestedTags) = await aiClient.SuggestMetadataAsync(
-                request.AiSuggestionOptions.PromptEnrichment, cancellationToken);
-
-            if (request.AiSuggestionOptions.GenerateTitle)
-            {
-                newTitle = suggestedTitle;
-            }
-
-            if (request.AiSuggestionOptions.GenerateDescription)
-            {
-                newDescription = suggestedDescription;
-            }
-
-            if (request.AiSuggestionOptions.GenerateTags)
-            {
-                newTags = suggestedTags.ToArray();
-            }
-        }
 
         // Update target video on YouTube
         await youTubeIntegration.UpdateVideoAsync(
@@ -98,7 +81,7 @@ public sealed class VideoTemplatingService(
             targetVideo.CommentsAllowed
         );
 
-        await videoRepository.UpsertAsync([targetVideo], cancellationToken);
+        await videoRepository.UpsertAsync(channelId, [targetVideo], cancellationToken);
 
         if (!request.CopyPlaylists)
         {
@@ -178,5 +161,59 @@ public sealed class VideoTemplatingService(
         }
 
         return result.ToArray();
+    }
+
+    public async Task GenerateAiTemplateAsync(
+        string userId,
+        AiVideoTemplateRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new ArgumentException("User id is required.", nameof(userId));
+        }
+
+        var channelId = channelContext.GetRequiredChannelId();
+
+        var targetVideo = await videoRepository.GetVideoByIdAsync(channelId, request.TargetVideoId, cancellationToken)
+                          ?? throw new ArgumentException($"Target video {request.TargetVideoId} not found in cache.");
+
+        var (suggestedTitle, suggestedDescription, suggestedTags) =
+            await aiClient.SuggestMetadataAsync(request.PromptEnrichment, cancellationToken);
+
+        var newTitle = request.GenerateTitle ? suggestedTitle : (targetVideo.Title ?? string.Empty);
+        var newDescription = request.GenerateDescription ? suggestedDescription : (targetVideo.Description ?? string.Empty);
+        var newTags = request.GenerateTags ? SanitizeTags(suggestedTags.ToArray()) : targetVideo.Tags;
+
+        await youTubeIntegration.UpdateVideoAsync(
+            request.TargetVideoId,
+            newTitle,
+            newDescription,
+            newTags,
+            targetVideo.CategoryId,
+            targetVideo.DefaultLanguage,
+            targetVideo.DefaultAudioLanguage,
+            ConvertToLocationTuple(targetVideo.Location),
+            targetVideo.LocationDescription,
+            cancellationToken);
+
+        var nowUtc = DateTimeOffset.UtcNow;
+        targetVideo.ApplyDetails(
+            newTitle,
+            newDescription,
+            targetVideo.PublishedAt,
+            targetVideo.Duration,
+            targetVideo.Visibility,
+            newTags,
+            targetVideo.CategoryId,
+            targetVideo.DefaultLanguage,
+            targetVideo.DefaultAudioLanguage,
+            targetVideo.Location,
+            targetVideo.LocationDescription,
+            nowUtc,
+            null,
+            targetVideo.CommentsAllowed);
+
+        await videoRepository.UpsertAsync(channelId, [targetVideo], cancellationToken);
     }
 }

@@ -83,4 +83,15 @@ public class VideoService(
 
         return new PagedResult<VideoListItemDto> { Items = items, NextPageToken = nextPageToken };
     }
+
+    public async Task<bool> HasAccessToVideo(string videoId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(videoId))
+        {
+            return false;
+        }
+
+        var channelId = channelContext.GetRequiredChannelId();
+        return await repo.VideoExistsForChannelAsync(channelId, videoId, cancellationToken);
+    }
 }
