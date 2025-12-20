@@ -2,7 +2,7 @@ using YouTubester.Application.Contracts;
 using YouTubester.Application.Contracts.Videos;
 using YouTubester.Domain;
 
-namespace YouTubester.Application;
+namespace YouTubester.Application.Videos;
 
 public interface IVideoService
 {
@@ -20,5 +20,14 @@ public interface IVideoService
     Task<PagedResult<VideoListItemDto>> GetVideosAsync(string? title, VideoVisibility[]? visibility, int? pageSize,
         string? pageToken, CancellationToken ct);
 
-    Task<bool> HasAccessToVideo(string videoId, CancellationToken cancellationToken);
+    Task<VideoDetailsDto?> GetVideoDetailsAsync(string videoId, CancellationToken cancellationToken);
+
+    Task<CopyVideoTemplateResult> CopyTemplateAsync(
+        string userId,
+        CopyVideoTemplateRequest request,
+        CancellationToken cancellationToken);
+
+    Task<VideoDetailsDto?> UpdateVideoMetadataAsync(
+        UpdateVideoMetadataRequest request,
+        CancellationToken cancellationToken);
 }

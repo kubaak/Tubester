@@ -48,7 +48,6 @@ public sealed class ChannelSyncService(
             // New aggregate
             var channel = Channel.Create(
                 channelDto.Id,
-                userId,
                 channelDto.Name,
                 channelDto.UploadsPlaylistId,
                 now,

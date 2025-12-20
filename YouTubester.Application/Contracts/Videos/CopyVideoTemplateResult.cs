@@ -1,4 +1,4 @@
-namespace YouTubester.Application;
+namespace YouTubester.Application.Contracts.Videos;
 
 public sealed record CopyVideoTemplateResult(
     string SourceVideoId,
@@ -8,7 +8,7 @@ public sealed record CopyVideoTemplateResult(
     IReadOnlyList<string> AppliedTags,
     string? AppliedLocationDescription,
     (double lat, double lng)? AppliedLocationCoords,
-    IReadOnlyList<string> PlaylistsAdded,     // playlist IDs added
+    IReadOnlyList<string> PlaylistsAdded, // playlist IDs added
     bool CategoryCopied,
     bool DefaultLanguagesCopied
 );

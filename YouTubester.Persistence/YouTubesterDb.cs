@@ -37,17 +37,9 @@ public class YouTubesterDb(DbContextOptions<YouTubesterDb> options) : DbContext(
             .OnDelete(DeleteBehavior.Cascade);
 
         b.Entity<Channel>().HasKey(x => x.ChannelId);
-        b.Entity<Channel>().Property(x => x.UserId).IsRequired();
         b.Entity<Channel>().Property(x => x.ETag).HasMaxLength(128);
         b.Entity<Channel>().Property(x => x.UpdatedAt);
         b.Entity<Channel>().Property(x => x.LastUploadsCutoff);
-        //todo
-        // b.Entity<Channel>()
-        //     .HasOne<User>()
-        //     .WithMany()
-        //     .HasForeignKey(x => x.UserId)
-        //     .OnDelete(DeleteBehavior.Cascade);
-
         b.Entity<Video>().HasKey(v => v.VideoId);
         b.Entity<Video>().HasIndex(x => x.UpdatedAt);
         // Composite index for video listing performance (PublishedAt DESC, VideoId DESC)

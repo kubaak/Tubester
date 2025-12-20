@@ -3,17 +3,16 @@ namespace YouTubester.Domain;
 public sealed class Channel
 {
     public string ChannelId { get; private set; } = null!;
-    public string UserId { get; private set; } = null!;
     public string Name { get; private set; } = null!;
     public string UploadsPlaylistId { get; private set; } = null!;
     public string? ETag { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset? LastUploadsCutoff { get; private set; }
 
-    public static Channel Create(string channelId, string userId, string name, string uploadsPlaylistId,
+    public static Channel Create(string channelId, string name, string uploadsPlaylistId,
         DateTimeOffset updatedAt, DateTimeOffset? lastUploadsCutoff = null, string? eTag = null)
     {
-        return new Channel(channelId, userId, name, uploadsPlaylistId, updatedAt, lastUploadsCutoff, eTag);
+        return new Channel(channelId, name, uploadsPlaylistId, updatedAt, lastUploadsCutoff, eTag);
     }
 
     /// <summary>Advance the uploads cutoff if the candidate is newer. Returns true if updated.</summary>
@@ -90,11 +89,10 @@ public sealed class Channel
         }
     }
 
-    private Channel(string channelId, string userId, string name, string uploadsPlaylistId, DateTimeOffset updatedAt,
+    private Channel(string channelId, string name, string uploadsPlaylistId, DateTimeOffset updatedAt,
         DateTimeOffset? lastUploadsCutoff, string? eTag)
     {
         ChannelId = RequireId(channelId);
-        UserId = RequireId(userId);
         Name = RequireNonEmpty(name, nameof(name));
         UploadsPlaylistId = RequireId(uploadsPlaylistId);
         ETag = eTag;

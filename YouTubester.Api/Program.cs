@@ -8,9 +8,11 @@ using YouTubester.Abstractions.Users;
 using YouTubester.Abstractions.Videos;
 using YouTubester.Api.Auth;
 using YouTubester.Api.Extensions;
+using YouTubester.Api.Hangfire;
 using YouTubester.Api.Infrastructure;
 using YouTubester.Application;
 using YouTubester.Application.Channels;
+using YouTubester.Application.Videos;
 using YouTubester.Integration;
 using YouTubester.Persistence;
 using YouTubester.Persistence.Channels;
@@ -36,11 +38,11 @@ builder.Services.AddScoped<IVideoRepository, VideoRepository>();
 builder.Services.AddScoped<IPlaylistRepository, PlaylistRepository>();
 builder.Services.AddScoped<IUserTokenStore, UserTokenStore>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
-builder.Services.AddSingleton<IAiClient, AiClient>();
 builder.Services.AddScoped<IReplyService, ReplyService>();
 builder.Services.AddScoped<IVideoService, VideoService>();
 builder.Services.AddScoped<IChannelSyncService, ChannelSyncService>();
-builder.Services.AddScoped<IVideoTemplatingService, VideoTemplatingService>();
+builder.Services.AddScoped<IAiVideoTemplatingService, AiVideoTemplatingService>();
+builder.Services.AddScoped<IAiTemplateOrchestrationService, AiTemplateOrchestrationService>();
 builder.Services.AddScoped<ICommentScanService, CommentScanService>();
 
 builder.Services.AddVideoListingOptions(builder.Configuration);
@@ -61,11 +63,20 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
+var hangfireAdminEmails = app.Configuration
+    .GetSection("Hangfire:AdminEmails")
+    .Get<string[]>() ?? [];
+var dashboardOptions = new DashboardOptions
+{
+    Authorization = [new EmailHangfireAuthorizationFilter(hangfireAdminEmails)]
+};
+app.UseHangfireDashboard("/hangfire", dashboardOptions);
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
-    app.UseHangfireDashboard();
+
     app.MapWhen(ctx => !ctx.Request.Path.StartsWithSegments("/api"), spa =>
     {
         spa.UseSpa(spaApp =>
@@ -90,7 +101,6 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
-    app.UseHangfireDashboard();
     app.UseSpa(spa =>
     {
         spa.Options.SourcePath = "wwwroot";

@@ -79,131 +79,6 @@ public sealed class ChannelTests(TestFixture fixture)
                 It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
-    [Fact]
-    public async Task GetAvailableChannels_Returns_Channels_From_YouTubeIntegration()
-    {
-        // Arrange
-        await fixture.ResetDbAsync();
-
-        // Ensure the current user has valid Google tokens so the application layer
-        // does not short-circuit before calling YouTubeIntegration.
-        using (var scope = fixture.ApiServices.CreateScope())
-        {
-            var databaseContext = scope.ServiceProvider.GetRequiredService<YouTubesterDb>();
-            var user = User.Create(MockAuthenticationExtensions.TestSub, MockAuthenticationExtensions.TestEmail,
-                MockAuthenticationExtensions.TestName, MockAuthenticationExtensions.TestPicture, DateTimeOffset.UtcNow);
-            databaseContext.Users.Add(user);
-            await databaseContext.SaveChangesAsync();
-            var userTokens = UserToken.Create(
-                MockAuthenticationExtensions.TestSub,
-                "refresh-token",
-                "access-token",
-                DateTimeOffset.UtcNow.AddHours(1));
-            databaseContext.UserTokens.Add(userTokens);
-            await databaseContext.SaveChangesAsync();
-        }
-
-        var remoteChannels = new List<ChannelDto>
-        {
-            new(
-                "UCChannelId1",
-                "First Channel",
-                "UploadsPlaylistId1",
-                "etag-1"),
-            new(
-                "UCChannelId2",
-                "Second Channel",
-                "UploadsPlaylistId2",
-                "etag-2")
-        };
-
-        fixture.ApiFactory.MockYouTubeIntegration
-            .Setup(x => x.GetUserChannelsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(remoteChannels);
-
-        // Act
-        var response = await fixture.HttpClient.GetAsync("/api/channels/available");
-
-        // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        var deserialized = JsonSerializer.Deserialize<List<ChannelDto>>(responseContent, options);
-
-        Assert.NotNull(deserialized);
-        Assert.Equal(2, deserialized!.Count);
-        Assert.Equal("UCChannelId1", deserialized[0].Id);
-        Assert.Equal("First Channel", deserialized[0].Name);
-        Assert.Equal("UCChannelId2", deserialized[1].Id);
-        Assert.Equal("UploadsPlaylistId2", deserialized[1].UploadsPlaylistId);
-
-        fixture.ApiFactory.MockYouTubeIntegration.Verify(
-            x => x.GetUserChannelsAsync(It.IsAny<CancellationToken>()),
-            Times.Once);
-    }
-
-    [Fact]
-    public async Task GetUserChannels_Returns_Channels_For_Current_User()
-    {
-        // Arrange
-        await fixture.ResetDbAsync();
-
-        using (var scope = fixture.ApiServices.CreateScope())
-        {
-            var databaseContext = scope.ServiceProvider.GetRequiredService<YouTubesterDb>();
-
-            var user = User.Create(
-                MockAuthenticationExtensions.TestSub,
-                MockAuthenticationExtensions.TestEmail,
-                MockAuthenticationExtensions.TestName,
-                MockAuthenticationExtensions.TestPicture,
-                TestFixture.TestingDateTimeOffset);
-
-            databaseContext.Users.Add(user);
-
-            var firstChannel = Channel.Create(
-                "UCUserChannel1",
-                MockAuthenticationExtensions.TestSub,
-                "First User Channel",
-                "UploadsPlaylistId1",
-                TestFixture.TestingDateTimeOffset);
-
-            var secondChannel = Channel.Create(
-                "UCUserChannel2",
-                MockAuthenticationExtensions.TestSub,
-                "Second User Channel",
-                "UploadsPlaylistId2",
-                TestFixture.TestingDateTimeOffset);
-
-            databaseContext.Channels.Add(firstChannel);
-            databaseContext.Channels.Add(secondChannel);
-
-            await databaseContext.SaveChangesAsync();
-        }
-
-        // Act
-        var response = await fixture.HttpClient.GetAsync("/api/channels");
-
-        // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        var deserialized = JsonSerializer.Deserialize<List<UserChannelDto>>(responseContent, options);
-
-        Assert.NotNull(deserialized);
-        Assert.Equal(2, deserialized!.Count);
-
-        var firstResultChannel = deserialized.Single(channel => channel.Id == "UCUserChannel1");
-        Assert.Equal("First User Channel", firstResultChannel.Title);
-        Assert.Equal(MockAuthenticationExtensions.TestPicture, firstResultChannel.Picture);
-
-        var secondResultChannel = deserialized.Single(channel => channel.Id == "UCUserChannel2");
-        Assert.Equal("Second User Channel", secondResultChannel.Title);
-        Assert.Equal(MockAuthenticationExtensions.TestPicture, secondResultChannel.Picture);
-    }
-
     // [Fact] todo keep the test after storing the token for comment scan
     // public async Task SyncCurrentChannels_Enqueues_Background_Job_And_Returns_Accepted()
     // {
@@ -253,7 +128,6 @@ public sealed class ChannelTests(TestFixture fixture)
 
         var dummyChannel = Channel.Create(
             testChannelId,
-            userId,
             testChannelName,
             testUploadsPlaylistId,
             TestFixture.TestingDateTimeOffset
@@ -444,7 +318,6 @@ public sealed class ChannelTests(TestFixture fixture)
 
         var dummyChannel = Channel.Create(
             testChannelId,
-            userId,
             testChannelName,
             testUploadsPlaylistId,
             TestFixture.TestingDateTimeOffset

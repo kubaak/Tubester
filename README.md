@@ -59,11 +59,11 @@ dotnet user-secrets set "YouTube:AI:Model" "gemma3:12b" --project YouTubester.Ap
 ### 3. Database
 Run the following in the solution root's folder
 ```
-dotnet ef database update -p YouTubester.Persistence
+dotnet ef database update -p YouTubester.Persistence -s YouTubester.Api
 ```
 Adding migrations
 ```
-dotnet ef migrations add [migrationsName] -p YouTubester.Persistence                   
+dotnet ef migrations add [migrationsName] -p YouTubester.Persistence -s YouTubester.Api             
 ```
 
 ## 🌐 Running the API

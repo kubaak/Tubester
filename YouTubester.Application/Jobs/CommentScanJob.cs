@@ -5,6 +5,7 @@ using YouTubester.Abstractions.Replies;
 using YouTubester.Abstractions.Videos;
 using YouTubester.Domain;
 using YouTubester.Integration;
+using YouTubester.Integration.Exceptions;
 
 namespace YouTubester.Application.Jobs;
 
@@ -49,41 +50,52 @@ public sealed class CommentScanJob(
                 continue;
             }
 
-            await foreach (var thread in youTubeIntegration.GetUnansweredTopLevelCommentsAsync(
-                               channelId, video.VideoId, cancellationToken))
+            try
             {
-                var existingReply = await replyRepository.GetReplyAsync(thread.ParentCommentId, cancellationToken);
-                // Skip if we've already pulled this
-                if (existingReply is not null)
+                await foreach (var thread in youTubeIntegration.GetUnansweredTopLevelCommentsAsync(
+                                   channelId, video.VideoId, cancellationToken))
                 {
-                    continue;
+                    var existingReply = await replyRepository.GetReplyAsync(thread.ParentCommentId, cancellationToken);
+                    // Skip if we've already pulled this
+                    if (existingReply is not null)
+                    {
+                        continue;
+                    }
+
+                    string replyText;
+                    if (IsEmojiOnly(thread.Text))
+                    {
+                        replyText = "🔥🙌";
+                    }
+                    else
+                    {
+                        var suggestion = await aiClient.SuggestReplyAsync(
+                            video.Title ?? string.Empty,
+                            video.Tags,
+                            thread.Text,
+                            cancellationToken);
+
+                        replyText = string.IsNullOrWhiteSpace(suggestion)
+                            ? "Thanks for the comment! 🙌"
+                            : suggestion;
+                    }
+
+                    var reply = Reply.Create(thread.ParentCommentId, thread.VideoId, video.Title, thread.Text,
+                        DateTimeOffset.UtcNow);
+                    reply.SuggestText(replyText, DateTimeOffset.UtcNow);
+
+                    await replyRepository.AddOrUpdateReplyAsync(reply, cancellationToken);
+
+                    drafted++;
                 }
+            }
+            catch (CommentsDisabledException ex)
+            {
+                logger.LogInformation(
+                    "Comments are disabled for video {VideoId}, marking as CommentsAllowed = false.",
+                    ex.VideoId);
 
-                string replyText;
-                if (IsEmojiOnly(thread.Text))
-                {
-                    replyText = "🔥🙌";
-                }
-                else
-                {
-                    var suggestion = await aiClient.SuggestReplyAsync(
-                        video.Title ?? string.Empty,
-                        video.Tags,
-                        thread.Text,
-                        cancellationToken);
-
-                    replyText = string.IsNullOrWhiteSpace(suggestion)
-                        ? "Thanks for the comment! 🙌"
-                        : suggestion;
-                }
-
-                var reply = Reply.Create(thread.ParentCommentId, thread.VideoId, video.Title, thread.Text,
-                    DateTimeOffset.UtcNow);
-                reply.SuggestText(replyText, DateTimeOffset.UtcNow);
-
-                await replyRepository.AddOrUpdateReplyAsync(reply, cancellationToken);
-
-                drafted++;
+                await videoRepository.MarkCommentsDisabledAsync(channelId, ex.VideoId, cancellationToken);
             }
         }
 

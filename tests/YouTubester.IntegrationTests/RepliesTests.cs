@@ -44,12 +44,12 @@ public class RepliesTests(TestFixture fixture)
         // Arrange
         await fixture.ResetDbAsync();
 
-        var testChannelID = "testChannelID123";
-        var testUploadsPlaylistId = "PLTestUploads123";
+        const string testChannelId = "testChannelID123";
+        const string testUploadsPlaylistId = "PLTestUploads123";
         fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
-            .Returns(testChannelID);
+            .Returns(testChannelId);
 
-        var channel = Channel.Create(testChannelID, "testUserId123", "testChannelName123",
+        var channel = Channel.Create(testChannelId, "testChannelName123",
             testUploadsPlaylistId, DateTimeOffset.UtcNow);
         var video1 = Video.Create(
             testUploadsPlaylistId,

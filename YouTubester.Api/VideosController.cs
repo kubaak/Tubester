@@ -1,12 +1,10 @@
 using System.Security.Claims;
-using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using YouTubester.Application;
 using YouTubester.Application.Contracts;
 using YouTubester.Application.Contracts.Videos;
 using YouTubester.Application.Exceptions;
-using YouTubester.Application.Jobs;
+using YouTubester.Application.Videos;
 using YouTubester.Domain;
 
 namespace YouTubester.Api;
@@ -15,16 +13,14 @@ namespace YouTubester.Api;
 /// 
 /// </summary>
 /// <param name="videoService"></param>
-/// <param name="videoTemplatingService"></param>
-/// <param name="backgroundJobClient"></param>
+/// <param name="aiTemplateOrchestrationService"></param>
 [ApiController]
 [Route("api/videos")]
 [Tags("Videos")]
 [Authorize]
 public sealed class VideosController(
     IVideoService videoService,
-    IVideoTemplatingService videoTemplatingService,
-    IBackgroundJobClient backgroundJobClient
+    IAiTemplateOrchestrationService aiTemplateOrchestrationService
 ) : ControllerBase
 {
     /// <summary>
@@ -63,12 +59,11 @@ public sealed class VideosController(
             return Unauthorized();
         }
 
-        var result = await videoTemplatingService.CopyTemplateAsync(userId, request, ct);
+        var result = await videoService.CopyTemplateAsync(userId, request, ct);
         return Ok(result);
     }
 
     [HttpPost("ai-template")]
-    [Authorize(Policy = "RequiresYouTubeWrite")]
     [ProducesResponseType(typeof(AiTemplateEnqueueResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> AiTemplate(
@@ -85,23 +80,15 @@ public sealed class VideosController(
             return BadRequest(new { error = "PromptEnrichment is required and cannot be empty." });
         }
 
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrWhiteSpace(userId))
+        try
         {
-            return Unauthorized();
+            var result = await aiTemplateOrchestrationService.EnqueueAiTemplateAsync(request, ct);
+            return Ok(new AiTemplateEnqueueResult(result));
         }
-
-        var exists = await videoService.HasAccessToVideo(request.TargetVideoId, ct);
-
-        if (!exists)
+        catch (AiTemplatingNotStartedException e)
         {
-            return BadRequest(new { error = "Target video not found for current channel." });
+            return BadRequest(new { error = e.Message });
         }
-
-        var jobId = backgroundJobClient.Enqueue<AiTemplateJob>(
-            job => job.Run(userId, request, JobCancellationToken.Null));
-
-        return Ok(new AiTemplateEnqueueResult(jobId));
     }
 
     /// <summary>
@@ -140,5 +127,65 @@ public sealed class VideosController(
         {
             return BadRequest(new { error = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Gets video metadata (title, description, tags) for a single video.
+    /// </summary>
+    /// <param name="videoId">YouTube video ID.</param>
+    /// <param name="ct"></param>
+    [HttpGet("{videoId}")]
+    [ProducesResponseType(typeof(VideoDetailsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<VideoDetailsDto>> GetVideo(string videoId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(videoId))
+        {
+            return BadRequest(new { error = "VideoId is required and cannot be empty." });
+        }
+
+        var videoDetails = await videoService.GetVideoDetailsAsync(videoId, ct);
+
+        if (videoDetails is null)
+        {
+            return NotFound();
+        }
+
+        return Ok(videoDetails);
+    }
+
+    /// <summary>
+    /// Updates a video's editable metadata (title, description, tags).
+    /// </summary>
+    /// <param name="request"></param>
+    /// <param name="cancellationToken"></param>
+    [HttpPost("update")]
+    [Authorize(Policy = "RequiresYouTubeWrite")]
+    [ProducesResponseType(typeof(VideoDetailsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<VideoDetailsDto>> UpdateVideo(
+        [FromBody] UpdateVideoMetadataRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.VideoId))
+        {
+            return BadRequest(new { error = "VideoId is required and cannot be empty." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Title))
+        {
+            return BadRequest(new { error = "Title is required and cannot be empty." });
+        }
+
+        var updatedVideoDetails = await videoService.UpdateVideoMetadataAsync(request, cancellationToken);
+
+        if (updatedVideoDetails is null)
+        {
+            return NotFound();
+        }
+
+        return Ok(updatedVideoDetails);
     }
 }
