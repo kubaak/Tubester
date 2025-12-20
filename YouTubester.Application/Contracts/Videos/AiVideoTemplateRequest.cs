@@ -1,4 +1,4 @@
-namespace YouTubester.Application;
+namespace YouTubester.Application.Contracts.Videos;
 
 public sealed record AiVideoTemplateRequest(
     string TargetVideoId,

@@ -6,10 +6,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Xunit;
 using YouTubester.Abstractions.Users;
-using YouTubester.Application;
 using YouTubester.Application.Contracts;
 using YouTubester.Application.Contracts.Videos;
 using YouTubester.Application.Jobs;
+using YouTubester.Application.Videos;
 using YouTubester.Domain;
 using YouTubester.IntegrationTests.TestHost;
 using YouTubester.Persistence;
@@ -97,6 +97,201 @@ public class VideosTests(TestFixture fixture)
     }
 
     [Fact]
+    public async Task GetVideo_ExistingVideo_ReturnsOkWithDetails()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        const string uploadPlaylistId = "PLVideoDetailsUploads";
+        const string channelId = "video-details-channel";
+
+        fixture.ApiFactory.MockCurrentChannelContext
+            .Setup(channelContext => channelContext.GetRequiredChannelId())
+            .Returns(channelId);
+
+        const string videoId = "videoDetail1";
+        const string title = "Video Details Title";
+        const string description = "Video Details Description";
+        var tags = new[] { "tag-one", "tag-two" };
+
+        var video = Video.Create(
+            uploadPlaylistId,
+            videoId,
+            title,
+            description,
+            TestFixture.TestingDateTimeOffset,
+            TimeSpan.FromMinutes(2),
+            VideoVisibility.Public,
+            tags,
+            "22",
+            "en",
+            "en",
+            null,
+            null,
+            TestFixture.TestingDateTimeOffset,
+            "etag-video-details"
+        );
+
+        using (var serviceScope = fixture.ApiServices.CreateScope())
+        {
+            var databaseContext = serviceScope.ServiceProvider.GetRequiredService<YouTubesterDb>();
+            var channel = Channel.Create(channelId, "Video Details Channel",
+                uploadPlaylistId, TestFixture.TestingDateTimeOffset);
+
+            databaseContext.Channels.Add(channel);
+            databaseContext.Videos.Add(video);
+            await databaseContext.SaveChangesAsync();
+        }
+
+        // Act
+        var response = await fixture.HttpClient.GetAsync($"/api/videos/{videoId}");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var content = await response.Content.ReadAsStringAsync();
+        var videoDetails = JsonSerializer.Deserialize<VideoDetailsDto>(content, _serializerOptions);
+
+        Assert.NotNull(videoDetails);
+        Assert.Equal(title, videoDetails!.Title);
+        Assert.Equal(description, videoDetails.Description);
+        Assert.NotNull(videoDetails.Tags);
+        Assert.Equal(tags, videoDetails.Tags);
+        Assert.False(videoDetails.IsAiTemplateInProgress);
+    }
+
+    [Fact]
+    public async Task GetVideo_VideoDoesNotExist_ReturnsNotFound()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        const string uploadPlaylistId = "PLVideoDetailsUploads";
+        const string channelId = "video-details-channel";
+
+        fixture.ApiFactory.MockCurrentChannelContext
+            .Setup(channelContext => channelContext.GetRequiredChannelId())
+            .Returns(channelId);
+
+        using (var serviceScope = fixture.ApiServices.CreateScope())
+        {
+            var databaseContext = serviceScope.ServiceProvider.GetRequiredService<YouTubesterDb>();
+            var channel = Channel.Create(channelId, "Video Details Channel",
+                uploadPlaylistId, TestFixture.TestingDateTimeOffset);
+
+            databaseContext.Channels.Add(channel);
+            await databaseContext.SaveChangesAsync();
+        }
+
+        // Act
+        var response = await fixture.HttpClient.GetAsync("/api/videos/does-not-exist");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateVideo_ValidRequest_UpdatesYoutubeAndReturnsUpdatedDetails()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        const string uploadPlaylistId = "PLVideoUpdateUploads";
+        const string channelId = "video-update-channel";
+
+        fixture.ApiFactory.MockCurrentChannelContext
+            .Setup(channelContext => channelContext.GetRequiredChannelId())
+            .Returns(channelId);
+
+        const string originalVideoId = "videoUpdate1";
+        var originalVideo = Video.Create(
+            uploadPlaylistId,
+            originalVideoId,
+            "Original Title",
+            "Original Description",
+            TestFixture.TestingDateTimeOffset,
+            TimeSpan.FromMinutes(2),
+            VideoVisibility.Public,
+            ["original"],
+            "22",
+            "en",
+            "en",
+            new GeoLocation(37.7749, -122.4194),
+            "San Francisco, CA",
+            TestFixture.TestingDateTimeOffset,
+            "etag-video-update"
+        );
+
+        using (var serviceScope = fixture.ApiServices.CreateScope())
+        {
+            var databaseContext = serviceScope.ServiceProvider.GetRequiredService<YouTubesterDb>();
+            var channel = Channel.Create(channelId, "Video Update Channel",
+                uploadPlaylistId, TestFixture.TestingDateTimeOffset);
+
+            databaseContext.Channels.Add(channel);
+            databaseContext.Videos.Add(originalVideo);
+            await databaseContext.SaveChangesAsync();
+        }
+
+        const string newTitle = "Updated Title";
+        const string newDescription = "Updated Description";
+        var newTags = new[] { "tag-one", "tag-two" };
+
+        fixture.ApiFactory.MockYouTubeIntegration
+            .Setup(youTubeIntegration => youTubeIntegration.UpdateVideoAsync(
+                originalVideoId,
+                newTitle,
+                newDescription,
+                It.Is<IReadOnlyList<string>>(tags => tags.SequenceEqual(newTags)),
+                originalVideo.CategoryId,
+                originalVideo.DefaultLanguage,
+                originalVideo.DefaultAudioLanguage,
+                It.IsAny<(double lat, double lng)?>(),
+                originalVideo.LocationDescription,
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var request = new UpdateVideoMetadataRequest(
+            originalVideoId,
+            newTitle,
+            newDescription,
+            newTags
+        );
+
+        var requestJson = JsonSerializer.Serialize(request, _serializerOptions);
+        var requestHttpContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
+
+        // Act
+        var response = await fixture.HttpClient.PostAsync("/api/videos/update", requestHttpContent);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var responseJson = await response.Content.ReadAsStringAsync();
+        var videoDetails = JsonSerializer.Deserialize<VideoDetailsDto>(responseJson, _serializerOptions);
+
+        Assert.NotNull(videoDetails);
+        Assert.Equal(newTitle, videoDetails!.Title);
+        Assert.Equal(newDescription, videoDetails.Description);
+        Assert.Equal(newTags, videoDetails.Tags);
+        Assert.False(videoDetails.IsAiTemplateInProgress);
+
+        fixture.ApiFactory.MockYouTubeIntegration.Verify(youTubeIntegration =>
+                youTubeIntegration.UpdateVideoAsync(
+                    originalVideoId,
+                    newTitle,
+                    newDescription,
+                    It.Is<IReadOnlyList<string>>(tags => tags.SequenceEqual(newTags)),
+                    originalVideo.CategoryId,
+                    originalVideo.DefaultLanguage,
+                    originalVideo.DefaultAudioLanguage,
+                    It.IsAny<(double lat, double lng)?>(),
+                    originalVideo.LocationDescription,
+                    It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task CopyTemplate_ValidRequest_CallsYoutubeService()
     {
         const string channelId = "Channel-XYZ";
@@ -120,7 +315,7 @@ public class VideosTests(TestFixture fixture)
                 MockAuthenticationExtensions.TestPicture,
                 TestFixture.TestingDateTimeOffset);
             await dbContext.Users.AddAsync(user);
-            await dbContext.Channels.AddAsync(Channel.Create(channelId, userId, "Channel A",
+            await dbContext.Channels.AddAsync(Channel.Create(channelId, "Channel A",
                 uploadPlaylistId, TestFixture.TestingDateTimeOffset));
             dbContext.Videos.AddRange(sourceVideo, targetVideo);
             await dbContext.SaveChangesAsync();
@@ -273,7 +468,6 @@ public class VideosTests(TestFixture fixture)
             await databaseContext.Users.AddAsync(user);
             await databaseContext.Channels.AddAsync(Channel.Create(
                 channelId,
-                userId,
                 "AI Template Channel",
                 targetVideo.UploadsPlaylistId,
                 TestFixture.TestingDateTimeOffset));
@@ -308,7 +502,7 @@ public class VideosTests(TestFixture fixture)
         Assert.Equal(enqueueResult.JobId, capturedJobs[0].JobId);
 
         Assert.Equal(nameof(AiTemplateJob.Run), capturedJobs[0].Job.Method.Name);
-        Assert.Equal(userId, capturedJobs[0].Job.Args[0]);
+        Assert.Equal(channelId, capturedJobs[0].Job.Args[0]);
 
         var enqueuedRequest = Assert.IsType<AiVideoTemplateRequest>(capturedJobs[0].Job.Args[1]);
         Assert.Equal(request.TargetVideoId, enqueuedRequest.TargetVideoId);
@@ -316,6 +510,14 @@ public class VideosTests(TestFixture fixture)
         Assert.Equal(request.GenerateTitle, enqueuedRequest.GenerateTitle);
         Assert.Equal(request.GenerateDescription, enqueuedRequest.GenerateDescription);
         Assert.Equal(request.GenerateTags, enqueuedRequest.GenerateTags);
+
+        using (var serviceScope = fixture.ApiServices.CreateScope())
+        {
+            var databaseContext = serviceScope.ServiceProvider.GetRequiredService<YouTubesterDb>();
+            var videoInDatabase = await databaseContext.Videos.FindAsync(targetVideo.VideoId);
+            Assert.NotNull(videoInDatabase);
+            Assert.True(videoInDatabase!.IsAiTemplateInProgress);
+        }
     }
 
     [Fact]
@@ -392,7 +594,9 @@ public class VideosTests(TestFixture fixture)
         Assert.Equal(HttpStatusCode.BadRequest, videosEndpointResponse.StatusCode);
 
         var responseContent = await videosEndpointResponse.Content.ReadAsStringAsync();
-        Assert.Contains("Target video not found for current channel", responseContent);
+        Assert.Contains(
+            $"Target video {request.TargetVideoId} not found for current channel or an AI template job is already in progress.",
+            responseContent);
     }
 
     [Fact]
@@ -401,14 +605,14 @@ public class VideosTests(TestFixture fixture)
         // Arrange
         await fixture.ResetDbAsync();
 
-        var testUploadsPlaylistId = "PLTestUploads123";
+        const string testUploadsPlaylistId = "PLTestUploads123";
 
-        var testChannelID = "testChannelID123";
-        var channel = Channel.Create(testChannelID, "testUserId123", "testChannelName123",
+        const string testChannelId = "testChannelID123";
+        var channel = Channel.Create(testChannelId, "testChannelName123",
             testUploadsPlaylistId, DateTimeOffset.UtcNow);
 
         fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
-            .Returns(testChannelID);
+            .Returns(testChannelId);
 
         var video1 = Video.Create(
             testUploadsPlaylistId,
@@ -418,7 +622,7 @@ public class VideosTests(TestFixture fixture)
             TestFixture.TestingDateTimeOffset,
             TimeSpan.FromMinutes(10),
             VideoVisibility.Public,
-            new[] { "cooking", "tutorial" },
+            ["cooking", "tutorial"],
             "22",
             "en",
             "en",
@@ -436,7 +640,7 @@ public class VideosTests(TestFixture fixture)
             TestFixture.TestingDateTimeOffset.AddDays(1),
             TimeSpan.FromMinutes(15),
             VideoVisibility.Unlisted,
-            new[] { "gaming", "highlights" },
+            ["gaming", "highlights"],
             "23",
             "en",
             "en",
@@ -454,7 +658,7 @@ public class VideosTests(TestFixture fixture)
             TestFixture.TestingDateTimeOffset.AddDays(2),
             TimeSpan.FromMinutes(5),
             VideoVisibility.Private,
-            new[] { "private" },
+            ["private"],
             "24",
             "en",
             "en",

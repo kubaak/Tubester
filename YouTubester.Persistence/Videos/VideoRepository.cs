@@ -169,4 +169,44 @@ public sealed class VideoRepository(YouTubesterDb db) : IVideoRepository
             )
             .AnyAsync(video => video.VideoId == videoId, cancellationToken);
     }
+
+    public async Task<bool> TrySettingAiTemplateInProgressAsync(
+        string channelId,
+        string videoId,
+        bool isAiTemplateInProgress,
+        CancellationToken cancellationToken)
+    {
+        var video = await db.Videos
+            .Join(
+                db.Channels.Where(channel => channel.ChannelId == channelId),
+                currentVideo => currentVideo.UploadsPlaylistId,
+                channel => channel.UploadsPlaylistId,
+                (currentVideo, channel) => currentVideo
+            )
+            .FirstOrDefaultAsync(currentVideo => currentVideo.VideoId == videoId, cancellationToken);
+
+        if (video is null)
+        {
+            return false;
+        }
+
+        video.SetAiTemplateInProgress(isAiTemplateInProgress);
+        await db.SaveChangesAsync(cancellationToken);
+        return video.IsAiTemplateInProgress;
+    }
+
+    public Task MarkCommentsDisabledAsync(string channelId, string videoId, CancellationToken cancellationToken)
+    {
+        return db.Videos
+            .Where(v => v.VideoId == videoId)
+            .Join(
+                db.Channels.Where(channel => channel.ChannelId == channelId),
+                currentVideo => currentVideo.UploadsPlaylistId,
+                channel => channel.UploadsPlaylistId,
+                (currentVideo, channel) => currentVideo
+            )
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(v => v.CommentsAllowed, false),
+                cancellationToken);
+    }
 }

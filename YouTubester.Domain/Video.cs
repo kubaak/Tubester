@@ -29,6 +29,7 @@ public sealed class Video
     public bool? CommentsAllowed { get; private set; }
     public DateTimeOffset CachedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
+    public bool IsAiTemplateInProgress { get; private set; }
     public bool IsShort => Duration <= TimeSpan.FromSeconds(60);
 
     public string Url => $"https://www.youtube.com/watch?v={VideoId}";
@@ -70,7 +71,8 @@ public sealed class Video
             ETag = etag,
             CommentsAllowed = commentsAllowed,
             CachedAt = nowUtc,
-            UpdatedAt = nowUtc
+            UpdatedAt = nowUtc,
+            IsAiTemplateInProgress = false
         };
     }
 
@@ -211,6 +213,11 @@ public sealed class Video
     public void SetCommentsAllowed(bool commentsAllowed)
     {
         CommentsAllowed = commentsAllowed;
+    }
+
+    public void SetAiTemplateInProgress(bool isAiTemplateInProgress)
+    {
+        IsAiTemplateInProgress = isAiTemplateInProgress;
     }
 
     private Video()

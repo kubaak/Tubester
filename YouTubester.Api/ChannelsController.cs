@@ -14,61 +14,9 @@ namespace YouTubester.Api;
 [Tags("Channels")]
 [Authorize]
 public sealed class ChannelsController(
-    IChannelSyncService channelSyncService,
-    ICommentScanService commentScanService,
-    IChannelRepository channelRepository)
+    IChannelSyncService channelSyncService)
     : ControllerBase
 {
-    /// <summary>
-    /// Returns all channels owned by the current user in this application.
-    /// </summary>
-    [HttpGet]
-    [ProducesResponseType(typeof(IReadOnlyList<UserChannelDto>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<IReadOnlyList<UserChannelDto>>> GetUserChannelsAsync(
-        CancellationToken cancellationToken)
-    {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrWhiteSpace(userId))
-        {
-            return Unauthorized();
-        }
-
-        var channels = await channelRepository.GetChannelsForUserAsync(userId, cancellationToken);
-        var picture = User.FindFirst("picture")?.Value;
-
-        var userChannels = new List<UserChannelDto>(channels.Count);
-        foreach (var channel in channels)
-        {
-            var userChannel = new UserChannelDto(
-                channel.ChannelId,
-                channel.Name,
-                picture);
-            userChannels.Add(userChannel);
-        }
-
-        return Ok(userChannels);
-    }
-
-    /// <summary>
-    /// Returns all YouTube channels available to pull for the current user.
-    /// </summary>
-    [HttpGet("available")]
-    [ProducesResponseType(typeof(IReadOnlyList<ChannelDto>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<IReadOnlyList<ChannelDto>>> GetAvailableChannelsAsync(
-        CancellationToken cancellationToken)
-    {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrWhiteSpace(userId))
-        {
-            return Unauthorized();
-        }
-
-        var channels = await channelSyncService.GetAvailableYoutubeChannelsForUserAsync(cancellationToken);
-        return Ok(channels);
-    }
-
     /// <summary>
     /// Pulls channel metadata from YouTube (by channel id)
     /// </summary>

@@ -43,6 +43,7 @@ public interface IVideoRepository
     /// <summary>
     /// Gets ETags for specified video IDs to support conditional requests.
     /// </summary>
+    /// <param name="channelId"></param>
     /// <param name="videoIds">Video IDs to get ETags for.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Dictionary mapping video ID to ETag.</returns>
@@ -51,8 +52,11 @@ public interface IVideoRepository
         IEnumerable<string> videoIds,
         CancellationToken cancellationToken);
 
-    Task<bool> VideoExistsForChannelAsync(
+    Task MarkCommentsDisabledAsync(string channelId, string videoId, CancellationToken cancellationToken);
+
+    Task<bool> TrySettingAiTemplateInProgressAsync(
         string channelId,
         string videoId,
+        bool isAiTemplateInProgress,
         CancellationToken cancellationToken);
 }

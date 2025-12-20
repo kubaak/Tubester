@@ -6,21 +6,6 @@ namespace YouTubester.Persistence.Channels;
 
 public sealed class ChannelRepository(YouTubesterDb db) : IChannelRepository
 {
-    public async Task<List<Channel>> GetChannelsAsync(CancellationToken cancellationToken)
-    {
-        return await db.Set<Channel>()
-            .AsNoTracking()
-            .ToListAsync(cancellationToken);
-    }
-
-    public async Task<List<Channel>> GetChannelsForUserAsync(string userId, CancellationToken cancellationToken)
-    {
-        return await db.Set<Channel>()
-            .AsNoTracking()
-            .Where(channel => channel.UserId == userId)
-            .ToListAsync(cancellationToken);
-    }
-
     public async Task<Channel?> GetChannelAsync(string channelId, CancellationToken cancellationToken)
     {
         return await db.Set<Channel>()
