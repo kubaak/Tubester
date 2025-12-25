@@ -7,6 +7,10 @@ using YouTubester.Domain;
 
 namespace YouTubester.Api;
 
+/// <summary>
+/// 
+/// </summary>
+/// <param name="service"></param>
 [ApiController]
 [Route("api/replies")]
 [Tags("Replies")]

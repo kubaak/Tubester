@@ -1,4 +1,5 @@
 using YouTubester.Abstractions.Videos;
+using YouTubester.Application.Contracts.Videos;
 using YouTubester.Integration;
 
 namespace YouTubester.Application.Videos;
