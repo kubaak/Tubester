@@ -37,4 +37,12 @@ public sealed class UserRepository(YouTubesterDb databaseContext) : IUserReposit
 
         return user;
     }
+
+    public async Task<User?> GetByIdForUpdateAsync(string userId, CancellationToken cancellationToken)
+    {
+        var user = await databaseContext.Users
+            .FirstOrDefaultAsync(entity => entity.Id == userId, cancellationToken);
+
+        return user;
+    }
 }

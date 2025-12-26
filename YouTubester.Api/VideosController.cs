@@ -80,9 +80,15 @@ public sealed class VideosController(
             return BadRequest(new { error = "PromptEnrichment is required and cannot be empty." });
         }
 
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return Unauthorized();
+        }
+
         try
         {
-            var result = await aiTemplateOrchestrationService.EnqueueAiTemplateAsync(request, ct);
+            var result = await aiTemplateOrchestrationService.EnqueueAiTemplateAsync(userId, request, ct);
             return Ok(new AiTemplateEnqueueResult(result));
         }
         catch (AiTemplatingNotStartedException e)
@@ -179,7 +185,13 @@ public sealed class VideosController(
             return BadRequest(new { error = "Title is required and cannot be empty." });
         }
 
-        var updatedVideoDetails = await videoService.UpdateVideoMetadataAsync(request, cancellationToken);
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return Unauthorized();
+        }
+
+        var updatedVideoDetails = await videoService.UpdateVideoMetadataAsync(userId, request, cancellationToken);
 
         if (updatedVideoDetails is null)
         {

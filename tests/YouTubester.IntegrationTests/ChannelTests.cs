@@ -50,7 +50,7 @@ public sealed class ChannelTests(TestFixture fixture)
             var ch = await db.Channels.AsNoTracking().SingleOrDefaultAsync(c => c.ChannelId == channelId);
 
             Assert.NotNull(ch);
-            Assert.Equal(nameV1, ch!.Name);
+            Assert.Equal(nameV1, ch.Name);
             Assert.Equal(uploadsIdV1, ch.UploadsPlaylistId);
             Assert.Equal(etagV1, ch.ETag);
             Assert.Null(ch.LastUploadsCutoff); // not set by pull
@@ -68,7 +68,7 @@ public sealed class ChannelTests(TestFixture fixture)
             var ch = await db.Channels.AsNoTracking().SingleOrDefaultAsync(c => c.ChannelId == channelId);
 
             Assert.NotNull(ch);
-            Assert.Equal(nameV2, ch!.Name);
+            Assert.Equal(nameV2, ch.Name);
             Assert.Equal(uploadsIdV2, ch.UploadsPlaylistId);
             Assert.Equal(etagV2, ch.ETag);
         }

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using YouTubester.Abstractions.Analytics;
 using YouTubester.Abstractions.Channels;
 using YouTubester.Abstractions.Playlists;
 using YouTubester.Abstractions.Videos;
@@ -19,7 +20,8 @@ public class VideoService(
     ICurrentChannelContext channelContext,
     IOptions<VideoListingOptions> videoListingOptions,
     IYouTubeIntegration youTubeIntegration,
-    ILogger<VideoService> videoLogger) : IVideoService
+    ILogger<VideoService> videoLogger,
+    IUserEventLogger userEventLogger) : IVideoService
 {
     public async Task<PagedResult<VideoListItemDto>> GetVideosAsync(string? title, VideoVisibility[]? visibility,
         int? pageSize, string? pageToken, CancellationToken ct)
@@ -186,6 +188,22 @@ public class VideoService(
 
         await videoRepository.UpsertAsync(channelId, [targetVideo], cancellationToken);
 
+        await userEventLogger.LogAsync(
+            userId,
+            UserEventType.CopyTemplateExecuted,
+            request.TargetVideoId,
+            null,
+            new
+            {
+                sourceVideoId = request.SourceVideoId,
+                copyTags = request.CopyTags,
+                copyLocation = request.CopyLocation,
+                copyPlaylists = request.CopyPlaylists,
+                copyCategory = request.CopyCategory,
+                copyDefaultLanguages = request.CopyDefaultLanguages
+            },
+            cancellationToken);
+
         if (!request.CopyPlaylists)
         {
             return new CopyVideoTemplateResult(
@@ -230,6 +248,7 @@ public class VideoService(
     }
 
     public async Task<VideoDetailsDto?> UpdateVideoMetadataAsync(
+        string userId,
         UpdateVideoMetadataRequest request,
         CancellationToken cancellationToken)
     {
@@ -287,6 +306,19 @@ public class VideoService(
         );
 
         await videoRepository.UpsertAsync(channelId, [video], cancellationToken);
+
+        await userEventLogger.LogAsync(
+            userId,
+            UserEventType.AiTemplateSubmitted,
+            request.VideoId,
+            null,
+            new
+            {
+                generateTitle = !string.IsNullOrWhiteSpace(request.Title),
+                generateDescription = request.Description is not null,
+                generateTags = request.Tags is not null
+            },
+            cancellationToken);
 
         return new VideoDetailsDto
         {

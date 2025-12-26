@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.OpenApi;
 using YouTubester.Abstractions.Auth;
 using YouTubester.Abstractions.Users;
+using YouTubester.Abstractions.Analytics;
 using YouTubester.Integration;
 
 namespace YouTubester.Api.Extensions;
@@ -132,6 +133,7 @@ public static class ServiceCollectionExtensions
                         var requestServices = context.HttpContext.RequestServices;
                         var userRepository = requestServices.GetRequiredService<IUserRepository>();
                         var userTokenStore = requestServices.GetRequiredService<IUserTokenStore>();
+                        var userEventLogger = requestServices.GetRequiredService<IUserEventLogger>();
                         var cancellationToken = context.HttpContext.RequestAborted;
                         var now = DateTimeOffset.UtcNow;
                         await userRepository.UpsertUserAsync(userId, email, name, picture, now, cancellationToken);
@@ -140,6 +142,18 @@ public static class ServiceCollectionExtensions
                             accessToken,
                             refreshToken,
                             expiresAt,
+                            cancellationToken);
+
+                        await userEventLogger.LogAsync(
+                            userId,
+                            UserEventType.Login,
+                            null,
+                            null,
+                            new
+                            {
+                                scheme = context.Scheme.Name,
+                                hasRefreshToken = !string.IsNullOrWhiteSpace(refreshToken)
+                            },
                             cancellationToken);
                     }
                 };
@@ -207,6 +221,47 @@ public static class ServiceCollectionExtensions
                     claimsIdentity.AddClaim(new Claim("yt_channel_picture", userChannel.Picture ?? string.Empty));
 
                     claimsIdentity.AddClaim(new Claim("yt_write_granted", "true"));
+
+                    var principal = context.Principal;
+                    if (principal is null)
+                    {
+                        return;
+                    }
+
+                    var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+                    if (string.IsNullOrWhiteSpace(userId))
+                    {
+                        return;
+                    }
+
+                    var refreshToken = context.Properties?.GetTokenValue("refresh_token");
+
+                    var requestServices = context.HttpContext.RequestServices;
+                    var userEventLogger = requestServices.GetRequiredService<IUserEventLogger>();
+                    var cancellationToken = context.HttpContext.RequestAborted;
+
+                    await userEventLogger.LogAsync(
+                        userId,
+                        UserEventType.Login,
+                        null,
+                        null,
+                        new
+                        {
+                            scheme = context.Scheme.Name,
+                            hasRefreshToken = !string.IsNullOrWhiteSpace(refreshToken)
+                        },
+                        cancellationToken);
+
+                    await userEventLogger.LogAsync(
+                        userId,
+                        UserEventType.WriteConsentGranted,
+                        null,
+                        null,
+                        new
+                        {
+                            scheme = context.Scheme.Name
+                        },
+                        cancellationToken);
                 }
             };
         }

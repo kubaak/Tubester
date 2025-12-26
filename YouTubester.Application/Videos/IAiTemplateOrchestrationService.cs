@@ -4,5 +4,5 @@ namespace YouTubester.Application.Videos;
 
 public interface IAiTemplateOrchestrationService
 {
-    Task<string> EnqueueAiTemplateAsync(AiVideoTemplateRequest request, CancellationToken ct);
+    Task<string> EnqueueAiTemplateAsync(string userId, AiVideoTemplateRequest request, CancellationToken ct);
 }

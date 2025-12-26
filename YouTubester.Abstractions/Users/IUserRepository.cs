@@ -11,4 +11,6 @@ public interface IUserRepository
         CancellationToken cancellationToken);
 
     Task<User?> GetByIdAsync(string userId, CancellationToken cancellationToken);
+
+    Task<User?> GetByIdForUpdateAsync(string userId, CancellationToken cancellationToken);
 }

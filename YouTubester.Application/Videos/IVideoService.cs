@@ -28,6 +28,7 @@ public interface IVideoService
         CancellationToken cancellationToken);
 
     Task<VideoDetailsDto?> UpdateVideoMetadataAsync(
+        string userId,
         UpdateVideoMetadataRequest request,
         CancellationToken cancellationToken);
 }
