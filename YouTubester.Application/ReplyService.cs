@@ -1,4 +1,5 @@
-﻿using YouTubester.Abstractions.Channels;
+﻿using YouTubester.Abstractions.Analytics;
+using YouTubester.Abstractions.Channels;
 using YouTubester.Abstractions.Replies;
 using YouTubester.Application.Contracts.Replies;
 using YouTubester.Domain;
@@ -9,7 +10,8 @@ namespace YouTubester.Application;
 public class ReplyService(
     IReplyRepository repository,
     IYouTubeIntegration youTubeIntegration,
-    ICurrentChannelContext currentChannelContext)
+    ICurrentChannelContext currentChannelContext,
+    IUserEventLogger userEventLogger)
     : IReplyService
 {
     public Task<IEnumerable<Reply>> GetRepliesForApprovalAsync(CancellationToken cancellationToken)
@@ -105,6 +107,18 @@ public class ReplyService(
 
                 await youTubeIntegration.ReplyAsync(draft.CommentId, draft.FinalText!, cancellationToken);
                 draft.Post(DateTimeOffset.UtcNow);
+
+                await userEventLogger.LogAsync(
+                    userId,
+                    UserEventType.ReplyPostedToYouTube,
+                    draft.VideoId,
+                    draft.CommentId,
+                    new
+                    {
+                        length = draft.FinalText?.Length ?? 0,
+                        wasEdited = !string.Equals(draft.FinalText, draft.SuggestedText, StringComparison.Ordinal)
+                    },
+                    cancellationToken);
 
                 await repository.AddOrUpdateReplyAsync(draft, cancellationToken);
                 results.Add(new DraftDecisionResultDto(d.CommentId, true));

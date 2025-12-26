@@ -15,6 +15,7 @@ public class YouTubesterDb(DbContextOptions<YouTubesterDb> options) : DbContext(
     public DbSet<Video> Videos => Set<Video>();
     public DbSet<Playlist> Playlists => Set<Playlist>();
     public DbSet<VideoPlaylist> VideoPlaylists => Set<VideoPlaylist>();
+    public DbSet<Analytics.UserEvent> UserEvents => Set<Analytics.UserEvent>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -70,5 +71,30 @@ public class YouTubesterDb(DbContextOptions<YouTubesterDb> options) : DbContext(
             .OnDelete(DeleteBehavior.Cascade);
         b.Entity<VideoPlaylist>().HasOne<Video>().WithMany()
             .HasForeignKey(x => x.VideoId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<Analytics.UserEvent>(entity =>
+        {
+            entity.ToTable("UserEvents", "analytics");
+
+            entity.HasKey(userEvent => userEvent.Id);
+
+            entity.Property(userEvent => userEvent.Id)
+                .ValueGeneratedOnAdd();
+
+            entity.Property(userEvent => userEvent.UserId)
+                .IsRequired();
+
+            entity.Property(userEvent => userEvent.OccurredAtUtc)
+                .IsRequired();
+
+            entity.Property(userEvent => userEvent.EventType)
+                .IsRequired();
+
+            entity.HasIndex(userEvent => new { userEvent.UserId, userEvent.OccurredAtUtc })
+                .HasDatabaseName("IX_UserEvents_UserId_OccurredAtUtc_Desc");
+            entity.HasIndex(userEvent => new { userEvent.EventType, userEvent.OccurredAtUtc })
+                .HasDatabaseName("IX_UserEvents_EventType_OccurredAtUtc_Desc");
+            entity.HasIndex(userEvent => userEvent.OccurredAtUtc)
+                .HasDatabaseName("IX_UserEvents_OccurredAtUtc_Desc");
+        });
     }
 }

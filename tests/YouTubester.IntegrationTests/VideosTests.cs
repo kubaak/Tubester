@@ -2,14 +2,15 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using AutoFixture;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Xunit;
 using YouTubester.Abstractions.Users;
+using YouTubester.Abstractions.Analytics;
 using YouTubester.Application.Contracts;
 using YouTubester.Application.Contracts.Videos;
 using YouTubester.Application.Jobs;
-using YouTubester.Application.Videos;
 using YouTubester.Domain;
 using YouTubester.IntegrationTests.TestHost;
 using YouTubester.Persistence;
@@ -153,7 +154,7 @@ public class VideosTests(TestFixture fixture)
         var videoDetails = JsonSerializer.Deserialize<VideoDetailsDto>(content, _serializerOptions);
 
         Assert.NotNull(videoDetails);
-        Assert.Equal(title, videoDetails!.Title);
+        Assert.Equal(title, videoDetails.Title);
         Assert.Equal(description, videoDetails.Description);
         Assert.NotNull(videoDetails.Tags);
         Assert.Equal(tags, videoDetails.Tags);
@@ -271,7 +272,7 @@ public class VideosTests(TestFixture fixture)
         var videoDetails = JsonSerializer.Deserialize<VideoDetailsDto>(responseJson, _serializerOptions);
 
         Assert.NotNull(videoDetails);
-        Assert.Equal(newTitle, videoDetails!.Title);
+        Assert.Equal(newTitle, videoDetails.Title);
         Assert.Equal(newDescription, videoDetails.Description);
         Assert.Equal(newTags, videoDetails.Tags);
         Assert.False(videoDetails.IsAiTemplateInProgress);
@@ -289,10 +290,26 @@ public class VideosTests(TestFixture fixture)
                     originalVideo.LocationDescription,
                     It.IsAny<CancellationToken>()),
             Times.Once);
+
+        // Verify AiTemplateSubmitted analytics event is logged
+        using (var verifyScope = fixture.ApiServices.CreateScope())
+        {
+            var dbContext = verifyScope.ServiceProvider.GetRequiredService<YouTubesterDb>();
+            var events = await dbContext.UserEvents
+                .Where(e => e.EventType == UserEventType.AiTemplateSubmitted.ToString())
+                .ToListAsync();
+
+            Assert.Single(events);
+            var userEvent = events[0];
+            Assert.Equal(MockAuthenticationExtensions.TestSub, userEvent.UserId);
+            Assert.Equal(originalVideoId, userEvent.VideoId);
+            Assert.Null(userEvent.CommentId);
+            Assert.False(string.IsNullOrWhiteSpace(userEvent.MetadataJson));
+        }
     }
 
     [Fact]
-    public async Task CopyTemplate_ValidRequest_CallsYoutubeService()
+    public async Task CopyTemplate_ValidRequest_CallsYoutubeService_AndLogsAnalytics()
     {
         const string channelId = "Channel-XYZ";
         const string uploadPlaylistId = "ULTestPlaylist123";
@@ -307,18 +324,18 @@ public class VideosTests(TestFixture fixture)
 
         using (var scope = fixture.ApiServices.CreateScope())
         {
-            var dbContext = scope.ServiceProvider.GetRequiredService<YouTubesterDb>();
+            var databaseContext = scope.ServiceProvider.GetRequiredService<YouTubesterDb>();
             var user = User.Create(
                 userId,
                 MockAuthenticationExtensions.TestEmail,
                 MockAuthenticationExtensions.TestName,
                 MockAuthenticationExtensions.TestPicture,
                 TestFixture.TestingDateTimeOffset);
-            await dbContext.Users.AddAsync(user);
-            await dbContext.Channels.AddAsync(Channel.Create(channelId, "Channel A",
-                uploadPlaylistId, TestFixture.TestingDateTimeOffset));
-            dbContext.Videos.AddRange(sourceVideo, targetVideo);
-            await dbContext.SaveChangesAsync();
+            await databaseContext.Users.AddAsync(user, CancellationToken.None);
+            await databaseContext.Channels.AddAsync(Channel.Create(channelId, "Channel A",
+                uploadPlaylistId, TestFixture.TestingDateTimeOffset), CancellationToken.None);
+            databaseContext.Videos.AddRange(sourceVideo, targetVideo);
+            await databaseContext.SaveChangesAsync();
         }
 
         fixture.ApiFactory.MockYouTubeIntegration.Setup(x =>
@@ -365,6 +382,22 @@ public class VideosTests(TestFixture fixture)
                     targetVideo.LocationDescription,
                     It.IsAny<CancellationToken>()),
             Times.Once);
+
+        // Verify CopyTemplateExecuted analytics event is logged
+        using (var verifyScope = fixture.ApiServices.CreateScope())
+        {
+            var dbContext = verifyScope.ServiceProvider.GetRequiredService<YouTubesterDb>();
+            var events = await dbContext.UserEvents
+                .Where(e => e.EventType == UserEventType.CopyTemplateExecuted.ToString())
+                .ToListAsync();
+
+            Assert.Single(events);
+            var userEvent = events[0];
+            Assert.Equal(userId, userEvent.UserId);
+            Assert.Equal(targetVideo.VideoId, userEvent.VideoId);
+            Assert.Null(userEvent.CommentId);
+            Assert.False(string.IsNullOrWhiteSpace(userEvent.MetadataJson));
+        }
     }
 
     [Fact]
@@ -440,14 +473,14 @@ public class VideosTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task AiTemplate_ValidRequest_EnqueuesAiTemplateJob()
+    public async Task AiTemplate_ValidRequest_EnqueuesAiTemplateJob_AndLogsAnalytics()
     {
         // Arrange
         await fixture.ResetDbAsync();
 
-        var channelId = "ai-template-channel";
-        var uploadPlaylistId = "ULTestPlaylist456";
-        var userId = MockAuthenticationExtensions.TestSub;
+        const string channelId = "ai-template-channel";
+        const string uploadPlaylistId = "ULTestPlaylist456";
+        const string userId = MockAuthenticationExtensions.TestSub;
 
         fixture.ApiFactory.MockCurrentChannelContext
             .Setup(channelContext => channelContext.GetRequiredChannelId())
@@ -465,7 +498,7 @@ public class VideosTests(TestFixture fixture)
                 MockAuthenticationExtensions.TestPicture,
                 TestFixture.TestingDateTimeOffset);
 
-            await databaseContext.Users.AddAsync(user);
+            await databaseContext.Users.AddAsync(user, CancellationToken.None);
             await databaseContext.Channels.AddAsync(Channel.Create(
                 channelId,
                 "AI Template Channel",
@@ -495,7 +528,7 @@ public class VideosTests(TestFixture fixture)
             JsonSerializer.Deserialize<AiTemplateEnqueueResult>(videosEndpointResponseBody, _serializerOptions);
 
         Assert.NotNull(enqueueResult);
-        Assert.False(string.IsNullOrWhiteSpace(enqueueResult!.JobId));
+        Assert.False(string.IsNullOrWhiteSpace(enqueueResult.JobId));
 
         var capturedJobs = fixture.CapturingJobClient.GetEnqueued<AiTemplateJob>();
         Assert.Single(capturedJobs);
@@ -516,7 +549,23 @@ public class VideosTests(TestFixture fixture)
             var databaseContext = serviceScope.ServiceProvider.GetRequiredService<YouTubesterDb>();
             var videoInDatabase = await databaseContext.Videos.FindAsync(targetVideo.VideoId);
             Assert.NotNull(videoInDatabase);
-            Assert.True(videoInDatabase!.IsAiTemplateInProgress);
+            Assert.True(videoInDatabase.IsAiTemplateInProgress);
+        }
+
+        // Verify AiTemplateEnqueued analytics event is logged
+        using (var verifyScope = fixture.ApiServices.CreateScope())
+        {
+            var dbContext = verifyScope.ServiceProvider.GetRequiredService<YouTubesterDb>();
+            var events = await dbContext.UserEvents
+                .Where(e => e.EventType == UserEventType.AiTemplateEnqueued.ToString())
+                .ToListAsync();
+
+            Assert.Single(events);
+            var userEvent = events[0];
+            Assert.Equal(userId, userEvent.UserId);
+            Assert.Equal(targetVideo.VideoId, userEvent.VideoId);
+            Assert.Null(userEvent.CommentId);
+            Assert.False(string.IsNullOrWhiteSpace(userEvent.MetadataJson));
         }
     }
 
@@ -686,7 +735,7 @@ public class VideosTests(TestFixture fixture)
         var titleResult = JsonSerializer.Deserialize<PagedResult<VideoListItemDto>>(titleContent, _serializerOptions);
 
         Assert.NotNull(titleResult);
-        Assert.Single(titleResult!.Items);
+        Assert.Single(titleResult.Items);
         Assert.Equal("Cooking Tutorial", titleResult.Items.First().Title);
 
         // Act - Filter by visibility
@@ -700,7 +749,7 @@ public class VideosTests(TestFixture fixture)
             JsonSerializer.Deserialize<PagedResult<VideoListItemDto>>(visibilityContent, _serializerOptions);
 
         Assert.NotNull(visibilityResult);
-        Assert.Equal(2, visibilityResult!.Items.Count);
+        Assert.Equal(2, visibilityResult.Items.Count);
         Assert.DoesNotContain(visibilityResult.Items, v => v.Title == "Private Video");
 
         // Act - Test pagination
@@ -714,7 +763,7 @@ public class VideosTests(TestFixture fixture)
             JsonSerializer.Deserialize<PagedResult<VideoListItemDto>>(paginationContent, _serializerOptions);
 
         Assert.NotNull(paginationResult);
-        Assert.Equal(2, paginationResult!.Items.Count);
+        Assert.Equal(2, paginationResult.Items.Count);
         Assert.NotNull(paginationResult.NextPageToken);
     }
 
@@ -766,7 +815,7 @@ public class VideosTests(TestFixture fixture)
         var result = JsonSerializer.Deserialize<PagedResult<VideoListItemDto>>(content, _serializerOptions);
 
         Assert.NotNull(result);
-        Assert.Empty(result!.Items); // No videos in DB, but request should be valid
+        Assert.Empty(result.Items); // No videos in DB, but request should be valid
     }
 
     private static async IAsyncEnumerable<T> CreateAsyncEnumerable<T>(IEnumerable<T> items)

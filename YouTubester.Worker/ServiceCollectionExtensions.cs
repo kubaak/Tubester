@@ -4,10 +4,12 @@ using YouTubester.Abstractions.Channels;
 using YouTubester.Abstractions.Playlists;
 using YouTubester.Abstractions.Replies;
 using YouTubester.Abstractions.Videos;
+using YouTubester.Abstractions.Analytics;
 using YouTubester.Application.Jobs;
 using YouTubester.Application.Videos;
 using YouTubester.Integration;
 using YouTubester.Persistence;
+using YouTubester.Persistence.Analytics;
 using YouTubester.Persistence.Channels;
 using YouTubester.Persistence.Playlists;
 using YouTubester.Persistence.Replies;
@@ -42,6 +44,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IReplyRepository, ReplyRepository>();
         services.AddScoped<IUserTokenStore, UserTokenStore>();
 
+        // Analytics
+        services.AddScoped<IUserEventLogger, UserEventLogger>();
         // App services & jobs
         services.AddScoped<IAiVideoTemplatingService, AiVideoTemplatingService>();
         services.AddScoped<CommentScanJob>();

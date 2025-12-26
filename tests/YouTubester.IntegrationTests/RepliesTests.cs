@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Xunit;
+using YouTubester.Abstractions.Analytics;
 using YouTubester.Application.Contracts.Replies;
 using YouTubester.Domain;
 using YouTubester.IntegrationTests.TestHost;
@@ -24,9 +25,9 @@ public class RepliesTests(TestFixture fixture)
         // Arrange
         await fixture.ResetDbAsync();
 
-        var testChannelID = "testChannelID123";
+        const string testChannelId = "testChannelID123";
         fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
-            .Returns(testChannelID);
+            .Returns(testChannelId);
 
         // Act
         var response = await fixture.HttpClient.GetAsync("/api/replies");
@@ -113,7 +114,7 @@ public class RepliesTests(TestFixture fixture)
         var result = JsonSerializer.Deserialize<JsonElement[]>(content, _serializerOptions);
 
         Assert.NotNull(result);
-        Assert.Single(result!); // Only Suggested replies are returned for approval
+        Assert.Single(result); // Only Suggested replies are returned for approval
 
         var comment1 = result.FirstOrDefault(r => r.GetProperty("commentId").GetString() == "comment1");
         Assert.NotEqual(JsonValueKind.Undefined, comment1.ValueKind);
@@ -180,10 +181,11 @@ public class RepliesTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task BatchApprove_ValidDecisions_CallsYoutubeService()
+    public async Task BatchApprove_ValidDecisions_CallsYoutubeService_AndLogsAnalytics()
     {
         // Arrange
         await fixture.ResetDbAsync();
+        fixture.ApiFactory.MockYouTubeIntegration.Reset();
 
         var reply1 = Reply.Create(
             "comment1",
@@ -244,7 +246,7 @@ public class RepliesTests(TestFixture fixture)
         var result = JsonSerializer.Deserialize<BatchDecisionResultDto>(responseContent, _serializerOptions);
 
         Assert.NotNull(result);
-        Assert.Equal(2, result!.Total);
+        Assert.Equal(2, result.Total);
         Assert.Equal(2, result.Succeeded);
         Assert.Equal(0, result.Failed);
         Assert.Equal(2, result.Items.Count);
@@ -264,6 +266,21 @@ public class RepliesTests(TestFixture fixture)
             r => r.CommentId == "comment2" && r.FinalText == decision2.ApprovedText);
 
         fixture.ApiFactory.MockYouTubeIntegration.VerifyAll();
+
+        // Verify ReplyPostedToYouTube analytics events are logged
+        using var verifyScope = fixture.ApiServices.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<YouTubesterDb>();
+        var events = await verifyDb.UserEvents
+            .Where(e => e.EventType == UserEventType.ReplyPostedToYouTube.ToString())
+            .OrderBy(e => e.CommentId)
+            .ToListAsync();
+
+        Assert.Equal(2, events.Count);
+        Assert.All(events, e => Assert.Equal(MockAuthenticationExtensions.TestSub, e.UserId));
+        Assert.Equal("comment1", events[0].CommentId);
+        Assert.Equal("comment2", events[1].CommentId);
+        Assert.False(string.IsNullOrWhiteSpace(events[0].MetadataJson));
+        Assert.False(string.IsNullOrWhiteSpace(events[1].MetadataJson));
     }
 
     [Fact]
@@ -335,7 +352,7 @@ public class RepliesTests(TestFixture fixture)
         var result = JsonSerializer.Deserialize<BatchIgnoreResult>(responseContent, _serializerOptions);
 
         Assert.NotNull(result);
-        Assert.Equal(4, result!.Requested);
+        Assert.Equal(4, result.Requested);
         Assert.Equal(2, result.Ignored); // comment1 and comment2
         Assert.Equal(0, result.AlreadyIgnored);
         Assert.Equal(1, result.SkippedPosted); // comment3

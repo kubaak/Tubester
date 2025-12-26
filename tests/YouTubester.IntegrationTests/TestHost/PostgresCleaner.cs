@@ -17,28 +17,30 @@ public static class PostgresCleaner
         {
             await using var transaction = await connection.BeginTransactionAsync();
 
-            var tableNames = new List<string>();
+            var tables = new List<(string Schema, string Table)>();
+
             await using (var command = connection.CreateCommand())
             {
                 command.Transaction = transaction;
                 command.CommandText = """
-SELECT tablename
-FROM pg_tables
-WHERE schemaname = 'public'
-  AND tablename <> '__EFMigrationsHistory';
-""";
+                                      SELECT schemaname, tablename
+                                      FROM pg_tables
+                                      WHERE schemaname IN ('public', 'analytics')
+                                        AND NOT (schemaname = 'public' AND tablename = '__EFMigrationsHistory');
+                                      """;
 
                 await using var reader = await command.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
-                    tableNames.Add(reader.GetString(0));
+                    tables.Add((reader.GetString(0), reader.GetString(1)));
                 }
             }
 
-            if (tableNames.Count > 0)
+            if (tables.Count > 0)
             {
-                var quotedTableNames = tableNames.Select(tableName => $"\"{tableName}\"");
-                var truncateStatement = $"TRUNCATE TABLE {string.Join(", ", quotedTableNames)} RESTART IDENTITY CASCADE;";
+                var qualified = tables.Select(t => $"\"{t.Schema}\".\"{t.Table}\"");
+                var truncateStatement =
+                    $"TRUNCATE TABLE {string.Join(", ", qualified)} RESTART IDENTITY CASCADE;";
 
                 await using var truncateCommand = connection.CreateCommand();
                 truncateCommand.Transaction = transaction;

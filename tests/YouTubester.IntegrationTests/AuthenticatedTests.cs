@@ -28,7 +28,7 @@ public sealed class AuthenticatedTests(TestFixture fixture)
         var body = await response.Content.ReadFromJsonAsync<MeResponse>();
         Assert.NotNull(body);
 
-        Assert.Equal(MockAuthenticationExtensions.TestName, body!.name);
+        Assert.Equal(MockAuthenticationExtensions.TestName, body.name);
         Assert.Equal(MockAuthenticationExtensions.TestEmail, body.email);
         Assert.Equal(MockAuthenticationExtensions.TestSub, body.sub);
         Assert.Equal(MockAuthenticationExtensions.TestPicture, body.picture);

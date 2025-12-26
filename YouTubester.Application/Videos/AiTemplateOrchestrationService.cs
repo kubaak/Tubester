@@ -1,4 +1,5 @@
 using Hangfire;
+using YouTubester.Abstractions.Analytics;
 using YouTubester.Abstractions.Channels;
 using YouTubester.Abstractions.Videos;
 using YouTubester.Application.Contracts.Videos;
@@ -10,11 +11,19 @@ namespace YouTubester.Application.Videos;
 public class AiTemplateOrchestrationService(
     ICurrentChannelContext channelContext,
     IVideoRepository videoRepository,
-    IBackgroundJobClient backgroundJobClient) : IAiTemplateOrchestrationService
+    IBackgroundJobClient backgroundJobClient,
+    IUserEventLogger userEventLogger) : IAiTemplateOrchestrationService
 {
-    public async Task<string> EnqueueAiTemplateAsync(AiVideoTemplateRequest request,
+    public async Task<string> EnqueueAiTemplateAsync(
+        string userId,
+        AiVideoTemplateRequest request,
         CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new ArgumentException("User id is required.", nameof(userId));
+        }
+
         var channelId = channelContext.GetRequiredChannelId();
         var isMarked = await videoRepository.TrySettingAiTemplateInProgressAsync(channelId, request.TargetVideoId, true,
             cancellationToken);
@@ -29,6 +38,19 @@ public class AiTemplateOrchestrationService(
         {
             var jobId = backgroundJobClient.Enqueue<AiTemplateJob>(
                 job => job.Run(channelId, request, JobCancellationToken.Null));
+
+            await userEventLogger.LogAsync(
+                userId,
+                UserEventType.AiTemplateEnqueued,
+                request.TargetVideoId,
+                null,
+                new
+                {
+                    generateTitle = request.GenerateTitle,
+                    generateDescription = request.GenerateDescription,
+                    generateTags = request.GenerateTags
+                },
+                cancellationToken);
 
             backgroundJobClient.ContinueJobWith<AiTemplateFinalizeJob>(
                 jobId,
