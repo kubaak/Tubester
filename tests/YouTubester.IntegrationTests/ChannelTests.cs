@@ -11,7 +11,6 @@ using YouTubester.Domain;
 using YouTubester.Integration.Dtos;
 using YouTubester.IntegrationTests.TestHost;
 using YouTubester.Persistence;
-using YouTubester.Persistence.Users;
 
 namespace YouTubester.IntegrationTests;
 
@@ -188,7 +187,8 @@ public sealed class ChannelTests(TestFixture fixture)
 
         var mockPlaylistVideoIds = new Dictionary<string, List<string>>
         {
-            ["playlist123"] = ["video123", "video456"], ["playlist456"] = ["video456"]
+            ["playlist123"] = ["video123", "video456"],
+            ["playlist456"] = ["video456"]
         };
 
         // Setup MockYouTubeIntegration

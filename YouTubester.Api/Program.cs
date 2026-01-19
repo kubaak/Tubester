@@ -1,5 +1,6 @@
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
+using YouTubester.Abstractions.Analytics;
 using YouTubester.Abstractions.Auth;
 using YouTubester.Abstractions.Channels;
 using YouTubester.Abstractions.Playlists;
@@ -11,7 +12,6 @@ using YouTubester.Api.Extensions;
 using YouTubester.Api.Hangfire;
 using YouTubester.Api.Infrastructure;
 using YouTubester.Application;
-using YouTubester.Abstractions.Analytics;
 using YouTubester.Application.Channels;
 using YouTubester.Application.Videos;
 using YouTubester.Integration;

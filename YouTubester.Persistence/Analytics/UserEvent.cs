@@ -1,5 +1,3 @@
-using System;
-
 namespace YouTubester.Persistence.Analytics;
 
 public class UserEvent

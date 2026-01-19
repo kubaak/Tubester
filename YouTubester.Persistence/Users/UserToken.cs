@@ -17,7 +17,10 @@ public sealed class UserToken
 
         var userTokens = new UserToken
         {
-            UserId = userId, RefreshToken = refreshToken, AccessToken = accessToken, ExpiresAt = expiresAt
+            UserId = userId,
+            RefreshToken = refreshToken,
+            AccessToken = accessToken,
+            ExpiresAt = expiresAt
         };
 
         return userTokens;

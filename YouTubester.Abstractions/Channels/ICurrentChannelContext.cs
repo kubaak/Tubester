@@ -12,5 +12,5 @@ public interface ICurrentChannelContext
     /// Use this from code that requires a channel to be present.
     /// </summary>
     /// <exception cref="InvalidOperationException">Thrown when no channel id is available.</exception>
-    public string GetRequiredChannelId();
+    string GetRequiredChannelId();
 }

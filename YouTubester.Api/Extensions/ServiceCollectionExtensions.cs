@@ -5,9 +5,9 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.OpenApi;
+using YouTubester.Abstractions.Analytics;
 using YouTubester.Abstractions.Auth;
 using YouTubester.Abstractions.Users;
-using YouTubester.Abstractions.Analytics;
 using YouTubester.Integration;
 
 namespace YouTubester.Api.Extensions;

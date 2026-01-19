@@ -1,6 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using YouTubester.Abstractions.Users;
 using YouTubester.Domain;
+using YouTubester.Persistence.Analytics;
 using YouTubester.Persistence.Users;
 using Channel = YouTubester.Domain.Channel;
 
@@ -15,63 +17,63 @@ public class YouTubesterDb(DbContextOptions<YouTubesterDb> options) : DbContext(
     public DbSet<Video> Videos => Set<Video>();
     public DbSet<Playlist> Playlists => Set<Playlist>();
     public DbSet<VideoPlaylist> VideoPlaylists => Set<VideoPlaylist>();
-    public DbSet<Analytics.UserEvent> UserEvents => Set<Analytics.UserEvent>();
+    public DbSet<UserEvent> UserEvents => Set<UserEvent>();
+
 
     protected override void OnModelCreating(ModelBuilder b)
     {
         //todo indexes
-        b.Entity<Reply>().HasKey(x => x.CommentId);
-        b.Entity<Reply>().HasIndex(x => x.VideoId);
-        b.Entity<Reply>().Property(x => x.PulledAt);
-        b.Entity<Reply>().Property(x => x.PostedAt);
+        b.Entity<Reply>().HasKey(reply => reply.CommentId);
+        b.Entity<Reply>().HasIndex(reply => reply.VideoId);
+        b.Entity<Reply>().Property(reply => reply.PulledAt);
+        b.Entity<Reply>().Property(reply => reply.PostedAt);
 
-        b.Entity<User>().HasKey(x => x.Id);
-        b.Entity<User>().Property(x => x.CreatedAt);
-        b.Entity<User>().Property(x => x.LastLoginAt);
-
-        b.Entity<UserToken>().HasKey(x => x.UserId);
-        b.Entity<UserToken>().Property(x => x.ExpiresAt);
+        b.Entity<User>().HasKey(user => user.Id);
+        b.Entity<User>().Property(user => user.CreatedAt);
+        b.Entity<User>().Property(user => user.LastLoginAt);
+        b.Entity<UserToken>().HasKey(token => token.UserId);
+        b.Entity<UserToken>().Property(token => token.ExpiresAt);
         b.Entity<UserToken>()
             .HasOne<User>()
             .WithOne()
-            .HasForeignKey<UserToken>(x => x.UserId)
+            .HasForeignKey<UserToken>(token => token.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        b.Entity<Channel>().HasKey(x => x.ChannelId);
-        b.Entity<Channel>().Property(x => x.ETag).HasMaxLength(128);
-        b.Entity<Channel>().Property(x => x.UpdatedAt);
-        b.Entity<Channel>().Property(x => x.LastUploadsCutoff);
-        b.Entity<Video>().HasKey(v => v.VideoId);
-        b.Entity<Video>().HasIndex(x => x.UpdatedAt);
+        b.Entity<Channel>().HasKey(channel => channel.ChannelId);
+        b.Entity<Channel>().Property(channel => channel.ETag).HasMaxLength(128);
+        b.Entity<Channel>().Property(channel => channel.UpdatedAt);
+        b.Entity<Channel>().Property(channel => channel.LastUploadsCutoff);
+        b.Entity<Video>().HasKey(video => video.VideoId);
+        b.Entity<Video>().HasIndex(video => video.UpdatedAt);
         // Composite index for video listing performance (PublishedAt DESC, VideoId DESC)
-        b.Entity<Video>().HasIndex(v => new { v.PublishedAt, v.VideoId });
-        b.Entity<Video>().Property(x => x.ETag).HasMaxLength(128);
-        b.Entity<Video>().Property(x => x.CachedAt);
-        b.Entity<Video>().Property(x => x.UpdatedAt);
-        b.Entity<Video>().Property(x => x.PublishedAt);
+        b.Entity<Video>().HasIndex(video => new { video.PublishedAt, video.VideoId });
+        b.Entity<Video>().Property(video => video.ETag).HasMaxLength(128);
+        b.Entity<Video>().Property(video => video.CachedAt);
+        b.Entity<Video>().Property(video => video.UpdatedAt);
+        b.Entity<Video>().Property(video => video.PublishedAt);
         b.Entity<Video>()
-            .OwnsOne(v => v.Location, x =>
+            .OwnsOne(video => video.Location, ownedNavigationBuilder =>
             {
-                x.Property(p => p.Latitude);
-                x.Property(p => p.Longitude);
-                x.WithOwner();
+                ownedNavigationBuilder.Property(location => location.Latitude);
+                ownedNavigationBuilder.Property(location => location.Longitude);
+                ownedNavigationBuilder.WithOwner();
             });
 
-        b.Entity<Playlist>().HasKey(x => x.PlaylistId);
-        b.Entity<Playlist>().HasIndex(x => x.ChannelId);
-        b.Entity<Playlist>().Property(x => x.ETag).HasMaxLength(128);
-        b.Entity<Playlist>().HasOne<Channel>().WithMany().HasForeignKey(p => p.ChannelId)
+        b.Entity<Playlist>().HasKey(playlist => playlist.PlaylistId);
+        b.Entity<Playlist>().HasIndex(playlist => playlist.ChannelId);
+        b.Entity<Playlist>().Property(playlist => playlist.ETag).HasMaxLength(128);
+        b.Entity<Playlist>().HasOne<Channel>().WithMany().HasForeignKey(playlist => playlist.ChannelId)
             .OnDelete(DeleteBehavior.Cascade);
-        b.Entity<Playlist>().Property(x => x.UpdatedAt);
-        b.Entity<Playlist>().Property(x => x.LastMembershipSyncAt);
+        b.Entity<Playlist>().Property(playlist => playlist.UpdatedAt);
+        b.Entity<Playlist>().Property(playlist => playlist.LastMembershipSyncAt);
 
-        b.Entity<VideoPlaylist>().HasKey(x => new { x.VideoId, x.PlaylistId });
-        b.Entity<VideoPlaylist>().HasIndex(x => x.PlaylistId);
-        b.Entity<VideoPlaylist>().HasOne<Playlist>().WithMany().HasForeignKey(x => x.PlaylistId)
+        b.Entity<VideoPlaylist>().HasKey(videoPlaylist => new { videoPlaylist.VideoId, videoPlaylist.PlaylistId });
+        b.Entity<VideoPlaylist>().HasIndex(videoPlaylist => videoPlaylist.PlaylistId);
+        b.Entity<VideoPlaylist>().HasOne<Playlist>().WithMany().HasForeignKey(videoPlaylist => videoPlaylist.PlaylistId)
             .OnDelete(DeleteBehavior.Cascade);
         b.Entity<VideoPlaylist>().HasOne<Video>().WithMany()
-            .HasForeignKey(x => x.VideoId).OnDelete(DeleteBehavior.Cascade);
-        b.Entity<Analytics.UserEvent>(entity =>
+            .HasForeignKey(videoPlaylist => videoPlaylist.VideoId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<UserEvent>(entity =>
         {
             entity.ToTable("UserEvents", "analytics");
 

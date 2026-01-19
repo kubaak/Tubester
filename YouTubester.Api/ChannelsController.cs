@@ -1,8 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using YouTubester.Abstractions.Channels;
-using YouTubester.Application;
 using YouTubester.Application.Channels;
 using YouTubester.Domain;
 
