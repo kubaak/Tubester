@@ -1,10 +1,10 @@
 using Hangfire;
+using YouTubester.Abstractions.Analytics;
 using YouTubester.Abstractions.Auth;
 using YouTubester.Abstractions.Channels;
 using YouTubester.Abstractions.Playlists;
 using YouTubester.Abstractions.Replies;
 using YouTubester.Abstractions.Videos;
-using YouTubester.Abstractions.Analytics;
 using YouTubester.Application.Jobs;
 using YouTubester.Application.Videos;
 using YouTubester.Integration;

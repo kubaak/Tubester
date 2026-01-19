@@ -25,7 +25,8 @@ public class BackgroundYoutubeIntegration : IBackgroundYoutubeIntegration
 
         _youTubeService = new YouTubeService(new BaseClientService.Initializer
         {
-            ApiKey = apiKey, ApplicationName = "YouTubester"
+            ApiKey = apiKey,
+            ApplicationName = "YouTubester"
         });
     }
 
