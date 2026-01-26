@@ -33,6 +33,20 @@ public class ReplyRepository(YouTubesterDb db) : IReplyRepository
         return await db.Replies.AsNoTracking().FirstOrDefaultAsync(d => d.CommentId == commentId, cancellationToken);
     }
 
+    public async Task<bool> TryClaimForDraftingAsync(Reply reply, CancellationToken cancellationToken)
+    {
+        var rowsAffected = await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+
+             INSERT INTO "Replies" ("CommentId", "VideoId", "VideoTitle", "CommentText", "Status", "PulledAt")
+             VALUES ({reply.CommentId}, {reply.VideoId}, {reply.VideoTitle}, {reply.CommentText}, {(int)ReplyStatus.Drafting}, {reply.PulledAt})
+             ON CONFLICT ("CommentId") DO NOTHING
+
+             """, cancellationToken);
+
+        return rowsAffected > 0;
+    }
+
     public async Task AddOrUpdateReplyAsync(Reply reply, CancellationToken ct)
     {
         var tracked = await db.Replies.FirstOrDefaultAsync(r => r.CommentId == reply.CommentId, ct);

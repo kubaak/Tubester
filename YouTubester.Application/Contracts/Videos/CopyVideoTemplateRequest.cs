@@ -3,6 +3,7 @@ namespace YouTubester.Application.Contracts.Videos;
 public sealed record CopyVideoTemplateRequest(
     string SourceVideoId,
     string TargetVideoId,
+    string OperationId,
     bool CopyTags = true,
     bool CopyLocation = true,
     bool CopyPlaylists = true,

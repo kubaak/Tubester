@@ -1,0 +1,8 @@
+[
+  {
+    "job-name": "CreditPeriodMaintenanceJob",
+    "job-type": "YouTubester.Application.Jobs.CreditPeriodMaintenanceJob, YouTubester.Application",
+    "cron-expression": "0 0 * * *",
+    "queue": "default"
+  }
+]

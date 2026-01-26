@@ -6,10 +6,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Xunit;
 using YouTubester.Abstractions.Analytics;
+using YouTubester.Abstractions.Credits;
+using YouTubester.Abstractions.Users;
 using YouTubester.Application.Contracts.Replies;
 using YouTubester.Domain;
 using YouTubester.IntegrationTests.TestHost;
 using YouTubester.Persistence;
+using YouTubester.Persistence.Credits;
 
 namespace YouTubester.IntegrationTests;
 
@@ -49,8 +52,14 @@ public class RepliesTests(TestFixture fixture)
         const string testUploadsPlaylistId = "PLTestUploads123";
         fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
             .Returns(testChannelId);
+        var user = User.Create(
+            MockAuthenticationExtensions.TestSub,
+            MockAuthenticationExtensions.TestEmail,
+            MockAuthenticationExtensions.TestName,
+            MockAuthenticationExtensions.TestPicture,
+            TestFixture.TestingDateTimeOffset);
 
-        var channel = Channel.Create(testChannelId, "testChannelName123",
+        var channel = Channel.Create(testChannelId, MockAuthenticationExtensions.TestSub, "testChannelName123",
             testUploadsPlaylistId, DateTimeOffset.UtcNow);
         var video1 = Video.Create(
             testUploadsPlaylistId,
@@ -98,6 +107,7 @@ public class RepliesTests(TestFixture fixture)
         using (var scope = fixture.ApiServices.CreateScope())
         {
             var databaseContext = scope.ServiceProvider.GetRequiredService<YouTubesterDb>();
+            databaseContext.Users.Add(user);
             databaseContext.Channels.Add(channel);
             databaseContext.Videos.AddRange(video1);
             databaseContext.Replies.AddRange(suggestedReply, pulledReply, postedReply);
@@ -206,7 +216,48 @@ public class RepliesTests(TestFixture fixture)
         using (var scope = fixture.ApiServices.CreateScope())
         {
             var databaseContext = scope.ServiceProvider.GetRequiredService<YouTubesterDb>();
+            var plan = new Plan
+            {
+                Code = "FreePlan",
+                Name = "Free Plan",
+                MonthlyCredits = 5,
+                IsActive = true,
+                CreatedAtUtc = TestFixture.TestingDateTimeOffset,
+                UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+            };
+
+            await databaseContext.Plans.AddAsync(plan, CancellationToken.None);
+            await databaseContext.SaveChangesAsync(CancellationToken.None);
+            var user = User.Create(
+                MockAuthenticationExtensions.TestSub,
+                MockAuthenticationExtensions.TestEmail,
+                MockAuthenticationExtensions.TestName,
+                MockAuthenticationExtensions.TestPicture,
+                TestFixture.TestingDateTimeOffset);
+
+            await databaseContext.Users.AddAsync(user, CancellationToken.None);
+            var userSubscription = new Subscription
+            {
+                UserId = user.Id,
+                PlanId = plan.Id,
+                PeriodStartUtc = TestFixture.TestingDateTimeOffset,
+                PeriodEndUtc = TestFixture.TestingDateTimeOffset.AddMonths(1),
+                Status = SubscriptionStatus.Active
+            };
+            await databaseContext.Subscriptions.AddAsync(userSubscription, CancellationToken.None);
+
             databaseContext.Replies.AddRange(reply1, reply2);
+
+            var replyPostedCost = new ActionCost
+            {
+                ActionType = CreditActionType.ReplyPostedToYouTube.ToString(),
+                Cost = 0,
+                IsEnabled = true,
+                UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
+                Notes = "Integration test cost for ReplyPostedToYouTube."
+            };
+
+            await databaseContext.ActionCosts.AddAsync(replyPostedCost, CancellationToken.None);
             await databaseContext.SaveChangesAsync();
         }
 
@@ -271,7 +322,7 @@ public class RepliesTests(TestFixture fixture)
         using var verifyScope = fixture.ApiServices.CreateScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<YouTubesterDb>();
         var events = await verifyDb.UserEvents
-            .Where(e => e.EventType == UserEventType.ReplyPostedToYouTube.ToString())
+            .Where(e => e.EventType == CreditActionType.ReplyPostedToYouTube.ToString())
             .OrderBy(e => e.CommentId)
             .ToListAsync();
 

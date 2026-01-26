@@ -6,8 +6,8 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.OpenApi;
 using YouTubester.Abstractions.Analytics;
-using YouTubester.Abstractions.Auth;
 using YouTubester.Abstractions.Users;
+using YouTubester.Application;
 using YouTubester.Integration;
 
 namespace YouTubester.Api.Extensions;
@@ -132,17 +132,11 @@ public static class ServiceCollectionExtensions
 
                         var requestServices = context.HttpContext.RequestServices;
                         var userRepository = requestServices.GetRequiredService<IUserRepository>();
-                        var userTokenStore = requestServices.GetRequiredService<IUserTokenStore>();
                         var userEventLogger = requestServices.GetRequiredService<IUserEventLogger>();
+                        var dateTimeOffsetProvider = requestServices.GetRequiredService<IDateTimeOffsetProvider>();
                         var cancellationToken = context.HttpContext.RequestAborted;
-                        var now = DateTimeOffset.UtcNow;
+                        var now = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
                         await userRepository.UpsertUserAsync(userId, email, name, picture, now, cancellationToken);
-                        await userTokenStore.UpsertAsync(
-                            userId,
-                            accessToken,
-                            refreshToken,
-                            expiresAt,
-                            cancellationToken);
 
                         await userEventLogger.LogAsync(
                             userId,
@@ -257,10 +251,7 @@ public static class ServiceCollectionExtensions
                         UserEventType.WriteConsentGranted,
                         null,
                         null,
-                        new
-                        {
-                            scheme = context.Scheme.Name
-                        },
+                        new { scheme = context.Scheme.Name },
                         cancellationToken);
                 }
             };

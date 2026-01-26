@@ -1,8 +1,10 @@
 using Hangfire;
 using YouTubester.Abstractions.Analytics;
 using YouTubester.Abstractions.Channels;
+using YouTubester.Abstractions.Credits;
 using YouTubester.Abstractions.Videos;
 using YouTubester.Application.Contracts.Videos;
+using YouTubester.Application.Credits;
 using YouTubester.Application.Exceptions;
 using YouTubester.Application.Jobs;
 
@@ -12,7 +14,8 @@ public class AiTemplateOrchestrationService(
     ICurrentChannelContext channelContext,
     IVideoRepository videoRepository,
     IBackgroundJobClient backgroundJobClient,
-    IUserEventLogger userEventLogger) : IAiTemplateOrchestrationService
+    IUserEventLogger userEventLogger,
+    ICreditsService creditsService) : IAiTemplateOrchestrationService
 {
     public async Task<string> EnqueueAiTemplateAsync(
         string userId,
@@ -36,6 +39,28 @@ public class AiTemplateOrchestrationService(
 
         try
         {
+            var aiTemplateEnqueueIdempotencyKey =
+                $"ai-template-enqueue:{userId}:{request.TargetVideoId}";
+
+            var aiTemplateEnqueueSpendSucceeded = await creditsService.TrySpendAsync(
+                userId,
+                CreditActionType.AiTemplateEnqueued.ToString(),
+                aiTemplateEnqueueIdempotencyKey,
+                request.TargetVideoId,
+                new
+                {
+                    generateTitle = request.GenerateTitle,
+                    generateDescription = request.GenerateDescription,
+                    generateTags = request.GenerateTags
+                },
+                cancellationToken);
+
+            if (!aiTemplateEnqueueSpendSucceeded)
+            {
+                throw new Common.ForbiddenException(
+                    "Insufficient credits to enqueue AI templating.");
+            }
+
             var jobId = backgroundJobClient.Enqueue<AiTemplateJob>(
                 job => job.Run(channelId, request, JobCancellationToken.Null));
 

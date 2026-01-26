@@ -1,7 +1,9 @@
-﻿using YouTubester.Abstractions.Analytics;
+using YouTubester.Abstractions.Analytics;
 using YouTubester.Abstractions.Channels;
+using YouTubester.Abstractions.Credits;
 using YouTubester.Abstractions.Replies;
 using YouTubester.Application.Contracts.Replies;
+using YouTubester.Application.Credits;
 using YouTubester.Domain;
 using YouTubester.Integration;
 
@@ -11,7 +13,9 @@ public class ReplyService(
     IReplyRepository repository,
     IYouTubeIntegration youTubeIntegration,
     ICurrentChannelContext currentChannelContext,
-    IUserEventLogger userEventLogger)
+    IUserEventLogger userEventLogger,
+    ICreditsService creditsService,
+    IDateTimeOffsetProvider dateTimeOffsetProvider)
     : IReplyService
 {
     public Task<IEnumerable<Reply>> GetRepliesForApprovalAsync(CancellationToken cancellationToken)
@@ -103,10 +107,32 @@ public class ReplyService(
                     continue;
                 }
 
-                draft.ApproveText(d.ApprovedText, DateTimeOffset.UtcNow);
+                draft.ApproveText(d.ApprovedText, dateTimeOffsetProvider.GetUtcNowDateTimeOffset());
+
+                var replyPostedIdempotencyKey =
+                    $"reply-posted:{userId}:{draft.VideoId}:{draft.CommentId}";
+
+                var replyPostedSpendSucceeded = await creditsService.TrySpendAsync(
+                    userId,
+                    CreditActionType.ReplyPostedToYouTube.ToString(),
+                    replyPostedIdempotencyKey,
+                    draft.CommentId,
+                    new
+                    {
+                        length = d.ApprovedText.Length,
+                        wasEdited = !string.Equals(d.ApprovedText, draft.SuggestedText, StringComparison.Ordinal)
+                    },
+                    cancellationToken);
+
+                if (!replyPostedSpendSucceeded)
+                {
+                    results.Add(new DraftDecisionResultDto(d.CommentId, false, "Insufficient credits."));
+                    fail++;
+                    continue;
+                }
 
                 await youTubeIntegration.ReplyAsync(draft.CommentId, draft.FinalText!, cancellationToken);
-                draft.Post(DateTimeOffset.UtcNow);
+                draft.Post(dateTimeOffsetProvider.GetUtcNowDateTimeOffset());
 
                 await userEventLogger.LogAsync(
                     userId,

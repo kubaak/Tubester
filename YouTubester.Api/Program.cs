@@ -1,8 +1,10 @@
 using Hangfire;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using YouTubester.Abstractions.Analytics;
 using YouTubester.Abstractions.Auth;
 using YouTubester.Abstractions.Channels;
+using YouTubester.Abstractions.Credits;
 using YouTubester.Abstractions.Playlists;
 using YouTubester.Abstractions.Replies;
 using YouTubester.Abstractions.Users;
@@ -13,17 +15,30 @@ using YouTubester.Api.Hangfire;
 using YouTubester.Api.Infrastructure;
 using YouTubester.Application;
 using YouTubester.Application.Channels;
+using YouTubester.Application.Credits;
 using YouTubester.Application.Videos;
 using YouTubester.Integration;
 using YouTubester.Persistence;
 using YouTubester.Persistence.Analytics;
 using YouTubester.Persistence.Channels;
+using YouTubester.Persistence.Credits;
 using YouTubester.Persistence.Playlists;
 using YouTubester.Persistence.Replies;
 using YouTubester.Persistence.Users;
 using YouTubester.Persistence.Videos;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+
+    //TODO
+    // If you don't want to maintain a list of known proxies/networks (common on VPS),
+    // clear these so forwarded headers are accepted.
+    // options.KnownNetworks.Clear();
+    // options.KnownProxies.Clear();
+});
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -41,12 +56,15 @@ builder.Services.AddScoped<IPlaylistRepository, PlaylistRepository>();
 builder.Services.AddScoped<IUserTokenStore, UserTokenStore>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IUserEventLogger, UserEventLogger>();
+builder.Services.AddScoped<ICreditsStore, CreditsStore>();
+builder.Services.AddScoped<ICreditsService, CreditsService>();
 builder.Services.AddScoped<IReplyService, ReplyService>();
 builder.Services.AddScoped<IVideoService, VideoService>();
 builder.Services.AddScoped<IChannelSyncService, ChannelSyncService>();
 builder.Services.AddScoped<IAiVideoTemplatingService, AiVideoTemplatingService>();
 builder.Services.AddScoped<IAiTemplateOrchestrationService, AiTemplateOrchestrationService>();
 builder.Services.AddScoped<ICommentScanService, CommentScanService>();
+builder.Services.AddSingleton<IDateTimeOffsetProvider, DateTimeOffsetProvider>();
 
 builder.Services.AddVideoListingOptions(builder.Configuration);
 builder.Services.AddCookieWithGoogle(builder.Configuration);
@@ -59,27 +77,13 @@ builder.Services.AddProblemDetails();
 
 var app = builder.Build();
 
+app.UseForwardedHeaders();
 app.UseExceptionHandler();
-app.UseHttpsRedirection();
 app.UseRouting();
-app.UseAuthentication();
-app.UseAuthorization();
-app.MapControllers();
-
-var hangfireAdminEmails = app.Configuration
-    .GetSection("Hangfire:AdminEmails")
-    .Get<string[]>() ?? [];
-var dashboardOptions = new DashboardOptions
-{
-    Authorization = [new EmailHangfireAuthorizationFilter(hangfireAdminEmails)]
-};
-app.UseHangfireDashboard("/hangfire", dashboardOptions);
-
+app.UseSwagger();
+app.UseSwaggerUI();
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-
     app.MapWhen(ctx => !ctx.Request.Path.StartsWithSegments("/api"), spa =>
     {
         spa.UseSpa(spaApp =>
@@ -102,13 +106,19 @@ if (app.Environment.IsDevelopment())
         await DbSeeder.SeedAsync(db);
     }
 }
-else
+
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
+
+var hangfireAdminEmails = app.Configuration
+    .GetSection("Hangfire:AdminEmails")
+    .Get<string[]>() ?? [];
+var dashboardOptions = new DashboardOptions
 {
-    app.UseSpa(spa =>
-    {
-        spa.Options.SourcePath = "wwwroot";
-    });
-}
+    Authorization = [new EmailHangfireAuthorizationFilter(hangfireAdminEmails)]
+};
+app.UseHangfireDashboard("/hangfire", dashboardOptions);
 
 
 app.Run();

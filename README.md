@@ -80,13 +80,18 @@ dotnet user-secrets set "YouTube:AI:Model" "gemma3:12b" --project YouTubester.Ap
 
 ### 3. Database
 Create / update the database schema from the solution root:
-```bash
+```powershell
 dotnet ef database update -p YouTubester.Persistence -s YouTubester.Api
 ```
 
 To add a new migration:
-```bash
+```powershell
 dotnet ef migrations add <MigrationName> -p YouTubester.Persistence -s YouTubester.Api
+```
+
+Roolback to a specific migration:
+```powershell
+dotnet ef database update <TargetMigrationName> -p YouTubester.Persistence -s YouTubester.Api
 ```
 
 For details on migrating from the legacy SQLite database to PostgreSQL, see `README.migrator.md`.

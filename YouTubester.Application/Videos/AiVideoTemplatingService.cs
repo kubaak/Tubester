@@ -6,7 +6,8 @@ namespace YouTubester.Application.Videos;
 
 public sealed class AiVideoTemplatingService(
     IAiClient aiClient,
-    IVideoRepository videoRepository)
+    IVideoRepository videoRepository,
+    IDateTimeOffsetProvider dateTimeOffsetProvider)
     : IAiVideoTemplatingService
 {
     public async Task GenerateAiTemplateAsync(
@@ -30,7 +31,7 @@ public sealed class AiVideoTemplatingService(
             request.GenerateDescription ? suggestedDescription : targetVideo.Description ?? string.Empty;
         var newTags = request.GenerateTags ? SanitizeTags(suggestedTags.ToArray()) : targetVideo.Tags;
 
-        var nowUtc = DateTimeOffset.UtcNow;
+        var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
         targetVideo.ApplyDetails(
             newTitle,
             newDescription,
