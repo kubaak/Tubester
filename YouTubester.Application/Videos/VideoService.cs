@@ -2,11 +2,13 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using YouTubester.Abstractions.Analytics;
 using YouTubester.Abstractions.Channels;
+using YouTubester.Abstractions.Credits;
 using YouTubester.Abstractions.Playlists;
 using YouTubester.Abstractions.Videos;
 using YouTubester.Application.Common;
 using YouTubester.Application.Contracts;
 using YouTubester.Application.Contracts.Videos;
+using YouTubester.Application.Credits;
 using YouTubester.Application.Exceptions;
 using YouTubester.Application.Options;
 using YouTubester.Domain;
@@ -21,7 +23,9 @@ public class VideoService(
     IOptions<VideoListingOptions> videoListingOptions,
     IYouTubeIntegration youTubeIntegration,
     ILogger<VideoService> videoLogger,
-    IUserEventLogger userEventLogger) : IVideoService
+    IUserEventLogger userEventLogger,
+    ICreditsService creditsService,
+    IDateTimeOffsetProvider dateTimeOffsetProvider) : IVideoService
 {
     public async Task<PagedResult<VideoListItemDto>> GetVideosAsync(string? title, VideoVisibility[]? visibility,
         int? pageSize, string? pageToken, CancellationToken ct)
@@ -131,81 +135,130 @@ public class VideoService(
 
         var channelId = channelContext.GetRequiredChannelId();
 
-        // Load source and target videos from DB
-        var sourceVideo = await videoRepository.GetVideoByIdAsync(channelId, request.SourceVideoId, cancellationToken)
-                          ?? throw new ArgumentException($"Source video {request.SourceVideoId} not found in cache.");
-
-        var targetVideo = await videoRepository.GetVideoByIdAsync(channelId, request.TargetVideoId, cancellationToken)
-                          ?? throw new ArgumentException($"Target video {request.TargetVideoId} not found in cache.");
-
-        // Build effective metadata starting from source
-        var newTitle = sourceVideo.Title ?? string.Empty;
-        var newDescription = sourceVideo.Description ?? string.Empty;
-        var newTags = request.CopyTags ? SanitizeTags(sourceVideo.Tags) : targetVideo.Tags;
-        var location = request.CopyLocation
-            ? ConvertToLocationTuple(sourceVideo.Location)
-            : ConvertToLocationTuple(targetVideo.Location);
-        var locationDescription =
-            request.CopyLocation ? sourceVideo.LocationDescription : targetVideo.LocationDescription;
-        var categoryId = request.CopyCategory ? sourceVideo.CategoryId : targetVideo.CategoryId;
-        var defaultLanguage = request.CopyDefaultLanguages ? sourceVideo.DefaultLanguage : targetVideo.DefaultLanguage;
-        var defaultAudioLanguage = request.CopyDefaultLanguages
-            ? sourceVideo.DefaultAudioLanguage
-            : targetVideo.DefaultAudioLanguage;
+        var copyTemplateIdempotencyKey =
+            $"copy-template:{userId}:{request.SourceVideoId}:{request.TargetVideoId}:{request.OperationId}";
 
 
-        // Update target video on YouTube
-        await youTubeIntegration.UpdateVideoAsync(
-            request.TargetVideoId,
-            newTitle,
-            newDescription,
-            newTags,
-            categoryId,
-            defaultLanguage,
-            defaultAudioLanguage,
-            location,
-            locationDescription,
-            cancellationToken);
-
-        // Persist changes to DB only after successful YouTube update
-        var nowUtc = DateTimeOffset.UtcNow;
-        targetVideo.ApplyDetails(
-            newTitle,
-            newDescription,
-            targetVideo.PublishedAt,
-            targetVideo.Duration,
-            targetVideo.Visibility,
-            newTags,
-            categoryId,
-            defaultLanguage,
-            defaultAudioLanguage,
-            ConvertFromLocationTuple(location),
-            locationDescription,
-            nowUtc,
-            null, //we won't know the etag at from this point 
-            targetVideo.CommentsAllowed
-        );
-
-        await videoRepository.UpsertAsync(channelId, [targetVideo], cancellationToken);
-
-        await userEventLogger.LogAsync(
+        // First, check and deduct credits. This acts as a gate before performing external work.
+        var copyTemplateSpendSucceeded = await creditsService.TrySpendAsync(
             userId,
-            UserEventType.CopyTemplateExecuted,
+            CreditActionType.CopyTemplateExecuted.ToString(),
+            copyTemplateIdempotencyKey,
             request.TargetVideoId,
-            null,
-            new
-            {
-                sourceVideoId = request.SourceVideoId,
-                copyTags = request.CopyTags,
-                copyLocation = request.CopyLocation,
-                copyPlaylists = request.CopyPlaylists,
-                copyCategory = request.CopyCategory,
-                copyDefaultLanguages = request.CopyDefaultLanguages
-            },
+            new { sourceVideoId = request.SourceVideoId, targetVideoId = request.TargetVideoId },
             cancellationToken);
 
-        if (!request.CopyPlaylists)
+        if (!copyTemplateSpendSucceeded)
         {
+            throw new ForbiddenException("Insufficient credits to copy template.");
+        }
+
+        try
+        {
+            // Load source and target videos from DB
+            var sourceVideo =
+                await videoRepository.GetVideoByIdAsync(channelId, request.SourceVideoId, cancellationToken)
+                ?? throw new ArgumentException($"Source video {request.SourceVideoId} not found in cache.");
+
+            var targetVideo =
+                await videoRepository.GetVideoByIdAsync(channelId, request.TargetVideoId, cancellationToken)
+                ?? throw new ArgumentException($"Target video {request.TargetVideoId} not found in cache.");
+
+            // Build effective metadata starting from source
+            var newTitle = sourceVideo.Title ?? string.Empty;
+            var newDescription = sourceVideo.Description ?? string.Empty;
+            var newTags = request.CopyTags ? SanitizeTags(sourceVideo.Tags) : targetVideo.Tags;
+            var location = request.CopyLocation
+                ? ConvertToLocationTuple(sourceVideo.Location)
+                : ConvertToLocationTuple(targetVideo.Location);
+            var locationDescription =
+                request.CopyLocation ? sourceVideo.LocationDescription : targetVideo.LocationDescription;
+            var categoryId = request.CopyCategory ? sourceVideo.CategoryId : targetVideo.CategoryId;
+            var defaultLanguage =
+                request.CopyDefaultLanguages ? sourceVideo.DefaultLanguage : targetVideo.DefaultLanguage;
+            var defaultAudioLanguage = request.CopyDefaultLanguages
+                ? sourceVideo.DefaultAudioLanguage
+                : targetVideo.DefaultAudioLanguage;
+
+            // Update target video on YouTube. At this point, credits have already been checked/deducted.
+            await youTubeIntegration.UpdateVideoAsync(
+                request.TargetVideoId,
+                newTitle,
+                newDescription,
+                newTags,
+                categoryId,
+                defaultLanguage,
+                defaultAudioLanguage,
+                location,
+                locationDescription,
+                cancellationToken);
+
+            // Persist changes to DB only after successful YouTube update
+            var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
+            targetVideo.ApplyDetails(
+                newTitle,
+                newDescription,
+                targetVideo.PublishedAt,
+                targetVideo.Duration,
+                targetVideo.Visibility,
+                newTags,
+                categoryId,
+                defaultLanguage,
+                defaultAudioLanguage,
+                ConvertFromLocationTuple(location),
+                locationDescription,
+                nowUtc,
+                null, //we won't know the etag at from this point 
+                targetVideo.CommentsAllowed
+            );
+
+            await videoRepository.UpsertAsync(channelId, [targetVideo], cancellationToken);
+
+            await userEventLogger.LogAsync(
+                userId,
+                UserEventType.CopyTemplateExecuted,
+                request.TargetVideoId,
+                null,
+                new
+                {
+                    sourceVideoId = request.SourceVideoId,
+                    copyTags = request.CopyTags,
+                    copyLocation = request.CopyLocation,
+                    copyPlaylists = request.CopyPlaylists,
+                    copyCategory = request.CopyCategory,
+                    copyDefaultLanguages = request.CopyDefaultLanguages
+                },
+                cancellationToken);
+
+            if (!request.CopyPlaylists)
+            {
+                return new CopyVideoTemplateResult(
+                    request.SourceVideoId,
+                    request.TargetVideoId,
+                    newTitle,
+                    newDescription,
+                    newTags,
+                    locationDescription,
+                    location,
+                    [],
+                    request.CopyCategory,
+                    request.CopyDefaultLanguages
+                );
+            }
+
+            var playlistIds =
+                (await playlistRepository.GetPlaylistIdsByVideoAsync(sourceVideo.VideoId, cancellationToken))
+                .ToHashSet();
+            foreach (var playlistId in playlistIds)
+            {
+                await youTubeIntegration.AddVideoToPlaylistAsync(playlistId, targetVideo.VideoId,
+                    cancellationToken);
+            }
+
+            await playlistRepository.SetMembershipsToPlaylistsAsync(targetVideo.VideoId, playlistIds,
+                cancellationToken);
+
+
             return new CopyVideoTemplateResult(
                 request.SourceVideoId,
                 request.TargetVideoId,
@@ -214,37 +267,25 @@ public class VideoService(
                 newTags,
                 locationDescription,
                 location,
-                [],
+                playlistIds.ToArray(),
                 request.CopyCategory,
                 request.CopyDefaultLanguages
             );
         }
-
-        var playlistIds =
-            (await playlistRepository.GetPlaylistIdsByVideoAsync(sourceVideo.VideoId, cancellationToken))
-            .ToHashSet();
-        foreach (var playlistId in playlistIds)
+        catch
         {
-            await youTubeIntegration.AddVideoToPlaylistAsync(playlistId, targetVideo.VideoId,
+            var copyTemplateRefundIdempotencyKey =
+                $"copy-template-refund:{userId}:{request.SourceVideoId}:{request.TargetVideoId}:{request.OperationId}";
+
+            await creditsService.RefundAsync(
+                userId,
+                CreditActionType.CopyTemplateExecuted.ToString(),
+                copyTemplateIdempotencyKey,
+                copyTemplateRefundIdempotencyKey,
                 cancellationToken);
+
+            throw;
         }
-
-        await playlistRepository.SetMembershipsToPlaylistsAsync(targetVideo.VideoId, playlistIds,
-            cancellationToken);
-
-
-        return new CopyVideoTemplateResult(
-            request.SourceVideoId,
-            request.TargetVideoId,
-            newTitle,
-            newDescription,
-            newTags,
-            locationDescription,
-            location,
-            playlistIds.ToArray(),
-            request.CopyCategory,
-            request.CopyDefaultLanguages
-        );
     }
 
     public async Task<VideoDetailsDto?> UpdateVideoMetadataAsync(
@@ -252,6 +293,11 @@ public class VideoService(
         UpdateVideoMetadataRequest request,
         CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new ArgumentException("User id is required.", nameof(userId));
+        }
+
         if (string.IsNullOrWhiteSpace(request.VideoId))
         {
             return null;
@@ -275,6 +321,28 @@ public class VideoService(
             location = (video.Location.Latitude, video.Location.Longitude);
         }
 
+        var aiTemplateSubmittedIdempotencyKey =
+            $"ai-template-submitted:{userId}:{request.VideoId}";
+
+        var aiTemplateSubmittedSpendSucceeded = await creditsService.TrySpendAsync(
+            userId,
+            CreditActionType.AiTemplateSubmitted.ToString(),
+            aiTemplateSubmittedIdempotencyKey,
+            request.VideoId,
+            new
+            {
+                generateTitle = !string.IsNullOrWhiteSpace(request.Title),
+                generateDescription = request.Description is not null,
+                generateTags = request.Tags is not null
+            },
+            cancellationToken);
+
+        if (!aiTemplateSubmittedSpendSucceeded)
+        {
+            throw new ForbiddenException(
+                "Insufficient credits to submit AI template changes.");
+        }
+
         await youTubeIntegration.UpdateVideoAsync(
             video.VideoId,
             title,
@@ -287,7 +355,7 @@ public class VideoService(
             video.LocationDescription,
             cancellationToken);
 
-        var nowUtc = DateTimeOffset.UtcNow;
+        var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
         video.ApplyDetails(
             title,
             description,

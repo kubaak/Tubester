@@ -10,10 +10,10 @@ public sealed class AuthenticatedTests(TestFixture fixture)
 {
     private sealed class MeResponse
     {
-        public string? name { get; set; }
-        public string? email { get; set; }
-        public string? sub { get; set; }
-        public string? picture { get; set; }
+        public string? Name { get; set; }
+        public string? Email { get; set; }
+        public string? Sub { get; set; }
+        public string? Picture { get; set; }
     }
 
     [Fact]
@@ -28,10 +28,10 @@ public sealed class AuthenticatedTests(TestFixture fixture)
         var body = await response.Content.ReadFromJsonAsync<MeResponse>();
         Assert.NotNull(body);
 
-        Assert.Equal(MockAuthenticationExtensions.TestName, body.name);
-        Assert.Equal(MockAuthenticationExtensions.TestEmail, body.email);
-        Assert.Equal(MockAuthenticationExtensions.TestSub, body.sub);
-        Assert.Equal(MockAuthenticationExtensions.TestPicture, body.picture);
+        Assert.Equal(MockAuthenticationExtensions.TestName, body.Name);
+        Assert.Equal(MockAuthenticationExtensions.TestEmail, body.Email);
+        Assert.Equal(MockAuthenticationExtensions.TestSub, body.Sub);
+        Assert.Equal(MockAuthenticationExtensions.TestPicture, body.Picture);
     }
 
     [Fact]

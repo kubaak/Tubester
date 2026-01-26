@@ -16,12 +16,12 @@ public sealed class TestFixture : IAsyncLifetime
     public IServiceProvider ApiServices => ApiFactory.Services;
     public IServiceProvider WorkerServices => WorkerFactory.TestHost.Services;
     public IFixture Auto { get; private set; } = CreateAuto();
-    public static DateTimeOffset TestingDateTimeOffset { get; } = new(2025, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    public static DateTimeOffset TestingDateTimeOffset { get; } = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     public async Task InitializeAsync()
     {
-        ApiFactory = new ApiTestWebAppFactory(CapturingJobClient);
-        WorkerFactory = new WorkerTestHostFactory(CapturingJobClient);
+        ApiFactory = new ApiTestWebAppFactory(CapturingJobClient, TestingDateTimeOffset);
+        WorkerFactory = new WorkerTestHostFactory(CapturingJobClient, TestingDateTimeOffset);
         HttpClient = ApiFactory.CreateClient();
 
         // Ensure database is created once

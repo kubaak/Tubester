@@ -16,12 +16,12 @@ public enum UserEventType
     CopyTemplateExecuted = 1,
 
     /// <summary>
-    /// The user enqueued an artificial intelligence powered template job.
+    /// The user enqueued artificial intelligence powered template job.
     /// </summary>
     AiTemplateEnqueued = 2,
 
     /// <summary>
-    /// The user submitted an artificial intelligence powered template result.
+    /// The user submitted artificial intelligence powered template result.
     /// </summary>
     AiTemplateSubmitted = 3,
 

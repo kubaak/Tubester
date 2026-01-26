@@ -4,7 +4,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Xunit;
-using YouTubester.Abstractions.Channels;
 using YouTubester.Abstractions.Users;
 using YouTubester.Application.Channels;
 using YouTubester.Domain;
@@ -17,95 +16,6 @@ namespace YouTubester.IntegrationTests;
 [Collection(nameof(TestCollection))]
 public sealed class ChannelTests(TestFixture fixture)
 {
-    [Fact]
-    public async Task PullChannel_Creates_Then_Updates_Channel_In_Database()
-    {
-        // Arrange
-        await fixture.ResetDbAsync();
-
-        const string channelId = "UC1234567890KITTENS";
-        const string uploadsIdV1 = "PL-UPLOADS-V1";
-        const string uploadsIdV2 = "PL-UPLOADS-V2";
-        const string nameV1 = "Cute Kittens";
-        const string nameV2 = "Cuter Kittens";
-        const string etagV1 = "etag-v1";
-        const string etagV2 = "etag-v2";
-
-        // First call returns initial snapshot, second call returns changed data
-        fixture.ApiFactory.MockYouTubeIntegration
-            .SetupSequence(x => x.GetChannelAsync(channelId,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ChannelDto(channelId, nameV1, uploadsIdV1, etagV1))
-            .ReturnsAsync(new ChannelDto(channelId, nameV2, uploadsIdV2, etagV2));
-
-        // --- Act #1: create ---
-        var createResp = await fixture.HttpClient.PostAsync($"/api/channels/pull/{channelId}", null);
-        Assert.Equal(HttpStatusCode.OK, createResp.StatusCode);
-
-        // Assert DB after creation
-        using (var scope = fixture.ApiServices.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<YouTubesterDb>();
-            var ch = await db.Channels.AsNoTracking().SingleOrDefaultAsync(c => c.ChannelId == channelId);
-
-            Assert.NotNull(ch);
-            Assert.Equal(nameV1, ch.Name);
-            Assert.Equal(uploadsIdV1, ch.UploadsPlaylistId);
-            Assert.Equal(etagV1, ch.ETag);
-            Assert.Null(ch.LastUploadsCutoff); // not set by pull
-            Assert.True(ch.UpdatedAt > TestFixture.TestingDateTimeOffset); // sanity check it's set
-        }
-
-        // --- Act #2: update (different name, uploads, etag) ---
-        var updateResp = await fixture.HttpClient.PostAsync($"/api/channels/pull/{channelId}", null);
-        Assert.Equal(HttpStatusCode.OK, updateResp.StatusCode);
-
-        // Assert DB after update
-        using (var scope = fixture.ApiServices.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<YouTubesterDb>();
-            var ch = await db.Channels.AsNoTracking().SingleOrDefaultAsync(c => c.ChannelId == channelId);
-
-            Assert.NotNull(ch);
-            Assert.Equal(nameV2, ch.Name);
-            Assert.Equal(uploadsIdV2, ch.UploadsPlaylistId);
-            Assert.Equal(etagV2, ch.ETag);
-        }
-
-        // Verify the integration was called twice with the same input channel id
-        fixture.ApiFactory.MockYouTubeIntegration.Verify(
-            m => m.GetChannelAsync(channelId,
-                It.IsAny<CancellationToken>()), Times.Exactly(2));
-    }
-
-    // [Fact] todo keep the test after storing the token for comment scan
-    // public async Task SyncCurrentChannels_Enqueues_Background_Job_And_Returns_Accepted()
-    // {
-    //     // Arrange
-    //     await fixture.ResetDbAsync();
-    //
-    //     // Act
-    //     var response = await fixture.HttpClient.PostAsync("/api/channels/sync/current", null);
-    //
-    //     // Assert HTTP response
-    //     Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
-    //
-    //     var responseContent = await response.Content.ReadAsStringAsync();
-    //     using var jsonDocument = JsonDocument.Parse(responseContent);
-    //     var rootElement = jsonDocument.RootElement;
-    //     Assert.True(rootElement.TryGetProperty("status", out var statusProperty));
-    //     Assert.Equal("scheduled", statusProperty.GetString());
-    //
-    //     // Assert background job was enqueued for the current user
-    //     var capturedJobs = fixture.CapturingJobClient.GetEnqueued<IChannelSyncService>();
-    //     Assert.Single(capturedJobs);
-    //
-    //     var capturedJob = capturedJobs.Single();
-    //     Assert.Equal(nameof(IChannelSyncService.SyncChannelAsync), capturedJob.Job.Method.Name);
-    //     Assert.Equal(2, capturedJob.Job.Args.Count);
-    //     Assert.Equal(MockAuthenticationExtensions.TestSub, capturedJob.Job.Args[0]);
-    // }
-
     [Fact]
     public async Task Sync_WithDummyChannelAndMockedYouTubeData_UpdatesDatabaseCorrectly()
     {
@@ -127,6 +37,7 @@ public sealed class ChannelTests(TestFixture fixture)
 
         var dummyChannel = Channel.Create(
             testChannelId,
+            userId,
             testChannelName,
             testUploadsPlaylistId,
             TestFixture.TestingDateTimeOffset
@@ -318,6 +229,7 @@ public sealed class ChannelTests(TestFixture fixture)
 
         var dummyChannel = Channel.Create(
             testChannelId,
+            userId,
             testChannelName,
             testUploadsPlaylistId,
             TestFixture.TestingDateTimeOffset

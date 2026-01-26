@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Moq;
+using YouTubester.Application;
 using YouTubester.Integration;
 using YouTubester.Persistence;
 using YouTubester.Worker;
@@ -18,11 +19,17 @@ public sealed class WorkerTestHostFactory : IDisposable
     public string TestDatabaseConnectionString { get; private set; } = default!;
     public Mock<IAiClient> MockAiClient { get; }
     public Mock<IYouTubeIntegration> MockYouTubeIntegration { get; }
+    public Mock<IBackgroundYoutubeIntegration> MockBackgroundYoutubeIntegration { get; }
+    public Mock<IDateTimeOffsetProvider> MockDateTimeOffsetProvider { get; }
 
-    public WorkerTestHostFactory(CapturingBackgroundJobClient capturingJobClient)
+    public WorkerTestHostFactory(CapturingBackgroundJobClient capturingJobClient, DateTimeOffset testingUtcNow)
     {
         MockAiClient = new Mock<IAiClient>(MockBehavior.Strict);
         MockYouTubeIntegration = new Mock<IYouTubeIntegration>(MockBehavior.Strict);
+        MockBackgroundYoutubeIntegration = new Mock<IBackgroundYoutubeIntegration>(MockBehavior.Strict);
+        MockDateTimeOffsetProvider = new Mock<IDateTimeOffsetProvider>(MockBehavior.Strict);
+        MockDateTimeOffsetProvider.Setup(x => x.GetUtcNowDateTimeOffset()).Returns(testingUtcNow);
+
 
         var hostBuilder = Host.CreateDefaultBuilder([]);
 
@@ -76,6 +83,8 @@ public sealed class WorkerTestHostFactory : IDisposable
         services.Replace(ServiceDescriptor.Singleton<IBackgroundJobClient>(capturingJobClient));
         services.Replace(ServiceDescriptor.Singleton(MockAiClient.Object));
         services.Replace(ServiceDescriptor.Singleton(MockYouTubeIntegration.Object));
+        services.Replace(ServiceDescriptor.Singleton(MockBackgroundYoutubeIntegration.Object));
+        services.Replace(ServiceDescriptor.Singleton(MockDateTimeOffsetProvider.Object));
     }
 
     public async Task EnsureDatabaseCreatedAsync()

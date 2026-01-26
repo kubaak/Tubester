@@ -22,6 +22,8 @@ bld/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
+# JetBrains Rider
+.artifacts/
 
 # .NET Core
 project.lock.json
@@ -52,6 +54,7 @@ CodeCoverage/
 *.db
 *.db-shm
 *.db-wal
+.data/*
 
 # NUnit
 *.VisualState.xml

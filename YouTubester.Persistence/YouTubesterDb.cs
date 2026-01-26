@@ -1,8 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using YouTubester.Abstractions.Users;
 using YouTubester.Domain;
 using YouTubester.Persistence.Analytics;
+using YouTubester.Persistence.Credits;
 using YouTubester.Persistence.Users;
 using Channel = YouTubester.Domain.Channel;
 
@@ -19,6 +19,11 @@ public class YouTubesterDb(DbContextOptions<YouTubesterDb> options) : DbContext(
     public DbSet<VideoPlaylist> VideoPlaylists => Set<VideoPlaylist>();
     public DbSet<UserEvent> UserEvents => Set<UserEvent>();
 
+    public DbSet<Plan> Plans => Set<Plan>();
+    public DbSet<Subscription> Subscriptions => Set<Subscription>();
+    public DbSet<Wallet> Wallets => Set<Wallet>();
+    public DbSet<LedgerEntry> LedgerEntries => Set<LedgerEntry>();
+    public DbSet<ActionCost> ActionCosts => Set<ActionCost>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -43,6 +48,12 @@ public class YouTubesterDb(DbContextOptions<YouTubesterDb> options) : DbContext(
         b.Entity<Channel>().Property(channel => channel.ETag).HasMaxLength(128);
         b.Entity<Channel>().Property(channel => channel.UpdatedAt);
         b.Entity<Channel>().Property(channel => channel.LastUploadsCutoff);
+        b.Entity<Channel>().HasIndex(channel => channel.UserId);
+        b.Entity<Channel>()
+            .HasOne<User>()
+            .WithMany()
+            .HasForeignKey(channel => channel.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
         b.Entity<Video>().HasKey(video => video.VideoId);
         b.Entity<Video>().HasIndex(video => video.UpdatedAt);
         // Composite index for video listing performance (PublishedAt DESC, VideoId DESC)
@@ -97,6 +108,134 @@ public class YouTubesterDb(DbContextOptions<YouTubesterDb> options) : DbContext(
                 .HasDatabaseName("IX_UserEvents_EventType_OccurredAtUtc_Desc");
             entity.HasIndex(userEvent => userEvent.OccurredAtUtc)
                 .HasDatabaseName("IX_UserEvents_OccurredAtUtc_Desc");
+        });
+        b.Entity<Plan>(entity =>
+        {
+            entity.ToTable("Plans");
+
+            entity.HasKey(plan => plan.Id);
+
+            entity.Property(plan => plan.Code)
+                .IsRequired();
+
+            entity.Property(plan => plan.Name)
+                .IsRequired();
+
+            entity.Property(plan => plan.MonthlyCredits)
+                .IsRequired();
+
+            entity.Property(plan => plan.IsActive)
+                .IsRequired();
+
+            entity.Property(plan => plan.CreatedAtUtc)
+                .IsRequired();
+
+            entity.Property(plan => plan.UpdatedAtUtc)
+                .IsRequired();
+
+            entity.HasIndex(plan => plan.Code)
+                .IsUnique();
+        });
+
+        b.Entity<Subscription>(entity =>
+        {
+            entity.ToTable("Subscriptions");
+
+            entity.HasKey(subscription => subscription.UserId);
+
+            entity.Property(subscription => subscription.PlanId)
+                .IsRequired();
+
+            entity.Property(subscription => subscription.PeriodStartUtc)
+                .IsRequired();
+
+            entity.Property(subscription => subscription.PeriodEndUtc)
+                .IsRequired();
+
+            entity.Property(subscription => subscription.Status)
+                .IsRequired()
+                .HasConversion<string>();
+
+            entity.HasOne(subscription => subscription.Plan)
+                .WithMany()
+                .HasForeignKey(subscription => subscription.PlanId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<Wallet>(entity =>
+        {
+            entity.ToTable("Wallets");
+
+            entity.HasKey(wallet => wallet.UserId);
+
+            entity.Property(wallet => wallet.Balance)
+                .IsRequired();
+
+            entity.Property(wallet => wallet.PeriodStartUtc)
+                .IsRequired();
+
+            entity.Property(wallet => wallet.PeriodEndUtc)
+                .IsRequired();
+
+            entity.Property(wallet => wallet.UpdatedAtUtc)
+                .IsRequired();
+
+            entity.HasOne<User>()
+                .WithOne()
+                .HasForeignKey<Wallet>(wallet => wallet.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<LedgerEntry>(entity =>
+        {
+            entity.ToTable("LedgerEntries");
+
+            entity.HasKey(entry => entry.Id);
+
+            entity.Property(entry => entry.Id)
+                .ValueGeneratedOnAdd();
+
+            entity.Property(entry => entry.UserId)
+                .IsRequired();
+
+            entity.Property(entry => entry.OccurredAtUtc)
+                .IsRequired();
+
+            entity.Property(entry => entry.ActionType)
+                .IsRequired();
+
+            entity.Property(entry => entry.Delta)
+                .IsRequired();
+
+            entity.Property(entry => entry.IdempotencyKey)
+                .IsRequired();
+
+            entity.HasIndex(entry => new { entry.UserId, entry.IdempotencyKey })
+                .IsUnique();
+
+            entity.HasIndex(entry => new { entry.UserId, entry.OccurredAtUtc })
+                .HasDatabaseName("IX_LedgerEntries_UserId_OccurredAtUtc_Desc");
+
+            entity.HasIndex(entry => new { entry.ActionType, entry.OccurredAtUtc })
+                .HasDatabaseName("IX_LedgerEntries_ActionType_OccurredAtUtc_Desc");
+        });
+
+        b.Entity<ActionCost>(entity =>
+        {
+            entity.ToTable("ActionCosts");
+
+            entity.HasKey(cost => cost.ActionType);
+
+            entity.Property(cost => cost.Cost)
+                .IsRequired();
+
+            entity.Property(cost => cost.IsEnabled)
+                .IsRequired();
+
+            entity.Property(cost => cost.UpdatedAtUtc)
+                .IsRequired();
+
+            entity.HasIndex(cost => cost.IsEnabled);
         });
     }
 }

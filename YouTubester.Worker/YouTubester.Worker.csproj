@@ -8,13 +8,20 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Hangfire.RecurringJobExtensions" Version="1.1.6" />
         <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0"/>
         <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0"/>
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\YouTubester.Abstractions\YouTubester.Abstractions.csproj"/>
-        <ProjectReference Include="..\YouTubester.Application\YouTubester.Application.csproj"/>
-        <ProjectReference Include="..\YouTubester.Integration\YouTubester.Integration.csproj"/>
+        <None Update="recurring-jobs.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\YouTubester.Abstractions\YouTubester.Abstractions.csproj" />
+        <ProjectReference Include="..\YouTubester.Application\YouTubester.Application.csproj" />
+        <ProjectReference Include="..\YouTubester.Integration\YouTubester.Integration.csproj" />
     </ItemGroup>
 </Project>

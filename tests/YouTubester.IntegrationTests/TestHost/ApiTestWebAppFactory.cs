@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using YouTubester.Abstractions.Channels;
+using YouTubester.Application;
 using YouTubester.Integration;
 using YouTubester.Persistence;
 
@@ -22,14 +23,17 @@ public class ApiTestWebAppFactory : WebApplicationFactory<Program>
     public Mock<IAiClient> MockAiClient { get; }
     public Mock<IYouTubeIntegration> MockYouTubeIntegration { get; }
     public Mock<ICurrentChannelContext> MockCurrentChannelContext { get; }
+    public Mock<IDateTimeOffsetProvider> MockDateTimeOffsetProvider { get; }
 
-    public ApiTestWebAppFactory(CapturingBackgroundJobClient capturingJobClient)
+    public ApiTestWebAppFactory(CapturingBackgroundJobClient capturingJobClient, DateTimeOffset testingUtcNow)
     {
         CapturingJobClient = capturingJobClient;
         MockAiClient = new Mock<IAiClient>(MockBehavior.Strict);
         MockYouTubeIntegration = new Mock<IYouTubeIntegration>(MockBehavior.Strict);
         MockCurrentChannelContext = new Mock<ICurrentChannelContext>(MockBehavior.Strict);
         MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId()).Returns("testChannelId");
+        MockDateTimeOffsetProvider = new Mock<IDateTimeOffsetProvider>(MockBehavior.Strict);
+        MockDateTimeOffsetProvider.Setup(x => x.GetUtcNowDateTimeOffset()).Returns(testingUtcNow);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -51,6 +55,7 @@ public class ApiTestWebAppFactory : WebApplicationFactory<Program>
             services.RemoveAll<IBackgroundJobClient>();
             services.RemoveAll<IAiClient>();
             services.RemoveAll<IYouTubeIntegration>();
+            services.RemoveAll<IDateTimeOffsetProvider>();
 
             // Also remove authorization services
             services.RemoveAll<IConfigureOptions<AuthenticationOptions>>();
@@ -71,6 +76,7 @@ public class ApiTestWebAppFactory : WebApplicationFactory<Program>
             services.AddSingleton<IBackgroundJobClient>(CapturingJobClient);
             services.AddSingleton(MockAiClient.Object);
             services.AddSingleton(MockYouTubeIntegration.Object);
+            services.AddSingleton(MockDateTimeOffsetProvider.Object);
 
             // Add mock authentication
             services.AddMockAuthentication();

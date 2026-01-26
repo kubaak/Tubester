@@ -1,8 +1,11 @@
 using System.Text.RegularExpressions;
 using Hangfire;
 using Microsoft.Extensions.Logging;
+using YouTubester.Abstractions.Channels;
+using YouTubester.Abstractions.Credits;
 using YouTubester.Abstractions.Replies;
 using YouTubester.Abstractions.Videos;
+using YouTubester.Application.Credits;
 using YouTubester.Domain;
 using YouTubester.Integration;
 using YouTubester.Integration.Exceptions;
@@ -14,7 +17,10 @@ public sealed class CommentScanJob(
     IBackgroundYoutubeIntegration youTubeIntegration,
     IAiClient aiClient,
     IVideoRepository videoRepository,
-    IReplyRepository replyRepository)
+    IReplyRepository replyRepository,
+    IChannelRepository channelRepository,
+    ICreditsService creditsService,
+    IDateTimeOffsetProvider dateTimeOffsetProvider)
 {
     [Queue("scanning")]
     [AutomaticRetry(Attempts = 3, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
@@ -41,10 +47,19 @@ public sealed class CommentScanJob(
 
     private async Task<int> ScanOnceAsync(string channelId, CancellationToken cancellationToken)
     {
+        var channel = await channelRepository.GetChannelAsync(channelId, cancellationToken);
+        if (channel is null)
+        {
+            logger.LogWarning("Channel {ChannelId} not found, skipping scan", channelId);
+            return 0;
+        }
+
+        var userId = channel.UserId;
         var drafted = 0;
 
         foreach (var video in await videoRepository.GetCommentableVideosAsync(channelId, cancellationToken))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (video.Visibility != VideoVisibility.Public)
             {
                 continue;
@@ -55,10 +70,21 @@ public sealed class CommentScanJob(
                 await foreach (var thread in youTubeIntegration.GetUnansweredTopLevelCommentsAsync(
                                    channelId, video.VideoId, cancellationToken))
                 {
-                    var existingReply = await replyRepository.GetReplyAsync(thread.ParentCommentId, cancellationToken);
-                    // Skip if we've already pulled this
-                    if (existingReply is not null)
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    // Try to claim the comment first with Drafting status.
+                    // If someone else already claimed it, skip without AI call.
+                    var draftingReply = Reply.CreateDrafting(
+                        thread.ParentCommentId,
+                        thread.VideoId,
+                        video.Title ?? string.Empty,
+                        thread.Text,
+                        dateTimeOffsetProvider.GetUtcNowDateTimeOffset());
+
+                    var claimed = await replyRepository.TryClaimForDraftingAsync(draftingReply, cancellationToken);
+                    if (!claimed)
                     {
+                        // Already claimed by another process, skip
                         continue;
                     }
 
@@ -69,22 +95,57 @@ public sealed class CommentScanJob(
                     }
                     else
                     {
-                        var suggestion = await aiClient.SuggestReplyAsync(
-                            video.Title ?? string.Empty,
-                            video.Tags,
-                            thread.Text,
+                        var idempotencyKey =
+                            $"ai-reply-generated:{userId}:{thread.VideoId}:{thread.ParentCommentId}";
+
+                        var spendSucceeded = await creditsService.TrySpendAsync(
+                            userId,
+                            CreditActionType.AiReplyGenerated.ToString(),
+                            idempotencyKey,
+                            thread.ParentCommentId,
+                            new { videoId = thread.VideoId, commentId = thread.ParentCommentId },
                             cancellationToken);
+
+                        if (!spendSucceeded)
+                        {
+                            logger.LogWarning(
+                                "Insufficient credits to generate AI reply for comment {CommentId}, skipping",
+                                thread.ParentCommentId);
+                            return drafted;
+                        }
+
+                        string? suggestion;
+                        try
+                        {
+                            suggestion = await aiClient.SuggestReplyAsync(
+                                video.Title ?? string.Empty,
+                                video.Tags,
+                                thread.Text,
+                                cancellationToken);
+                        }
+                        catch
+                        {
+                            var refundIdempotencyKey =
+                                $"ai-reply-generated-refund:{userId}:{thread.VideoId}:{thread.ParentCommentId}";
+
+                            await creditsService.RefundAsync(
+                                userId,
+                                CreditActionType.AiReplyGenerated.ToString(),
+                                idempotencyKey,
+                                refundIdempotencyKey,
+                                cancellationToken);
+
+                            throw;
+                        }
 
                         replyText = string.IsNullOrWhiteSpace(suggestion)
                             ? "Thanks for the comment! 🙌"
                             : suggestion;
                     }
 
-                    var reply = Reply.Create(thread.ParentCommentId, thread.VideoId, video.Title, thread.Text,
-                        DateTimeOffset.UtcNow);
-                    reply.SuggestText(replyText, DateTimeOffset.UtcNow);
-
-                    await replyRepository.AddOrUpdateReplyAsync(reply, cancellationToken);
+                    // Update the reply with suggested text (transitions from Drafting to Suggested)
+                    draftingReply.SuggestText(replyText, dateTimeOffsetProvider.GetUtcNowDateTimeOffset());
+                    await replyRepository.AddOrUpdateReplyAsync(draftingReply, cancellationToken);
 
                     drafted++;
                 }
@@ -92,7 +153,7 @@ public sealed class CommentScanJob(
             catch (CommentsDisabledException ex)
             {
                 logger.LogInformation(
-                    "Comments are disabled for video {VideoId}, marking as CommentsAllowed = false.",
+                    "Comments are disabled for video {VideoId}, marking as CommentsAllowed = false",
                     ex.VideoId);
 
                 await videoRepository.MarkCommentsDisabledAsync(channelId, ex.VideoId, cancellationToken);

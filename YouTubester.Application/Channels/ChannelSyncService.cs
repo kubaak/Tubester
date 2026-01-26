@@ -18,7 +18,8 @@ public sealed class ChannelSyncService(
     IChannelRepository channelRepository,
     ICurrentChannelContext channelContext,
     ICommentScanService commentScanService,
-    ILogger<ChannelSyncService> logger) : IChannelSyncService
+    ILogger<ChannelSyncService> logger,
+    IDateTimeOffsetProvider dateTimeOffsetProvider) : IChannelSyncService
 {
     private const int VideoBatchSize = 100;
 
@@ -38,7 +39,7 @@ public sealed class ChannelSyncService(
         var channelDto = await youTubeIntegration.GetChannelAsync(channelId, cancellationToken) ??
                          throw new NotFoundException($"Channel '{channelId}' not found on YouTube.");
 
-        var now = DateTimeOffset.UtcNow;
+        var now = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
 
         // Prefer lookup by canonical ChannelId
         var existingChannel = await channelRepository.GetChannelAsync(channelDto.Id, cancellationToken);
@@ -48,6 +49,7 @@ public sealed class ChannelSyncService(
             // New aggregate
             var channel = Channel.Create(
                 channelDto.Id,
+                userId,
                 channelDto.Name,
                 channelDto.UploadsPlaylistId,
                 now,
@@ -81,7 +83,7 @@ public sealed class ChannelSyncService(
         var channel = await channelRepository.GetChannelAsync(channelId, cancellationToken) ??
                       await PullChannelAsync(userId, channelId, cancellationToken);
 
-        var currentTime = DateTimeOffset.UtcNow;
+        var currentTime = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
         commentScanService.ScanCommentsAsync(cancellationToken);
         return await SyncInternalAsync(channel, currentTime, cancellationToken);
     }

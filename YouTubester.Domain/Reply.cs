@@ -2,7 +2,7 @@
 
 namespace YouTubester.Domain;
 
-public enum ReplyStatus { Pulled = 0, Suggested = 1, Approved = 2, Posted = 3, Ignored = 4 }
+public enum ReplyStatus { Pulled = 0, Suggested = 1, Approved = 2, Posted = 3, Ignored = 4, Drafting = 5 }
 public class Reply
 {
     public string CommentId { get; private set; }
@@ -70,6 +70,9 @@ public class Reply
 
     public static Reply Create(string commentId, string videoId, string videoTitle, string commentText, DateTimeOffset pulledAt)
         => new(commentId, videoId, videoTitle, commentText, ReplyStatus.Pulled, pulledAt);
+
+    public static Reply CreateDrafting(string commentId, string videoId, string videoTitle, string commentText, DateTimeOffset pulledAt)
+        => new(commentId, videoId, videoTitle, commentText, ReplyStatus.Drafting, pulledAt);
 
     private Reply(string commentId, string videoId, string videoTitle, string commentText, ReplyStatus status, DateTimeOffset pulledAt)
     {

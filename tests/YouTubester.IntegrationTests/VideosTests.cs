@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Xunit;
 using YouTubester.Abstractions.Analytics;
+using YouTubester.Abstractions.Credits;
 using YouTubester.Abstractions.Users;
 using YouTubester.Application.Contracts;
 using YouTubester.Application.Contracts.Videos;
@@ -14,6 +15,7 @@ using YouTubester.Application.Jobs;
 using YouTubester.Domain;
 using YouTubester.IntegrationTests.TestHost;
 using YouTubester.Persistence;
+using YouTubester.Persistence.Credits;
 using StringContent = System.Net.Http.StringContent;
 
 namespace YouTubester.IntegrationTests;
@@ -23,6 +25,8 @@ public class VideosTests(TestFixture fixture)
 {
     private readonly JsonSerializerOptions _serializerOptions =
         new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
+    private const string OperationId = "credits-idempotency-operation";
 
     [Fact]
     public async Task GetVideos_EmptyDb_ReturnsEmptyList()
@@ -136,9 +140,16 @@ public class VideosTests(TestFixture fixture)
         using (var serviceScope = fixture.ApiServices.CreateScope())
         {
             var databaseContext = serviceScope.ServiceProvider.GetRequiredService<YouTubesterDb>();
-            var channel = Channel.Create(channelId, "Video Details Channel",
+            var user = User.Create(
+                MockAuthenticationExtensions.TestSub,
+                MockAuthenticationExtensions.TestEmail,
+                MockAuthenticationExtensions.TestName,
+                MockAuthenticationExtensions.TestPicture,
+                TestFixture.TestingDateTimeOffset);
+            var channel = Channel.Create(channelId, MockAuthenticationExtensions.TestSub, "Video Details Channel",
                 uploadPlaylistId, TestFixture.TestingDateTimeOffset);
 
+            databaseContext.Users.Add(user);
             databaseContext.Channels.Add(channel);
             databaseContext.Videos.Add(video);
             await databaseContext.SaveChangesAsync();
@@ -177,9 +188,16 @@ public class VideosTests(TestFixture fixture)
         using (var serviceScope = fixture.ApiServices.CreateScope())
         {
             var databaseContext = serviceScope.ServiceProvider.GetRequiredService<YouTubesterDb>();
-            var channel = Channel.Create(channelId, "Video Details Channel",
+            var user = User.Create(
+                MockAuthenticationExtensions.TestSub,
+                MockAuthenticationExtensions.TestEmail,
+                MockAuthenticationExtensions.TestName,
+                MockAuthenticationExtensions.TestPicture,
+                TestFixture.TestingDateTimeOffset);
+            var channel = Channel.Create(channelId, MockAuthenticationExtensions.TestSub, "Video Details Channel",
                 uploadPlaylistId, TestFixture.TestingDateTimeOffset);
 
+            databaseContext.Users.Add(user);
             databaseContext.Channels.Add(channel);
             await databaseContext.SaveChangesAsync();
         }
@@ -226,11 +244,52 @@ public class VideosTests(TestFixture fixture)
         using (var serviceScope = fixture.ApiServices.CreateScope())
         {
             var databaseContext = serviceScope.ServiceProvider.GetRequiredService<YouTubesterDb>();
-            var channel = Channel.Create(channelId, "Video Update Channel",
+            var user = User.Create(
+                MockAuthenticationExtensions.TestSub,
+                MockAuthenticationExtensions.TestEmail,
+                MockAuthenticationExtensions.TestName,
+                MockAuthenticationExtensions.TestPicture,
+                TestFixture.TestingDateTimeOffset);
+            var channel = Channel.Create(channelId, MockAuthenticationExtensions.TestSub, "Video Update Channel",
                 uploadPlaylistId, TestFixture.TestingDateTimeOffset);
 
+            databaseContext.Users.Add(user);
+            await databaseContext.SaveChangesAsync();
             databaseContext.Channels.Add(channel);
             databaseContext.Videos.Add(originalVideo);
+
+            var aiTemplateSubmittedCost = new ActionCost
+            {
+                ActionType = CreditActionType.AiTemplateSubmitted.ToString(),
+                Cost = 0,
+                IsEnabled = true,
+                UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
+                Notes = "Integration test cost for AiTemplateSubmitted."
+            };
+
+            await databaseContext.ActionCosts.AddAsync(aiTemplateSubmittedCost, CancellationToken.None);
+
+            var plan = new Plan
+            {
+                Code = "FreePlan",
+                Name = "Free Plan",
+                MonthlyCredits = 5,
+                IsActive = true,
+                CreatedAtUtc = TestFixture.TestingDateTimeOffset,
+                UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+            };
+
+            await databaseContext.Plans.AddAsync(plan, CancellationToken.None);
+            await databaseContext.SaveChangesAsync(CancellationToken.None);
+            var userSubscription = new Subscription
+            {
+                UserId = user.Id,
+                PlanId = plan.Id,
+                PeriodStartUtc = TestFixture.TestingDateTimeOffset,
+                PeriodEndUtc = TestFixture.TestingDateTimeOffset.AddMonths(1),
+                Status = SubscriptionStatus.Active
+            };
+            await databaseContext.Subscriptions.AddAsync(userSubscription, CancellationToken.None);
             await databaseContext.SaveChangesAsync();
         }
 
@@ -296,7 +355,7 @@ public class VideosTests(TestFixture fixture)
         {
             var dbContext = verifyScope.ServiceProvider.GetRequiredService<YouTubesterDb>();
             var events = await dbContext.UserEvents
-                .Where(e => e.EventType == UserEventType.AiTemplateSubmitted.ToString())
+                .Where(e => e.EventType == CreditActionType.AiTemplateSubmitted.ToString())
                 .ToListAsync();
 
             Assert.Single(events);
@@ -332,10 +391,44 @@ public class VideosTests(TestFixture fixture)
                 MockAuthenticationExtensions.TestPicture,
                 TestFixture.TestingDateTimeOffset);
             await databaseContext.Users.AddAsync(user, CancellationToken.None);
-            await databaseContext.Channels.AddAsync(Channel.Create(channelId, "Channel A",
+            await databaseContext.Channels.AddAsync(Channel.Create(channelId, userId, "Channel A",
                 uploadPlaylistId, TestFixture.TestingDateTimeOffset), CancellationToken.None);
             databaseContext.Videos.AddRange(sourceVideo, targetVideo);
-            await databaseContext.SaveChangesAsync();
+
+            var plan = new Plan
+            {
+                Code = "CopyTemplateTestPlan",
+                Name = "Copy Template Test Plan",
+                MonthlyCredits = 10,
+                IsActive = true,
+                CreatedAtUtc = TestFixture.TestingDateTimeOffset,
+                UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+            };
+
+            await databaseContext.Plans.AddAsync(plan, CancellationToken.None);
+            await databaseContext.SaveChangesAsync(CancellationToken.None);
+            var userSubscription = new Subscription
+            {
+                UserId = userId,
+                PlanId = plan.Id,
+                PeriodStartUtc = TestFixture.TestingDateTimeOffset,
+                PeriodEndUtc = TestFixture.TestingDateTimeOffset.AddMonths(1),
+                Status = SubscriptionStatus.Active
+            };
+
+            await databaseContext.Subscriptions.AddAsync(userSubscription, CancellationToken.None);
+
+            var copyTemplateCost = new ActionCost
+            {
+                ActionType = CreditActionType.CopyTemplateExecuted.ToString(),
+                Cost = 1,
+                IsEnabled = true,
+                UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
+                Notes = "Integration test cost for CopyTemplateExecuted."
+            };
+
+            await databaseContext.ActionCosts.AddAsync(copyTemplateCost, CancellationToken.None);
+            await databaseContext.SaveChangesAsync(CancellationToken.None);
         }
 
         fixture.ApiFactory.MockYouTubeIntegration.Setup(x =>
@@ -349,6 +442,7 @@ public class VideosTests(TestFixture fixture)
         var request = new CopyVideoTemplateRequest(
             sourceVideo.VideoId,
             targetVideo.VideoId,
+            OperationId,
             true,
             false,
             true,
@@ -388,7 +482,7 @@ public class VideosTests(TestFixture fixture)
         {
             var dbContext = verifyScope.ServiceProvider.GetRequiredService<YouTubesterDb>();
             var events = await dbContext.UserEvents
-                .Where(e => e.EventType == UserEventType.CopyTemplateExecuted.ToString())
+                .Where(e => e.EventType == CreditActionType.CopyTemplateExecuted.ToString())
                 .ToListAsync();
 
             Assert.Single(events);
@@ -408,7 +502,8 @@ public class VideosTests(TestFixture fixture)
 
         var request = new CopyVideoTemplateRequest(
             "",
-            "targetVideoId456"
+            "targetVideoId456",
+            OperationId
         );
 
         var json = JsonSerializer.Serialize(request, _serializerOptions);
@@ -432,7 +527,8 @@ public class VideosTests(TestFixture fixture)
 
         var request = new CopyVideoTemplateRequest(
             "sourceVideoId123",
-            ""
+            "",
+            OperationId
         );
 
         var json = JsonSerializer.Serialize(request, _serializerOptions);
@@ -456,7 +552,8 @@ public class VideosTests(TestFixture fixture)
 
         var request = new CopyVideoTemplateRequest(
             "sameVideoId123",
-            "sameVideoId123"
+            "sameVideoId123",
+            OperationId
         );
 
         var json = JsonSerializer.Serialize(request, _serializerOptions);
@@ -501,12 +598,48 @@ public class VideosTests(TestFixture fixture)
             await databaseContext.Users.AddAsync(user, CancellationToken.None);
             await databaseContext.Channels.AddAsync(Channel.Create(
                 channelId,
+                userId,
                 "AI Template Channel",
                 targetVideo.UploadsPlaylistId,
                 TestFixture.TestingDateTimeOffset));
 
             databaseContext.Videos.Add(targetVideo);
-            await databaseContext.SaveChangesAsync();
+
+            var plan = new Plan
+            {
+                Code = "AiTemplateEnqueueTestPlan",
+                Name = "AI Template Enqueue Test Plan",
+                MonthlyCredits = 10,
+                IsActive = true,
+                CreatedAtUtc = TestFixture.TestingDateTimeOffset,
+                UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+            };
+
+            await databaseContext.Plans.AddAsync(plan, CancellationToken.None);
+            await databaseContext.SaveChangesAsync(CancellationToken.None);
+
+            var userSubscription = new Subscription
+            {
+                UserId = userId,
+                PlanId = plan.Id,
+                PeriodStartUtc = TestFixture.TestingDateTimeOffset,
+                PeriodEndUtc = TestFixture.TestingDateTimeOffset.AddMonths(1),
+                Status = SubscriptionStatus.Active
+            };
+
+            await databaseContext.Subscriptions.AddAsync(userSubscription, CancellationToken.None);
+
+            var aiTemplateEnqueuedCost = new ActionCost
+            {
+                ActionType = CreditActionType.AiTemplateEnqueued.ToString(),
+                Cost = 1,
+                IsEnabled = true,
+                UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
+                Notes = "Integration test cost for AiTemplateEnqueued."
+            };
+
+            await databaseContext.ActionCosts.AddAsync(aiTemplateEnqueuedCost, CancellationToken.None);
+            await databaseContext.SaveChangesAsync(CancellationToken.None);
         }
 
         var request = new AiVideoTemplateRequest(
@@ -557,7 +690,7 @@ public class VideosTests(TestFixture fixture)
         {
             var dbContext = verifyScope.ServiceProvider.GetRequiredService<YouTubesterDb>();
             var events = await dbContext.UserEvents
-                .Where(e => e.EventType == UserEventType.AiTemplateEnqueued.ToString())
+                .Where(e => e.EventType == CreditActionType.AiTemplateEnqueued.ToString())
                 .ToListAsync();
 
             Assert.Single(events);
@@ -657,7 +790,13 @@ public class VideosTests(TestFixture fixture)
         const string testUploadsPlaylistId = "PLTestUploads123";
 
         const string testChannelId = "testChannelID123";
-        var channel = Channel.Create(testChannelId, "testChannelName123",
+        var user = User.Create(
+            MockAuthenticationExtensions.TestSub,
+            MockAuthenticationExtensions.TestEmail,
+            MockAuthenticationExtensions.TestName,
+            MockAuthenticationExtensions.TestPicture,
+            TestFixture.TestingDateTimeOffset);
+        var channel = Channel.Create(testChannelId, MockAuthenticationExtensions.TestSub, "testChannelName123",
             testUploadsPlaylistId, DateTimeOffset.UtcNow);
 
         fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
@@ -720,6 +859,7 @@ public class VideosTests(TestFixture fixture)
         using (var scope = fixture.ApiServices.CreateScope())
         {
             var databaseContext = scope.ServiceProvider.GetRequiredService<YouTubesterDb>();
+            databaseContext.Users.Add(user);
             databaseContext.Channels.Add(channel);
             databaseContext.Videos.AddRange(video1, video2, video3);
             await databaseContext.SaveChangesAsync();

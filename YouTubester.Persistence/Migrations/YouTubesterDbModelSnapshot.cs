@@ -44,7 +44,7 @@ namespace YouTubester.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Users");
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("YouTubester.Domain.Channel", b =>
@@ -70,9 +70,14 @@ namespace YouTubester.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("UserId")
+                        .HasColumnType("text");
+
                     b.HasKey("ChannelId");
 
-                    b.ToTable("Channels");
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Channels", (string)null);
                 });
 
             modelBuilder.Entity("YouTubester.Domain.Playlist", b =>
@@ -101,7 +106,7 @@ namespace YouTubester.Persistence.Migrations
 
                     b.HasIndex("ChannelId");
 
-                    b.ToTable("Playlists");
+                    b.ToTable("Playlists", (string)null);
                 });
 
             modelBuilder.Entity("YouTubester.Domain.Reply", b =>
@@ -146,7 +151,7 @@ namespace YouTubester.Persistence.Migrations
 
                     b.HasIndex("VideoId");
 
-                    b.ToTable("Replies");
+                    b.ToTable("Replies", (string)null);
                 });
 
             modelBuilder.Entity("YouTubester.Domain.Video", b =>
@@ -211,7 +216,7 @@ namespace YouTubester.Persistence.Migrations
 
                     b.HasIndex("PublishedAt", "VideoId");
 
-                    b.ToTable("Videos");
+                    b.ToTable("Videos", (string)null);
                 });
 
             modelBuilder.Entity("YouTubester.Domain.VideoPlaylist", b =>
@@ -226,7 +231,7 @@ namespace YouTubester.Persistence.Migrations
 
                     b.HasIndex("PlaylistId");
 
-                    b.ToTable("VideoPlaylists");
+                    b.ToTable("VideoPlaylists", (string)null);
                 });
 
             modelBuilder.Entity("YouTubester.Persistence.Analytics.UserEvent", b =>
@@ -271,6 +276,159 @@ namespace YouTubester.Persistence.Migrations
                     b.ToTable("UserEvents", "analytics");
                 });
 
+            modelBuilder.Entity("YouTubester.Persistence.Credits.ActionCost", b =>
+                {
+                    b.Property<string>("ActionType")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Cost")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("ActionType");
+
+                    b.HasIndex("IsEnabled");
+
+                    b.ToTable("ActionCosts", (string)null);
+                });
+
+            modelBuilder.Entity("YouTubester.Persistence.Credits.LedgerEntry", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ActionType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Delta")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("MetadataJson")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("OccurredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ReferenceId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("ActionType", "OccurredAtUtc")
+                        .HasDatabaseName("IX_LedgerEntries_ActionType_OccurredAtUtc_Desc");
+
+                    b.HasIndex("UserId", "OccurredAtUtc")
+                        .HasDatabaseName("IX_LedgerEntries_UserId_OccurredAtUtc_Desc");
+
+                    b.ToTable("LedgerEntries", (string)null);
+                });
+
+            modelBuilder.Entity("YouTubester.Persistence.Credits.Plan", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("MonthlyCredits")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("Plans", (string)null);
+                });
+
+            modelBuilder.Entity("YouTubester.Persistence.Credits.Subscription", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("PeriodEndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("PeriodStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("PlanId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("UserId");
+
+                    b.HasIndex("PlanId");
+
+                    b.ToTable("Subscriptions", (string)null);
+                });
+
+            modelBuilder.Entity("YouTubester.Persistence.Credits.Wallet", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Balance")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("PeriodEndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("PeriodStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("Wallets", (string)null);
+                });
+
             modelBuilder.Entity("YouTubester.Persistence.Users.UserToken", b =>
                 {
                     b.Property<string>("UserId")
@@ -287,7 +445,15 @@ namespace YouTubester.Persistence.Migrations
 
                     b.HasKey("UserId");
 
-                    b.ToTable("UserTokens");
+                    b.ToTable("UserTokens", (string)null);
+                });
+
+            modelBuilder.Entity("YouTubester.Domain.Channel", b =>
+                {
+                    b.HasOne("YouTubester.Abstractions.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade);
                 });
 
             modelBuilder.Entity("YouTubester.Domain.Playlist", b =>
@@ -314,7 +480,7 @@ namespace YouTubester.Persistence.Migrations
 
                             b1.HasKey("VideoId");
 
-                            b1.ToTable("Videos");
+                            b1.ToTable("Videos", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("VideoId");
@@ -334,6 +500,26 @@ namespace YouTubester.Persistence.Migrations
                     b.HasOne("YouTubester.Domain.Video", null)
                         .WithMany()
                         .HasForeignKey("VideoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("YouTubester.Persistence.Credits.Subscription", b =>
+                {
+                    b.HasOne("YouTubester.Persistence.Credits.Plan", "Plan")
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("YouTubester.Persistence.Credits.Wallet", b =>
+                {
+                    b.HasOne("YouTubester.Abstractions.Users.User", null)
+                        .WithOne()
+                        .HasForeignKey("YouTubester.Persistence.Credits.Wallet", "UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

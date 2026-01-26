@@ -2,18 +2,17 @@
 services:
   db:
     image: postgres:18
-    container_name: youtubester-postgres
+    container_name: tubester-postgres
     environment:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
-      POSTGRES_DB: youtubester
+      POSTGRES_DB: tubester
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data                 # <-- named volume for data
-      - ./.docker/postgres/init:/docker-entrypoint-initdb.d:ro
+      - pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d youtubester"]
+      test: ["CMD-SHELL", "pg_isready -U app -d tubester"]
       interval: 10s
       timeout: 5s
       retries: 10
