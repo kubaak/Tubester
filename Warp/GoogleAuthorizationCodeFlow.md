@@ -75,7 +75,7 @@ public static IServiceCollection AddCookieWithGoogle(this IServiceCollection ser
                     {
                         var loggerFactory = context.HttpContext.RequestServices
                             .GetRequiredService<ILoggerFactory>();
-                        var logger = loggerFactory.CreateLogger("YouTubester.Api.Authentication");
+                        var logger = loggerFactory.CreateLogger("Tubester.Api.Authentication");
                         logger.LogWarning(
                             "Access token was not available during Google login; skipping channel enrichment");
                         return;
@@ -167,7 +167,7 @@ public static IServiceCollection AddCookieWithGoogle(this IServiceCollection ser
                 {
                     var loggerFactory = context.HttpContext.RequestServices
                         .GetRequiredService<ILoggerFactory>();
-                    var logger = loggerFactory.CreateLogger("YouTubester.Api.Authentication");
+                    var logger = loggerFactory.CreateLogger("Tubester.Api.Authentication");
                     logger.LogWarning(
                         "Access token was not available during Google login; skipping channel enrichment.");
                     return;
@@ -247,7 +247,7 @@ For now, focus only on adding the dedicated connect flow; we can adjust the work
 
 Tasks
 1) Introduce UserTokenDataStore implementing Google.Apis.Util.Store.IDataStore
-Create a new class, e.g. in YouTubester.Integration.Auth or similar:
+Create a new class, e.g. in Tubester.Integration.Auth or similar:
 
 UserTokenDataStore : IDataStore
 
@@ -400,7 +400,7 @@ Build a UserCredential for userId from stored tokens.
 Use UserCredential as HttpClientInitializer for YouTubeService so token refresh is automatic (no manual GoogleTokenRefresher).
 
 Style / expectations
-Keep naming and namespaces aligned with the existing code (YouTubester.Api, YouTubester.Integration, YouTubester.Abstractions.Auth, etc.).
+Keep naming and namespaces aligned with the existing code (Tubester.Api, Tubester.Integration, Tubester.Abstractions.Auth, etc.).
 
 Use Google’s official client APIs where appropriate:
 

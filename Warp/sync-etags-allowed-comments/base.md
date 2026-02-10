@@ -26,7 +26,7 @@ Keep changes small and focused, with clean diffs, tests, and docs.
     - `string? ETag` (nullable, max ~128)
     - `bool? CommentsAllowed` (nullable; `true`/`false` known, `null` unknown/not checked)
 
-**EF mappings (YouTubester.Persistence/YouTubesterDb):**
+**EF mappings (Tubester.Persistence/TubesterDb):**
 
 - Map new properties, ensure Sqlite compatibility (no special conversion needed for strings/bools).
 - Add a small index on `Playlist(ChannelId)` already exists; **no new index required** for ETags.
@@ -130,12 +130,12 @@ No new methods are needed; extend existing upsert logic and EF mappings.
 
 ## Code pointers (where to edit)
 
-- `YouTubester.Domain/*` → add properties to `Channel`, `Playlist`, `Video`.
-- `YouTubester.Persistence/YouTubesterDb.cs` → add EF property mappings; create migration.
-- `YouTubester.Integration/*` → surface `etag` from YouTube resources; set `IfNoneMatch` on subsequent calls.
-- `YouTubester.Application/*` (or where the sync orchestration lives) → integrate ETag persistence and comments
+- `Tubester.Domain/*` → add properties to `Channel`, `Playlist`, `Video`.
+- `Tubester.Persistence/TubesterDb.cs` → add EF property mappings; create migration.
+- `Tubester.Integration/*` → surface `etag` from YouTube resources; set `IfNoneMatch` on subsequent calls.
+- `Tubester.Application/*` (or where the sync orchestration lives) → integrate ETag persistence and comments
   detection into the existing delta steps.
-- Tests under `YouTubester.*Tests/*`.
+- Tests under `Tubester.*Tests/*`.
 
 ---
 

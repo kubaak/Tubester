@@ -1,10 +1,10 @@
-You are helping me refactor my YouTubester solution (.NET, API + Worker + tests) from **SQLite** to **PostgreSQL**.
+You are helping me refactor my Tubester solution (.NET, API + Worker + tests) from **SQLite** to **PostgreSQL**.
 
 ## Context
 
 - The solution currently uses **SQLite** as the primary database for both:
-    - The **API** (YouTubester.Api)
-    - The **Worker** (YouTubester.Worker)
+    - The **API** (Tubester.Api)
+    - The **Worker** (Tubester.Worker)
 - There is an extension like `services.AddDatabase(contentRootPath)` that configures EF Core with SQLite (probably
   `UseSqlite`), and there may be SQLite-specific connection strings or file paths (e.g., `.db` files in `App_Data` or
   under `contentRootPath`).
@@ -14,10 +14,10 @@ You are helping me refactor my YouTubester solution (.NET, API + Worker + tests)
   Typical docker example (for your context, don’t rewrite unless needed):
 
   ```bash
-  docker run --name youtubester-postgres \
-    -e POSTGRES_USER=youtubester \
-    -e POSTGRES_PASSWORD=youtubester \
-    -e POSTGRES_DB=youtubester \
+  docker run --name Tubester-postgres \
+    -e POSTGRES_USER=Tubester \
+    -e POSTGRES_PASSWORD=Tubester \
+    -e POSTGRES_DB=Tubester \
     -p 5432:5432 \
     -d postgres:16
 
@@ -93,10 +93,10 @@ Replace UseSqlite(...) with something like:
 
 csharp
 Copy code
-options.UseNpgsql(configuration.GetConnectionString("YouTubesterDb"));
-Remove any SQLite-specific path building (e.g. Path.Combine(contentRootPath, "App_Data", "youtubester.db")).
+options.UseNpgsql(configuration.GetConnectionString("TubesterDb"));
+Remove any SQLite-specific path building (e.g. Path.Combine(contentRootPath, "App_Data", "Tubester.db")).
 
-Make sure YouTubesterDb context works with Postgres types (e.g., timestamps, enums, guids, etc.).
+Make sure TubesterDb context works with Postgres types (e.g., timestamps, enums, guids, etc.).
 
 If there are multiple entry points (API + Worker) that each call AddDatabase, confirm they all pass a configuration that
 includes a Postgres connection string.
@@ -108,7 +108,7 @@ In appsettings.Development.json (for API and Worker), add a ConnectionStrings se
 json
 Copy code
 "ConnectionStrings": {
-"YouTubesterDb": "Host=localhost;Port=5432;Database=youtubester;Username=youtubester;Password=youtubester"
+"TubesterDb": "Host=localhost;Port=5432;Database=Tubester;Username=Tubester;Password=Tubester"
 }
 In production / generic appsettings.json, either:
 
@@ -116,7 +116,7 @@ Leave the connection string empty and rely on environment variables, or
 
 Add a placeholder Postgres connection string.
 
-Ensure both API and Worker use the same connection string name (e.g. "YouTubesterDb").
+Ensure both API and Worker use the same connection string name (e.g. "TubesterDb").
 
 Recreate EF Core migrations for Postgres
 
@@ -128,14 +128,14 @@ Run:
 
 bash
 Copy code
-dotnet ef migrations add InitialPostgresMigration -p YouTubester.Persistence -s YouTubester.Api
+dotnet ef migrations add InitialPostgresMigration -p Tubester.Persistence -s Tubester.Api
 (adjust -p and -s to match your project setup).
 
 Then:
 
 bash
 Copy code
-dotnet ef database update -p YouTubester.Persistence -s YouTubester.Api
+dotnet ef database update -p Tubester.Persistence -s Tubester.Api
 Verify:
 
 The database schema is created in Postgres.
@@ -199,13 +199,13 @@ Updated code:
 
 AddDatabase (or similar) using UseNpgsql and Postgres connection strings.
 
-YouTubester.Persistence migrations regenerated for Postgres.
+Tubester.Persistence migrations regenerated for Postgres.
 
 EF Core provider references switched to Npgsql.EntityFrameworkCore.PostgreSQL.
 
 Config:
 
-appsettings.Development.json with a YouTubesterDb Postgres connection string.
+appsettings.Development.json with a TubesterDb Postgres connection string.
 
 All SQLite-specific config removed or clearly obsolete.
 

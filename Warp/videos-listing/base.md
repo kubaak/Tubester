@@ -7,9 +7,9 @@ and optional **visibility** filter.
     - `VideoListItemDto { string VideoId, string Title, DateTimeOffset PublishedAt }`
     - `PagedResult<T> { IReadOnlyList<T> Items, string? NextPageToken }`
 - **Layers**
-    - Controller → **YouTubester.Api** (`VideosController`)
-    - Service → **YouTubester.Application** (`IVideoService` + implementation)
-    - Repository → **YouTubester.Persistence** (`IVideoRepository` + implementation)
+    - Controller → **Tubester.Api** (`VideosController`)
+    - Service → **Tubester.Application** (`IVideoService` + implementation)
+    - Repository → **Tubester.Persistence** (`IVideoRepository` + implementation)
 - Repository query rules:
     - `AsNoTracking()`
     - Apply **title filter (case-insensitive)** **before** pagination

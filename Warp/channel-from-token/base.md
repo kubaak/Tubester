@@ -4,7 +4,7 @@ On login with Google, we call the YouTube Data API once to discover the user’s
 
 From that channel we take: channelId, channel title, and channel picture URL.
 
-We reuse YouTubester.Abstractions.Channels.UserChannelDto to represent this channel.
+We reuse Tubester.Abstractions.Channels.UserChannelDto to represent this channel.
 
 We store three values as claims in the auth cookie:
 
@@ -22,15 +22,15 @@ Please modify the solution accordingly, using existing architecture and naming c
 
 1. Use UserChannelDto in YouTubeIntegration for current-channel discovery
 
-In YouTubester.Abstractions.Channels, there is already a UserChannelDto. Reuse it instead of creating a new DTO.
+In Tubester.Abstractions.Channels, there is already a UserChannelDto. Reuse it instead of creating a new DTO.
 
-In YouTubester.Integration:
+In Tubester.Integration:
 
 Extend IYouTubeIntegration with:
 
 Task<UserChannelDto?> GetCurrentChannelAsync(string accessToken, CancellationToken ct);
 
-(Namespace: YouTubester.Abstractions.Channels for UserChannelDto.)
+(Namespace: Tubester.Abstractions.Channels for UserChannelDto.)
 
 Implement GetCurrentChannelAsync in YouTubeIntegration:
 
@@ -54,7 +54,7 @@ This method is used only during login with the raw access token; it must not dep
 
 2. Enrich the principal with channel claims during Google login
 
-In YouTubester.Api.Extensions.ServiceCollectionExtensions.AddCookieWithGoogle where Google auth is configured:
+In Tubester.Api.Extensions.ServiceCollectionExtensions.AddCookieWithGoogle where Google auth is configured:
 
 Keep o.SaveTokens = true.
 
@@ -91,7 +91,7 @@ Ensure the Google auth scopes for this flow include YouTubeService.Scope.Youtube
 
 3. Update /api/auth/me to read channel info from claims only
 
-In YouTubester.Api.AuthController:
+In Tubester.Api.AuthController:
 
 Keep [Authorize] and [Route("api/auth")].
 
@@ -157,7 +157,7 @@ IYouTubeIntegration is already registered (e.g. through AddYoutubeServices); reu
 The Google auth event handler must be able to resolve IYouTubeIntegration from context.HttpContext.RequestServices.
 
 No new dependency from Integration to Api; Integration depends only on Abstractions and Google packages, and uses
-UserChannelDto from YouTubester.Abstractions.Channels.
+UserChannelDto from Tubester.Abstractions.Channels.
 
 5. Tokens are not persisted in DB
 
@@ -174,4 +174,4 @@ the handler’s local variables during OnTicketReceived.
 UserChannelDto is used only as a shape for the YouTube channel info returned by GetCurrentChannelAsync, and channel data
 is stored into claims, not into the DB.
 
-Apply these changes in small steps and keep everything consistent with the existing YouTubester style and structure.
+Apply these changes in small steps and keep everything consistent with the existing Tubester style and structure.

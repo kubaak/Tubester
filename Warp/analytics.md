@@ -1,4 +1,4 @@
-Implement product analytics in YouTubester (public SaaS): an append-only user activity log stored in Postgres.
+Implement product analytics in Tubester (public SaaS): an append-only user activity log stored in Postgres.
 
 High-level goals
 
@@ -13,7 +13,7 @@ High-level goals
 
 1) Persistence / EF Core model
 
-- In `YouTubester.Persistence`, add new EF entity `UserEvent` (or `UserEventEntity`) and include it in `YouTubesterDb`.
+- In `Tubester.Persistence`, add new EF entity `UserEvent` (or `UserEventEntity`) and include it in `TubesterDb`.
 - Map entity to: schema `analytics`, table `UserEvents`.
 - Migration must:
     - `migrationBuilder.EnsureSchema("analytics");`
@@ -32,7 +32,7 @@ High-level goals
 
 2) Event type definition
 
-- Add `UserEventType` enum in `YouTubester.Application` (preferred; Abstractions only if needed across boundaries) with
+- Add `UserEventType` enum in `Tubester.Application` (preferred; Abstractions only if needed across boundaries) with
   values:
     - Login
     - CopyTemplateExecuted
@@ -53,7 +53,7 @@ High-level goals
   object? metadata = null,
   CancellationToken ct = default);
 
-- Implement `UserEventLogger` in Persistence using `YouTubesterDb`:
+- Implement `UserEventLogger` in Persistence using `TubesterDb`:
     - Always set `OccurredAtUtc = DateTimeOffset.UtcNow`
     - Serialize metadata via System.Text.Json into `MetadataJson` (jsonb)
     - One insert per call (simple implementation)
@@ -61,8 +61,8 @@ High-level goals
 4) DI wiring
 
 - Register `IUserEventLogger` in:
-    - `YouTubester.Api` DI container
-    - `YouTubester.Worker` DI container
+    - `Tubester.Api` DI container
+    - `Tubester.Worker` DI container
       as Scoped.
 
 5) Instrumentation points to add

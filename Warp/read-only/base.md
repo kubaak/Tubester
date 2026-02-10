@@ -18,7 +18,7 @@ Please modify the solution accordingly.
 
 1. Read-only login flow (default app login)
 
-In YouTubester.Api.Extensions.ServiceCollectionExtensions.AddCookieWithGoogle:
+In Tubester.Api.Extensions.ServiceCollectionExtensions.AddCookieWithGoogle:
 
 Configure the main Google auth flow used by /auth/login/google to request only read-only scopes:
 
@@ -84,7 +84,7 @@ Important: do not use IUserTokenStore anywhere in this helper.
 
 3. Read integration: switch to per-request YouTubeService
 
-In YouTubester.Integration and Application code that currently uses YouTubeServiceFactory / IYouTubeIntegration for read
+In Tubester.Integration and Application code that currently uses YouTubeServiceFactory / IYouTubeIntegration for read
 operations:
 
 Replace usages that rely on stored tokens with code that takes a YouTubeService built from the current user token.

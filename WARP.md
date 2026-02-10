@@ -15,7 +15,7 @@ dotnet build --no-restore
 ### Run API
 Run the ASP.NET Core API (Swagger in Development, Hangfire dashboard at `/hangfire`):
 ```powershell
-dotnet run --project YouTubester.Api
+dotnet run --project Tubester.Api
 # API available at: https://localhost:7031, http://localhost:5000
 # Swagger UI at: https://localhost:7031/swagger (Development only)
 # Hangfire dashboard at: https://localhost:7031/hangfire (Development only)
@@ -24,7 +24,7 @@ dotnet run --project YouTubester.Api
 ### Run Background Worker
 Runs the Hangfire server with queues: `replies`, `templating`, `default`.
 ```powershell
-dotnet run --project YouTubester.Worker
+dotnet run --project Tubester.Worker
 ```
 
 ### Local Infrastructure (Optional)
@@ -36,14 +36,14 @@ docker compose up -d
 docker compose down
 ```
 
-### Database (EF Core, SQLite at `./.data/youtubester.db`)
+### Database (EF Core, SQLite at `./.data/Tubester.db`)
 ```powershell
 # Add a migration
-dotnet ef migrations add <Name> --project YouTubester.Persistence
+dotnet ef migrations add <Name> --project Tubester.Persistence
 # Apply migrations
-dotnet ef database update --project YouTubester.Persistence
+dotnet ef database update --project Tubester.Persistence
 # Reset database
-Remove-Item ./.data/youtubester.db -Force -ErrorAction SilentlyContinue
+Remove-Item ./.data/Tubester.db -Force -ErrorAction SilentlyContinue
 ```
 
 ### Lint and Format
@@ -59,7 +59,7 @@ Integration test suite:
 # Run all tests
 dotnet test --nologo
 # Run integration tests only
-dotnet test tests/YouTubester.IntegrationTests --nologo
+dotnet test tests/Tubester.IntegrationTests --nologo
 # Run with coverage
 dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura
 # Run specific test by name pattern
@@ -69,14 +69,14 @@ dotnet test --filter "FullyQualifiedName~VideosEndpoint_SmokeTests"
 ### User Secrets (YouTube OAuth + AI Integration)
 ```powershell
 # YouTube OAuth credentials
-dotnet user-secrets set "YouTubeAuth:ClientId" "{{YOUTUBE_CLIENT_ID}}" --project YouTubester.Api
-dotnet user-secrets set "YouTubeAuth:ClientSecret" "{{YOUTUBE_CLIENT_SECRET}}" --project YouTubester.Api
+dotnet user-secrets set "YouTubeAuth:ClientId" "{{YOUTUBE_CLIENT_ID}}" --project Tubester.Api
+dotnet user-secrets set "YouTubeAuth:ClientSecret" "{{YOUTUBE_CLIENT_SECRET}}" --project Tubester.Api
 
 # AI configuration (Ollama or compatible)
-dotnet user-secrets set "AI:Endpoint" "http://localhost:11434" --project YouTubester.Api
-dotnet user-secrets set "AI:Model" "gemma3:12b" --project YouTubester.Api
-dotnet user-secrets set "AI:Endpoint" "http://localhost:11434" --project YouTubester.Worker
-dotnet user-secrets set "AI:Model" "gemma3:12b" --project YouTubester.Worker
+dotnet user-secrets set "AI:Endpoint" "http://localhost:11434" --project Tubester.Api
+dotnet user-secrets set "AI:Model" "gemma3:12b" --project Tubester.Api
+dotnet user-secrets set "AI:Endpoint" "http://localhost:11434" --project Tubester.Worker
+dotnet user-secrets set "AI:Model" "gemma3:12b" --project Tubester.Worker
 ```
 
 ---
@@ -111,13 +111,13 @@ dotnet user-secrets set "AI:Model" "gemma3:12b" --project YouTubester.Worker
 ## Architecture Overview
 
 ### Solution Layout (.NET 9)
-- `YouTubester.Api` — ASP.NET Core Web API with controllers, Swagger, Hangfire dashboard
-- `YouTubester.Application` — Application services, jobs, orchestration (Hangfire jobs)
-- `YouTubester.Domain` — Core entities (Video, Reply, Channel) and value objects
-- `YouTubester.Integration` — External services (YouTube API, AI client)
-- `YouTubester.Persistence` — Data access (EF Core, SQLite, repositories)
-- `YouTubester.Worker` — Background service host (Hangfire server, CommentScanWorker)
-- `tests/YouTubester.IntegrationTests` — Integration test suite
+- `Tubester.Api` — ASP.NET Core Web API with controllers, Swagger, Hangfire dashboard
+- `Tubester.Application` — Application services, jobs, orchestration (Hangfire jobs)
+- `Tubester.Domain` — Core entities (Video, Reply, Channel) and value objects
+- `Tubester.Integration` — External services (YouTube API, AI client)
+- `Tubester.Persistence` — Data access (EF Core, SQLite, repositories)
+- `Tubester.Worker` — Background service host (Hangfire server, CommentScanWorker)
+- `tests/Tubester.IntegrationTests` — Integration test suite
 
 ### Key Dependencies
 - EF Core 9.0.9 with SQLite
@@ -189,7 +189,7 @@ $env:AI__Endpoint = "http://localhost:11434"
 ```
 
 ### Database
-SQLite at `./.data/youtubester.db` (auto-created).  
+SQLite at `./.data/Tubester.db` (auto-created).  
 Hangfire uses the same database.  
 Docker Compose includes PostgreSQL but the app uses SQLite by default.
 

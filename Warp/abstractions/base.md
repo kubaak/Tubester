@@ -1,10 +1,10 @@
 We are refactoring the UserTokens handling to follow this design:
 
-YouTubester.Abstractions defines a DTO + interface describing user tokens.
+Tubester.Abstractions defines a DTO + interface describing user tokens.
 
-YouTubester.Persistence contains the EF entity + DbContext mapping and implements the abstraction.
+Tubester.Persistence contains the EF entity + DbContext mapping and implements the abstraction.
 
-YouTubester.Integration uses only the abstraction (DTO + interface), not the Domain or Persistence types.
+Tubester.Integration uses only the abstraction (DTO + interface), not the Domain or Persistence types.
 
 The Domain project should no longer contain UserToken – tokens are treated as an auth/infra concern, not core domain.
 
@@ -12,9 +12,9 @@ I will describe the desired end state; please refactor the solution accordingly.
 
 1. Token DTO + interface in Abstractions (Option 2)
 
-In the YouTubester.Abstractions project, under a namespace like YouTubester.Abstractions.Auth, create:
+In the Tubester.Abstractions project, under a namespace like Tubester.Abstractions.Auth, create:
 
-namespace YouTubester.Abstractions.Auth;
+namespace Tubester.Abstractions.Auth;
 
 public sealed class UserTokenData
 {
@@ -37,27 +37,27 @@ Task<UserTokenData?> GetAsync(string userId, CancellationToken cancellationToken
 
 }
 
-YouTubester.Abstractions must not reference EF or any persistence-related libraries. This DTO and interface are pure
+Tubester.Abstractions must not reference EF or any persistence-related libraries. This DTO and interface are pure
 contracts.
 
 Ensure all projects that need token access (Api, Application, Integration, Persistence, Worker) reference
-YouTubester.Abstractions.
+Tubester.Abstractions.
 
 2. Move the EF entity UserToken into Persistence
 
-Currently, there is a UserToken type in the Domain namespace (e.g. YouTubester.Domain.UserToken) and IUserTokenStore in
-YouTubester.Persistence.Users that returns it.
+Currently, there is a UserToken type in the Domain namespace (e.g. Tubester.Domain.UserToken) and IUserTokenStore in
+Tubester.Persistence.Users that returns it.
 
 Refactor to:
 
 Remove UserToken from the Domain project:
 
-Find the UserToken class (probably in YouTubester.Domain) and move it to YouTubester.Persistence under a namespace like
-YouTubester.Persistence.Entities or YouTubester.Persistence.Users.
+Find the UserToken class (probably in Tubester.Domain) and move it to Tubester.Persistence under a namespace like
+Tubester.Persistence.Entities or Tubester.Persistence.Users.
 
 This class will now be treated as a pure persistence entity.
 
-Ensure YouTubesterDb (DbContext) in YouTubester.Persistence still has a DbSet<UserToken> and that it points to the moved
+Ensure TubesterDb (DbContext) in Tubester.Persistence still has a DbSet<UserToken> and that it points to the moved
 entity type (update namespace/usings).
 
 If there are any Domain references to UserToken, replace them:
@@ -69,20 +69,20 @@ IUserTokenStore where appropriate.
 
 3. Implement IUserTokenStore in Persistence
 
-In YouTubester.Persistence:
+In Tubester.Persistence:
 
 Create a concrete implementation, e.g.:
 
 using Microsoft.EntityFrameworkCore;
-using YouTubester.Abstractions.Auth;
+using Tubester.Abstractions.Auth;
 
-namespace YouTubester.Persistence.Users;
+namespace Tubester.Persistence.Users;
 
 public sealed class UserTokenStore : IUserTokenStore
 {
-private readonly YouTubesterDb _db;
+private readonly TubesterDb _db;
 
-    public UserTokenStore(YouTubesterDb db)
+    public UserTokenStore(TubesterDb db)
     {
         _db = db;
     }
@@ -143,7 +143,7 @@ private readonly YouTubesterDb _db;
 
 Remove any old IUserTokenStore interface from Persistence that:
 
-lived under YouTubester.Persistence.Users and
+lived under Tubester.Persistence.Users and
 
 returned Domain.UserToken.
 
@@ -175,13 +175,13 @@ Remove any references to the old IUserTokenStore interface from Persistence.
 
 5. Update YouTubeServiceFactory to use UserTokenData from Abstractions
 
-In YouTubester.Integration, update YouTubeServiceFactory:
+In Tubester.Integration, update YouTubeServiceFactory:
 
 Replace any dependency on Persistence or Domain token types with the new abstraction:
 
 Add:
 
-using YouTubester.Abstractions.Auth;
+using Tubester.Abstractions.Auth;
 
 Change the constructor to:
 
@@ -229,7 +229,7 @@ long? expiresInSeconds = null;
 
 Ensure YouTubeServiceFactory does not reference:
 
-YouTubester.Persistence.*
+Tubester.Persistence.*
 
 the old domain UserToken type.
 
@@ -270,4 +270,4 @@ YouTube integration still constructs YouTubeService correctly.
 Jobs that rely on YouTubeServiceFactory still run.
 
 When implementing, infer exact names/namespaces from the existing code (e.g. UserTokens vs UserToken, namespaces under
-YouTubester.Persistence.Users, etc.) and align with current coding style.
+Tubester.Persistence.Users, etc.) and align with current coding style.

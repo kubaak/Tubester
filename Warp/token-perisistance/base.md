@@ -1,4 +1,4 @@
-You are Warp AI working in my YouTubester repo (ASP.NET Core API + Hangfire + YouTube integration + SQLite for now,
+You are Warp AI working in my Tubester repo (ASP.NET Core API + Hangfire + YouTube integration + SQLite for now,
 PostgreSQL later).
 GOAL
 Finish the implementation of:
@@ -22,31 +22,31 @@ Use existing patterns in the repo for DI, EF Core, Hangfire, and integration tes
 CONTEXT
 Key places in the repo (please scan them first):
 
-API entry: YouTubester.Api/Program.cs
+API entry: Tubester.Api/Program.cs
 
-Auth configuration: YouTubester.Api/Extensions/ServiceCollectionExtensions.AddCookieWithGoogle(...)
+Auth configuration: Tubester.Api/Extensions/ServiceCollectionExtensions.AddCookieWithGoogle(...)
 
-Auth controller: YouTubester.Api/AuthController.cs
+Auth controller: Tubester.Api/AuthController.cs
 
 Endpoints: /auth/login/google, /auth/logout, /auth/me
 
 /auth/me returns name, email, sub, picture from claims.
 
-Channel-related application services: YouTubester.Application and YouTubester.Application.Channels
+Channel-related application services: Tubester.Application and Tubester.Application.Channels
 
 Look for IChannelSyncService and its implementation.
 
-Persistence: YouTubester.Persistence (YouTubesterDb context, entities, configurations, migrations).
+Persistence: Tubester.Persistence (TubesterDb context, entities, configurations, migrations).
 
 Hangfire: configured in API + worker; tests use CapturingBackgroundJobClient.
 
 Integration tests infrastructure:
 
-YouTubester.IntegrationTests/TestHost/ApiTestWebAppFactory.cs
+Tubester.IntegrationTests/TestHost/ApiTestWebAppFactory.cs
 
-YouTubester.IntegrationTests/TestHost/MockAuthenticationExtensions.cs
+Tubester.IntegrationTests/TestHost/MockAuthenticationExtensions.cs
 
-YouTubester.IntegrationTests/TestHost/TestFixture.cs
+Tubester.IntegrationTests/TestHost/TestFixture.cs
 
 Existing tests for /auth/me and auth in general.
 
@@ -69,7 +69,7 @@ schema later will be easy.
 WHAT TO IMPLEMENT
 
 1) Introduce User and UserTokens entities
-   Add two EF Core entities to YouTubester.Persistence:
+   Add two EF Core entities to Tubester.Persistence:
 
 User:
 
@@ -107,7 +107,7 @@ AccessToken (nullable string; optional to use)
 
 ExpiresAt (nullable DateTimeOffset for access token expiry)
 
-Update YouTubesterDb:
+Update TubesterDb:
 
 Add DbSet<User> and DbSet<UserTokens>.
 

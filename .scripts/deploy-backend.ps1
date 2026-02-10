@@ -25,7 +25,7 @@ param(
   [string]$RepoRoot = (Resolve-Path (Split-Path -Parent $PSCommandPath)).Path,
 
   # API project path relative to RepoRoot
-  [string]$ApiProject = "../YouTubester.Api\YouTubester.Api.csproj",
+  [string]$ApiProject = "../Tubester.Api\Tubester.Api.csproj",
 
   # Local publish output folder
   [string]$PublishOut = "../.artifacts\api",
@@ -79,9 +79,9 @@ New-Item -ItemType Directory -Force -Path $out | Out-Null
 Exec "dotnet publish `"$proj`" -c Release -o `"$out`""
 
 # Sanity check
-$apiDll = Join-Path $out "YouTubester.Api.dll"
+$apiDll = Join-Path $out "Tubester.Api.dll"
 if (!(Test-Path $apiDll)) {
-  throw "Publish output missing YouTubester.Api.dll at: $apiDll"
+  throw "Publish output missing Tubester.Api.dll at: $apiDll"
 }
 
 # --- Upload ---
@@ -116,9 +116,9 @@ if ($RestartMode -eq "systemd") {
   $startCmd = "cd $RemoteDir && " +
               "export ASPNETCORE_URLS='$KestrelUrls'; " +
               "export ASPNETCORE_ENVIRONMENT='$AspNetEnv'; " +
-              "nohup dotnet YouTubester.Api.dll > /var/log/tubester-api.log 2>&1 &"
+              "nohup dotnet Tubester.Api.dll > /var/log/tubester-api.log 2>&1 &"
 
-  Exec "ssh tubester-prod `"pkill -f 'dotnet YouTubester.Api.dll' || true; $startCmd; sleep 1; ss -lntp | grep 5000 || true`""
+  Exec "ssh tubester-prod `"pkill -f 'dotnet Tubester.Api.dll' || true; $startCmd; sleep 1; ss -lntp | grep 5000 || true`""
   Write-Host "Server log: /var/log/tubester-api.log" -ForegroundColor Yellow
 }
 

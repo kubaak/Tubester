@@ -2,19 +2,19 @@ Introduce a dedicated persistence abstraction for the credit system: ICreditsSto
 
 Goal
 
-- Stop injecting YouTubesterDb directly into CreditsService.
+- Stop injecting TubesterDb directly into CreditsService.
 - Keep CreditsService orchestration in Application, but move DB-specific operations (wallet/ledger/cost/plan queries,
   transactions) into a Persistence implementation.
 - The store must support atomic, idempotent spending and monthly reset/grant operations.
 
 Architecture / placement
 
-- Create interface `ICreditsStore` in `YouTubester.Abstractions.Billing` (or `YouTubester.Abstractions.Credits` — pick
+- Create interface `ICreditsStore` in `Tubester.Abstractions.Billing` (or `Tubester.Abstractions.Credits` — pick
   the best existing namespace pattern).
-- Implement it in `YouTubester.Persistence.Credits` (e.g. `EfCreditsStore`) using `YouTubesterDb`.
+- Implement it in `Tubester.Persistence.Credits` (e.g. `EfCreditsStore`) using `TubesterDb`.
 - Register in DI in API + Worker:
     - `services.AddScoped<ICreditsStore, EfCreditsStore>();`
-- Update `CreditsService` to depend on `ICreditsStore` instead of `YouTubesterDb`.
+- Update `CreditsService` to depend on `ICreditsStore` instead of `TubesterDb`.
 
 ICreditsStore: required methods (minimal but sufficient)
 
@@ -103,7 +103,7 @@ CreditsService refactor
     - compute period and if reset needed call GrantMonthlyCreditsAsync
     - call TrySpendAsync with idempotencyKey/referenceId/metadata
     - return domain-level result (insufficient credits / ok / duplicate)
-- CreditsService no longer uses YouTubesterDb directly.
+- CreditsService no longer uses TubesterDb directly.
 
 Testing
 
@@ -116,7 +116,7 @@ Testing
 Deliverables
 
 - ICreditsStore interface + DTOs/results
-- EfCreditsStore implementation using YouTubesterDb
+- EfCreditsStore implementation using TubesterDb
 - DI registration in API + Worker
 - CreditsService updated to use store
 - Migration ensures UNIQUE constraint on ledger idempotency key (if not already added)

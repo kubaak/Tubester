@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <UserSecretsId>dotnet-Tubester.Worker-6673852a-af18-4533-abaa-54621f81a284</UserSecretsId>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Hangfire.RecurringJobExtensions" Version="1.1.6" />
+        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0"/>
+        <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Update="recurring-jobs.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Tubester.Abstractions\Tubester.Abstractions.csproj" />
+        <ProjectReference Include="..\Tubester.Application\Tubester.Application.csproj" />
+        <ProjectReference Include="..\Tubester.Integration\Tubester.Integration.csproj" />
+    </ItemGroup>
+</Project>
