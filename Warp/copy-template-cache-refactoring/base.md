@@ -107,7 +107,7 @@ an integration test that:
     - `feature/copy-template-cache-refactoring`
 - Include build & test commands:
     - `dotnet build`
-    - `dotnet test tests/YouTubester.IntegrationTests -c Release`
+    - `dotnet test tests/Tubester.IntegrationTests -c Release`
 
 ---
 

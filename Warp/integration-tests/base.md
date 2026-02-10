@@ -3,7 +3,7 @@ Hangfire client, and two smoke tests (API + Worker). Target **.NET 9**. Do not s
 
 ## Project
 
-- Path: `tests/YouTubester.IntegrationTests`
+- Path: `tests/Tubester.IntegrationTests`
 - TFM: **net9.0**
 - Packages:
     - `xunit`
@@ -121,7 +121,7 @@ Create **two** minimal tests to prove the harness; full coverage comes later.
     - Any minimal non-invasive tweaks in API/Worker needed for test hosting
 - Include commands to run:
     - `dotnet build`
-    - `dotnet test tests/YouTubester.IntegrationTests -c Release`
+    - `dotnet test tests/Tubester.IntegrationTests -c Release`
 
 ## Constraints
 

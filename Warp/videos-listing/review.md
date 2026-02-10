@@ -18,7 +18,7 @@ We added an endpoint to list videos with infinite scroll for the Copy Template U
     - Fetch `pageSize + 1` to detect `hasNext`; return only first `pageSize`
 - Response DTO: items `{ videoId, title, publishedAt }`, `nextPageToken`
 - No `thumbnailUrl` in payload (client derives from `videoId`)
-- Data source: EF Core `Video` entity (YouTubester.Domain)
+- Data source: EF Core `Video` entity (Tubester.Domain)
 
 ## What to review
 

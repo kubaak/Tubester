@@ -1,0 +1,12 @@
+namespace Tubester.Application.Contracts.Videos;
+
+public sealed record CopyVideoTemplateRequest(
+    string SourceVideoId,
+    string TargetVideoId,
+    string OperationId,
+    bool CopyTags = true,
+    bool CopyLocation = true,
+    bool CopyPlaylists = true,
+    bool CopyCategory = true,
+    bool CopyDefaultLanguages = true
+);

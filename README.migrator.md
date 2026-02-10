@@ -1,4 +1,4 @@
-# YouTubester.Migrator
+# Tubester.Migrator
 
 One-off console tool to copy all data from the legacy SQLite database into the PostgreSQL database.
 
@@ -9,38 +9,38 @@ One-off console tool to copy all data from the legacy SQLite database into the P
    Example (from repo root):
 
    ```powershell
-   dotnet ef database update -p YouTubester.Persistence -s YouTubester.Api
+   dotnet ef database update -p Tubester.Persistence -s Tubester.Api
    ```
 
-2. The source SQLite database file must exist (default: `./.data/youtubester.db`).
+2. The source SQLite database file must exist (default: `./.data/Tubester.db`).
 
 ## Configuration
 
 Configuration sources (highest precedence first):
 
 1. Environment variables
-2. `YouTubester.Migrator/appsettings.json`
+2. `Tubester.Migrator/appsettings.json`
 
 Environment variable overrides:
 
-- `YOUTUBESTER_MIGRATOR_SOURCE` overrides `ConnectionStrings:SourceSqlite`
-- `YOUTUBESTER_MIGRATOR_DEST` overrides `ConnectionStrings:DestinationPostgres`
+- `Tubester_MIGRATOR_SOURCE` overrides `ConnectionStrings:SourceSqlite`
+- `Tubester_MIGRATOR_DEST` overrides `ConnectionStrings:DestinationPostgres`
 
 ## Run
 
 From the repo root:
 
 ```powershell
-dotnet run -p YouTubester.Migrator
+dotnet run -p Tubester.Migrator
 ```
 
 Example with explicit connection strings:
 
 ```powershell
-$env:YOUTUBESTER_MIGRATOR_SOURCE = "Data Source=./.data/youtubester.db"
-$env:YOUTUBESTER_MIGRATOR_DEST = "Host=localhost;Port=5432;Database=youtubester;Username=app;Password=devpassword"
+$env:Tubester_MIGRATOR_SOURCE = "Data Source=./.data/Tubester.db"
+$env:Tubester_MIGRATOR_DEST = "Host=localhost;Port=5432;Database=Tubester;Username=app;Password=devpassword"
 
-dotnet run -p YouTubester.Migrator
+dotnet run -p Tubester.Migrator
 ```
 
 ## Safety

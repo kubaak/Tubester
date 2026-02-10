@@ -1,9 +1,9 @@
-You are helping me extend the YouTubester API with a separate AI templating endpoint.
+You are helping me extend the Tubester API with a separate AI templating endpoint.
 
 ## Current state
 
-- API project: YouTubester.Api
-- Worker: YouTubester.Worker (uses Hangfire)
+- API project: Tubester.Api
+- Worker: Tubester.Worker (uses Hangfire)
 - Existing queues: "scanning", "default"
 - There is an existing endpoint:
 
@@ -72,7 +72,7 @@ public interface ICurrentChannelContext
 {
 string GetRequiredChannelId();
 }
-YouTubesterDb has Channels and Videos tables, with a relation Channel.Id → Video.ChannelId (or equivalent).
+TubesterDb has Channels and Videos tables, with a relation Channel.Id → Video.ChannelId (or equivalent).
 
 New requirements
 We want to introduce a separate AI templating endpoint and an associated Hangfire job.
@@ -148,7 +148,7 @@ Validate that the TargetVideoId belongs to the current user’s channel:
 
 Use ICurrentChannelContext.GetRequiredChannelId() to get channelId.
 
-In the API project, before enqueueing, query YouTubesterDb to ensure:
+In the API project, before enqueueing, query TubesterDb to ensure:
 
 csharp
 Copy code
@@ -166,7 +166,7 @@ Enqueue a Hangfire job using a new AiTemplateJob class.
 Use a dedicated queue named "ai-templating".
 
 5. Hangfire job: AiTemplateJob
-   Create a new job class in the Worker project, e.g. YouTubester.Application.Jobs.AiTemplateJob:
+   Create a new job class in the Worker project, e.g. Tubester.Application.Jobs.AiTemplateJob:
 
 csharp
 Copy code

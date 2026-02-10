@@ -15,7 +15,7 @@ YouTubeService instance.
 
 CURRENT SITUATION (please inspect and confirm)
 
-In the YouTubester.Integration project we currently have something like:
+In the Tubester.Integration project we currently have something like:
 
 A YouTubeClientFactory or YouTubeServiceFactory registered as singleton in DI:
 
@@ -31,9 +31,9 @@ The system used to assume “one YouTube account only”, which is no longer wha
 
 We now have:
 
-A User entity and UserTokens entity in YouTubester.Persistence.
+A User entity and UserTokens entity in Tubester.Persistence.
 
-IUserRepository and IUserTokenStore in YouTubester.Persistence.Users.
+IUserRepository and IUserTokenStore in Tubester.Persistence.Users.
 
 Tokens (access token, refresh token, expiresAt) are saved during Google OAuth login in AddCookieWithGoogle (
 OnTicketReceived), keyed by userId = Google sub (ClaimTypes.NameIdentifier).
@@ -49,7 +49,7 @@ WHAT I WANT YOU TO DO
 1. Refactor the YouTube client creation to be per user (token-based)
 
 Inspect the current YouTubeClientFactory / YouTubeServiceFactory and IYouTubeClientFactory (names may differ; search in
-YouTubester.Integration).
+Tubester.Integration).
 
 Change the design so that:
 
@@ -145,7 +145,7 @@ and delegate actual API calls to IYouTubeIntegration.
 
 Keep the dependency graph as:
 
-YouTubester.Api → YouTubester.Application → YouTubester.Integration
+Tubester.Api → Tubester.Application → Tubester.Integration
 
 If Warp previously added a direct project reference from API to Integration, remove that and route everything through
 the Application layer (e.g. via Channel service / Channel sync service).
@@ -192,7 +192,7 @@ API → Application → Integration → YouTube API.
 Per-user/personalization must be done using our userId (sub), not email.
 
 Make minimal necessary changes to introduce per-user YouTubeService, but do it cleanly and consistently across
-YouTubester.Integration and the dependent Application services.
+Tubester.Integration and the dependent Application services.
 
 When you’re done, the system should:
 

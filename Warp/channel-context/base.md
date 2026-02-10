@@ -29,10 +29,10 @@ Please implement the following steps.
 
 1. Add ICurrentChannelContext to Abstractions
 
-In YouTubester.Abstractions.Channels (or a similar namespace where channel-related abstractions live), add a new
+In Tubester.Abstractions.Channels (or a similar namespace where channel-related abstractions live), add a new
 interface:
 
-namespace YouTubester.Abstractions.Channels;
+namespace Tubester.Abstractions.Channels;
 
 public interface ICurrentChannelContext
 {
@@ -54,7 +54,7 @@ This interface must be framework-agnostic (no ASP.NET types) and Google-agnostic
 
 2. Implement ICurrentChannelContext in the Api project
 
-In YouTubester.Api (e.g. YouTubester.Api/Auth/CurrentChannelContext.cs), add a concrete implementation:
+In Tubester.Api (e.g. Tubester.Api/Auth/CurrentChannelContext.cs), add a concrete implementation:
 
 It should use IHttpContextAccessor to reach HttpContext.User.
 
@@ -90,7 +90,7 @@ around.
 
 3.1. VideoService
 
-Locate VideoService in YouTubester.Application and:
+Locate VideoService in Tubester.Application and:
 
 Inject ICurrentChannelContext:
 
@@ -129,7 +129,7 @@ on.
 
 4. Wire channelId into repository calls where appropriate
 
-In the Persistence layer (e.g. YouTubester.Persistence.Videos, YouTubester.Persistence.Replies):
+In the Persistence layer (e.g. Tubester.Persistence.Videos, Tubester.Persistence.Replies):
 
 For repositories where data is inherently per-channel (videos, replies, etc.), introduce channel-aware methods like:
 
@@ -202,4 +202,4 @@ FE calls /api/auth/me and /api/videos,
 
 VideoService uses ICurrentChannelContext → correct channelId is applied in all queries.
 
-Please apply these changes incrementally, respecting existing naming and coding conventions in the YouTubester codebase.
+Please apply these changes incrementally, respecting existing naming and coding conventions in the Tubester codebase.

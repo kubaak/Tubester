@@ -39,7 +39,7 @@ Please implement this, keeping the architecture and style consistent.
 
 1. Add a second Google auth handler for write scopes
 
-In YouTubester.Api.Extensions.ServiceCollectionExtensions.AddCookieWithGoogle:
+In Tubester.Api.Extensions.ServiceCollectionExtensions.AddCookieWithGoogle:
 
 Keep the existing Google handler as the read-only login:
 
@@ -93,7 +93,7 @@ reuse that code; otherwise, read-only handler can handle initial channel claims)
 
 2. Add an endpoint to start the write-consent flow
 
-In YouTubester.Api.AuthController ([Route("api/auth")]):
+In Tubester.Api.AuthController ([Route("api/auth")]):
 
 Add a new endpoint:
 
@@ -249,5 +249,5 @@ A claim yt_write_granted=true gates dangerous endpoints via policy.
 
 No DB persistence of tokens in this phase.
 
-Please implement these changes incrementally, keeping the existing YouTubester code conventions and dependency
+Please implement these changes incrementally, keeping the existing Tubester code conventions and dependency
 structure.

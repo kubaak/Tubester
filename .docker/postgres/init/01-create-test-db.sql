@@ -1,1 +1,1 @@
-CREATE DATABASE youtubester_test OWNER app;
+CREATE DATABASE Tubester_test OWNER app;

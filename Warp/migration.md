@@ -1,14 +1,14 @@
-You are helping me add a one-off **data migration tool** project to my YouTubester solution that copies all data from
+You are helping me add a one-off **data migration tool** project to my Tubester solution that copies all data from
 the old **SQLite** DB into the new **PostgreSQL** DB using EF Core.
 
 ## Context
 
-- Solution name: **YouTubester**
+- Solution name: **Tubester**
 - Main projects:
-    - `YouTubester.Api` (ASP.NET Core API)
-    - `YouTubester.Worker` (background worker)
-    - `YouTubester.Persistence` (EF Core DbContext + entities)
-- DbContext: `YouTubester.Persistence.YouTubesterDb`
+    - `Tubester.Api` (ASP.NET Core API)
+    - `Tubester.Worker` (background worker)
+    - `Tubester.Persistence` (EF Core DbContext + entities)
+- DbContext: `Tubester.Persistence.TubesterDb`
 
 We have just refactored the app to use **PostgreSQL** everywhere (API + Worker) with Npgsql.  
 Previously, **SQLite** was used as the primary DB. The old SQLite file still contains real data that I want to keep.
@@ -17,27 +17,27 @@ Previously, **SQLite** was used as the primary DB. The old SQLite file still con
 
 - **SQLite**:
     - Was used by previous versions of the app.
-    - stored in `.data/youtubester.db`
+    - stored in `.data/Tubester.db`
 - **Postgres (new)**:
     - Runs in Docker (local dev) on `localhost:5432`.
-    - Has a DB for dev: `youtubester`.
-    - Has a DB for tests: `youtubester_test`.
+    - Has a DB for dev: `Tubester`.
+    - Has a DB for tests: `Tubester_test`.
     - Schema is already created via **EF Core migrations** for Postgres (i.e., `dotnet ef database update` has been
       run).
 
 I now want a **small, separate console project** that:
 
-- Opens `YouTubesterDb` pointing to **SQLite** as *source*.
-- Opens `YouTubesterDb` pointing to **Postgres** as *destination*.
+- Opens `TubesterDb` pointing to **SQLite** as *source*.
+- Opens `TubesterDb` pointing to **Postgres** as *destination*.
 - Copies data **table-by-table**, in FK-safe order.
 - Is used **once** (or rarely) to migrate data, then can be ignored.
 
 ## Requirements for the migrator
 
-1. **New project: `YouTubester.Migrator`**
+1. **New project: `Tubester.Migrator`**
 
     - Type: `.NET` console app, target `net10.0` (same as rest of solution).
-    - Add a project reference to `YouTubester.Persistence` so we can reuse `YouTubesterDb` and all entity types.
+    - Add a project reference to `Tubester.Persistence` so we can reuse `TubesterDb` and all entity types.
     - Add NuGet packages:
         - `Microsoft.EntityFrameworkCore.Sqlite`
         - `Npgsql.EntityFrameworkCore.PostgreSQL`
@@ -47,13 +47,13 @@ I now want a **small, separate console project** that:
    The migrator should obtain connection strings from **configuration + optional environment variables**:
 
     - Configuration:
-        - Add `appsettings.json` to `YouTubester.Migrator` with something like:
+        - Add `appsettings.json` to `Tubester.Migrator` with something like:
 
           ```json
           {
             "ConnectionStrings": {
-              "SourceSqlite": "Data Source=./data/youtubester.db",
-              "DestinationPostgres": "Host=localhost;Port=5432;Database=youtubester;Username=app;Password=devpassword"
+              "SourceSqlite": "Data Source=./data/Tubester.db",
+              "DestinationPostgres": "Host=localhost;Port=5432;Database=Tubester;Username=app;Password=devpassword"
             }
           }
           ```
@@ -61,8 +61,8 @@ I now want a **small, separate console project** that:
           (The exact SQLite path should match whatever the old app used; inspect existing code/config to confirm.)
 
     - Environment overrides (optional but nice for CI/prod):
-        - If `YOUTUBESTER_MIGRATOR_SOURCE` is set, it overrides `ConnectionStrings:SourceSqlite`.
-        - If `YOUTUBESTER_MIGRATOR_DEST` is set, it overrides `ConnectionStrings:DestinationPostgres`.
+        - If `Tubester_MIGRATOR_SOURCE` is set, it overrides `ConnectionStrings:SourceSqlite`.
+        - If `Tubester_MIGRATOR_DEST` is set, it overrides `ConnectionStrings:DestinationPostgres`.
 
     - In `Program.cs`, read config like:
 
@@ -74,27 +74,27 @@ I now want a **small, separate console project** that:
  
       var configuration = builder.Build();
  
-      var sqliteCs = Environment.GetEnvironmentVariable("YOUTUBESTER_MIGRATOR_SOURCE")
+      var sqliteCs = Environment.GetEnvironmentVariable("Tubester_MIGRATOR_SOURCE")
                      ?? configuration.GetConnectionString("SourceSqlite")
                      ?? throw new InvalidOperationException("Source (SQLite) connection string not configured.");
  
-      var postgresCs = Environment.GetEnvironmentVariable("YOUTUBESTER_MIGRATOR_DEST")
+      var postgresCs = Environment.GetEnvironmentVariable("Tubester_MIGRATOR_DEST")
                        ?? configuration.GetConnectionString("DestinationPostgres")
                        ?? throw new InvalidOperationException("Destination (Postgres) connection string not configured.");
       ```
 
-3. **Use `YouTubesterDb` with two different providers**
+3. **Use `TubesterDb` with two different providers**
 
    In `Program.cs`:
 
-    - Build two sets of `DbContextOptions<YouTubesterDb>`:
+    - Build two sets of `DbContextOptions<TubesterDb>`:
 
       ```csharp
-      var sqliteOptions = new DbContextOptionsBuilder<YouTubesterDb>()
+      var sqliteOptions = new DbContextOptionsBuilder<TubesterDb>()
           .UseSqlite(sqliteCs)
           .Options;
  
-      var pgOptions = new DbContextOptionsBuilder<YouTubesterDb>()
+      var pgOptions = new DbContextOptionsBuilder<TubesterDb>()
           .UseNpgsql(postgresCs)
           .Options;
       ```
@@ -102,15 +102,15 @@ I now want a **small, separate console project** that:
     - Create `source` and `target` contexts:
 
       ```csharp
-      using var source = new YouTubesterDb(sqliteOptions);
-      using var target = new YouTubesterDb(pgOptions);
+      using var source = new TubesterDb(sqliteOptions);
+      using var target = new TubesterDb(pgOptions);
  
       target.ChangeTracker.AutoDetectChangesEnabled = false;
       ```
 
 4. **Copy data table-by-table in FK-safe order**
 
-   Inspect `YouTubesterDb` to determine the DbSet order that respects foreign keys. Typical example (adjust to actual
+   Inspect `TubesterDb` to determine the DbSet order that respects foreign keys. Typical example (adjust to actual
    DbSets):
 
     - `Users`
@@ -220,19 +220,19 @@ In the repo (or in a README.migrator.md), document:
 
 How to run the migrator:
 
-dotnet run -p YouTubester.Migrator
+dotnet run -p Tubester.Migrator
 
 Which config it uses (appsettings.json + env overrides).
 
 That Postgres schema must be created first:
 
-dotnet ef database update -p YouTubester.Persistence -s YouTubester.Api
+dotnet ef database update -p Tubester.Persistence -s Tubester.Api
 
 Tasks for you
 
-Create the new project YouTubester.Migrator and wire it into the solution.
+Create the new project Tubester.Migrator and wire it into the solution.
 
-Add the project reference to YouTubester.Persistence and required EF Core providers.
+Add the project reference to Tubester.Persistence and required EF Core providers.
 
 Implement appsettings.json and Program.cs as described, including:
 
@@ -246,9 +246,9 @@ Table-by-table copy in FK-safe order.
 
 Make the code compile and be ready to run with:
 
-dotnet run -p YouTubester.Migrator
+dotnet run -p Tubester.Migrator
 
 assuming there is a SQLite DB file at the configured path and a Postgres DB with schema already created.
 
-Please generate the full Program.cs and an example appsettings.json for YouTubester.Migrator, plus any necessary .csproj
+Please generate the full Program.cs and an example appsettings.json for Tubester.Migrator, plus any necessary .csproj
 modifications.

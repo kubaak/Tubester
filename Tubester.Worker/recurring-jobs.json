@@ -1,0 +1,8 @@
+[
+  {
+    "job-name": "CreditPeriodMaintenanceJob",
+    "job-type": "Tubester.Application.Jobs.CreditPeriodMaintenanceJob, Tubester.Application",
+    "cron-expression": "0 0 * * *",
+    "queue": "default"
+  }
+]
