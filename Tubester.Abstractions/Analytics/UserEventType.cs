@@ -33,5 +33,10 @@ public enum UserEventType
     /// <summary>
     /// The user granted write consent for managing their YouTube content.
     /// </summary>
-    WriteConsentGranted = 5
+    WriteConsentGranted = 5,
+
+    /// <summary>
+    /// A reply was approved by the user.
+    /// </summary>
+    ReplyApproved = 6
 }

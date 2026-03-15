@@ -36,6 +36,7 @@ public sealed class ChannelRepository(TubesterDb db) : IChannelRepository
         {
             existingChannel.ApplyRemoteSnapshot(channel.Name, channel.UploadsPlaylistId,
                 channel.ETag, DateTimeOffset.UtcNow);
+            existingChannel.TransferEventsFrom(channel);
         }
         else
         {

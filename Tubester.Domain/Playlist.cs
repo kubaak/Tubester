@@ -1,6 +1,6 @@
 namespace Tubester.Domain;
 
-public sealed class Playlist
+public sealed class Playlist : Entity
 {
     public string PlaylistId { get; private set; } = default!;
     public string ChannelId { get; private set; } = default!;

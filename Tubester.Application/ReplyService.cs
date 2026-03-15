@@ -1,4 +1,3 @@
-using Tubester.Abstractions.Analytics;
 using Tubester.Abstractions.Channels;
 using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Replies;
@@ -13,7 +12,6 @@ public class ReplyService(
     IReplyRepository repository,
     IYouTubeIntegration youTubeIntegration,
     ICurrentChannelContext currentChannelContext,
-    IUserEventLogger userEventLogger,
     ICreditsService creditsService,
     IDateTimeOffsetProvider dateTimeOffsetProvider)
     : IReplyService
@@ -107,7 +105,7 @@ public class ReplyService(
                     continue;
                 }
 
-                draft.ApproveText(d.ApprovedText, dateTimeOffsetProvider.GetUtcNowDateTimeOffset());
+                draft.ApproveText(userId, d.ApprovedText, dateTimeOffsetProvider.GetUtcNowDateTimeOffset());
 
                 var replyPostedIdempotencyKey =
                     $"reply-posted:{userId}:{draft.VideoId}:{draft.CommentId}";
@@ -132,19 +130,7 @@ public class ReplyService(
                 }
 
                 await youTubeIntegration.ReplyAsync(draft.CommentId, draft.FinalText!, cancellationToken);
-                draft.Post(dateTimeOffsetProvider.GetUtcNowDateTimeOffset());
-
-                await userEventLogger.LogAsync(
-                    userId,
-                    UserEventType.ReplyPostedToYouTube,
-                    draft.VideoId,
-                    draft.CommentId,
-                    new
-                    {
-                        length = draft.FinalText?.Length ?? 0,
-                        wasEdited = !string.Equals(draft.FinalText, draft.SuggestedText, StringComparison.Ordinal)
-                    },
-                    cancellationToken);
+                draft.Post(userId, dateTimeOffsetProvider.GetUtcNowDateTimeOffset());
 
                 await repository.AddOrUpdateReplyAsync(draft, cancellationToken);
                 results.Add(new DraftDecisionResultDto(d.CommentId, true));

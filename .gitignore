@@ -55,6 +55,7 @@ CodeCoverage/
 *.db-shm
 *.db-wal
 .data/*
+.artifacts/*
 
 # NUnit
 *.VisualState.xml

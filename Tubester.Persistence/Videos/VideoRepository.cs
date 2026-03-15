@@ -77,6 +77,7 @@ public sealed class VideoRepository(TubesterDb db) : IVideoRepository
                     video.DefaultAudioLanguage, video.Location, video.LocationDescription, currentTimeUtc, video.ETag,
                     video.CommentsAllowed
                 );
+                existingVideo.TransferEventsFrom(video);
                 if (changed)
                 {
                     updated++;

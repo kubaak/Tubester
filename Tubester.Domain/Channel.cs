@@ -1,6 +1,6 @@
 namespace Tubester.Domain;
 
-public sealed class Channel
+public sealed class Channel : Entity
 {
     public string ChannelId { get; private set; } = null!;
     public string? UserId { get; private set; }

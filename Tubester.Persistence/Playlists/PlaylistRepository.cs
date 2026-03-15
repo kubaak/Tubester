@@ -59,6 +59,7 @@ public sealed class PlaylistRepository(TubesterDb databaseContext) : IPlaylistRe
             else
             {
                 existingPlaylist.UpdateTitle(playlist.Title, currentTime, playlist.ETag);
+                existingPlaylist.TransferEventsFrom(playlist);
                 updatedCount++;
             }
         }

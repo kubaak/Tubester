@@ -10,7 +10,7 @@ public enum VideoVisibility
     Scheduled = 3
 }
 
-public sealed class Video
+public sealed class Video : Entity
 {
     public string UploadsPlaylistId { get; private set; } = default!;
     public string VideoId { get; private set; } = default!;
