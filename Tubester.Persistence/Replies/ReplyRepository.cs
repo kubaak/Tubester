@@ -58,6 +58,7 @@ public class ReplyRepository(TubesterDb db) : IReplyRepository
         else
         {
             db.Entry(tracked).CurrentValues.SetValues(reply);
+            tracked.TransferEventsFrom(reply);
         }
 
         await db.SaveChangesAsync(ct);

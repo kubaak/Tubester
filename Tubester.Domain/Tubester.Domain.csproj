@@ -6,4 +6,9 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
+    <ItemGroup>
+        <InternalsVisibleTo Include="Tubester.Persistence" />
+        <InternalsVisibleTo Include="Tubester.IntegrationTests" />
+    </ItemGroup>
+
 </Project>

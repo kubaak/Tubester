@@ -10,6 +10,7 @@ using Tubester.Abstractions.Replies;
 using Tubester.Abstractions.Videos;
 using Tubester.Application;
 using Tubester.Application.Credits;
+using Tubester.Application.DomainEvents;
 using Tubester.Application.Jobs;
 using Tubester.Application.Videos;
 using Tubester.Integration;
@@ -52,6 +53,9 @@ public static class ServiceCollectionExtensions
 
         // Analytics
         services.AddScoped<IUserEventLogger, UserEventLogger>();
+
+        // Domain event handlers
+        services.AddDomainEventHandlers();
 
         // Credits
         services.AddScoped<ICreditsStore, CreditsStore>();

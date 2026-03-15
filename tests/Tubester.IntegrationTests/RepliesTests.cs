@@ -4,7 +4,6 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
-using Xunit;
 using Tubester.Abstractions.Analytics;
 using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Users;
@@ -13,6 +12,7 @@ using Tubester.Domain;
 using Tubester.IntegrationTests.TestHost;
 using Tubester.Persistence;
 using Tubester.Persistence.Credits;
+using Xunit;
 
 namespace Tubester.IntegrationTests;
 
@@ -101,8 +101,8 @@ public class RepliesTests(TestFixture fixture)
             "Posted comment text",
             TestFixture.TestingDateTimeOffset);
         postedReply.SuggestText("Some reply", TestFixture.TestingDateTimeOffset.AddMinutes(5));
-        postedReply.ApproveText("Final reply", TestFixture.TestingDateTimeOffset.AddMinutes(10));
-        postedReply.Post(TestFixture.TestingDateTimeOffset.AddMinutes(15));
+        postedReply.ApproveText(MockAuthenticationExtensions.TestSub, "Final reply", TestFixture.TestingDateTimeOffset.AddMinutes(10));
+        postedReply.Post(MockAuthenticationExtensions.TestSub, TestFixture.TestingDateTimeOffset.AddMinutes(15));
 
         using (var scope = fixture.ApiServices.CreateScope())
         {
@@ -379,8 +379,8 @@ public class RepliesTests(TestFixture fixture)
             "Posted comment",
             TestFixture.TestingDateTimeOffset);
         postedReply.SuggestText("Some text", TestFixture.TestingDateTimeOffset.AddMinutes(5));
-        postedReply.ApproveText("Final text", TestFixture.TestingDateTimeOffset.AddMinutes(10));
-        postedReply.Post(TestFixture.TestingDateTimeOffset.AddMinutes(15));
+        postedReply.ApproveText(MockAuthenticationExtensions.TestSub, "Final text", TestFixture.TestingDateTimeOffset.AddMinutes(10));
+        postedReply.Post(MockAuthenticationExtensions.TestSub, TestFixture.TestingDateTimeOffset.AddMinutes(15));
 
         using (var scope = fixture.ApiServices.CreateScope())
         {

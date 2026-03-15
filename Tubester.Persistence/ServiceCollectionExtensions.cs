@@ -1,8 +1,10 @@
-﻿using Hangfire;
+using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Tubester.Abstractions.DomainEvents;
+using Tubester.Persistence.DomainEvents;
 
 namespace Tubester.Persistence;
 
@@ -16,7 +18,14 @@ public static class ServiceCollectionExtensions
             throw new InvalidOperationException("Missing connection string 'ConnectionStrings:TubesterDb'.");
         }
 
-        services.AddDbContext<TubesterDb>(options => options.UseNpgsql(connectionString));
+        services.AddScoped<DomainEventInterceptor>();
+        services.AddScoped<IDomainEventDispatcher, DomainEventDispatcher>();
+        //todo AddDbContextFactory
+        services.AddDbContext<TubesterDb>((serviceProvider, options) =>
+        {
+            options.UseNpgsql(connectionString);
+            options.AddInterceptors(serviceProvider.GetRequiredService<DomainEventInterceptor>());
+        });
         return services;
     }
 

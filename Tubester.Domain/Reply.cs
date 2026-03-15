@@ -1,9 +1,10 @@
-﻿using ArgumentException = System.ArgumentException;
+using Tubester.Domain.Events;
+using ArgumentException = System.ArgumentException;
 
 namespace Tubester.Domain;
 
 public enum ReplyStatus { Pulled = 0, Suggested = 1, Approved = 2, Posted = 3, Ignored = 4, Drafting = 5 }
-public class Reply
+public class Reply : Entity
 {
     public string CommentId { get; private set; }
     public string VideoId { get; private set; }
@@ -27,7 +28,7 @@ public class Reply
         Status = ReplyStatus.Suggested;
     }
 
-    public void ApproveText(string finalText, DateTimeOffset? approvedAt)
+    public void ApproveText(string actorUserId, string finalText, DateTimeOffset? approvedAt)
     {
         EnsureNotPosted();
         if (Status == ReplyStatus.Approved)
@@ -36,13 +37,22 @@ public class Reply
         }
 
         FinalText = SanitizeText(finalText);
-        ;
         ApprovedAt = approvedAt;
         Status = ReplyStatus.Approved;
+
+        if (approvedAt.HasValue)
+        {
+            Raise(new ReplyApprovedEvent(actorUserId, CommentId, VideoId, FinalText, approvedAt.Value));
+        }
     }
 
-    public void Post(DateTimeOffset postedAt)
+    public void Post(string actorUserId, DateTimeOffset postedAt)
     {
+        if (string.IsNullOrWhiteSpace(actorUserId))
+        {
+            throw new ArgumentException("Actor user id is required.", nameof(actorUserId));
+        }
+
         EnsureNotPosted();
         if (Status != ReplyStatus.Approved)
         {
@@ -56,6 +66,8 @@ public class Reply
 
         PostedAt = postedAt;
         Status = ReplyStatus.Posted;
+
+        Raise(new ReplyPostedEvent(actorUserId, CommentId, VideoId, FinalText!, SuggestedText, postedAt));
     }
 
     public void Ignore()
@@ -82,6 +94,10 @@ public class Reply
         CommentText = commentText;
         PulledAt = pulledAt;
         Status = status;
+    }
+
+    private Reply()
+    {
     }
 
     private void EnsureNotPosted()

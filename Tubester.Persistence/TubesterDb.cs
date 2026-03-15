@@ -54,6 +54,16 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
             .WithMany()
             .HasForeignKey(channel => channel.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+        b.Entity<Video>()
+            .HasOne<Channel>()
+            .WithMany()
+            .HasForeignKey(v => v.UploadsPlaylistId)
+            .HasPrincipalKey(c => c.UploadsPlaylistId);
+        b.Entity<Playlist>()
+            .HasOne<Channel>()
+            .WithMany()
+            .HasForeignKey(p => p.ChannelId);
+
         b.Entity<Video>().HasKey(video => video.VideoId);
         b.Entity<Video>().HasIndex(video => video.UpdatedAt);
         // Composite index for video listing performance (PublishedAt DESC, VideoId DESC)
@@ -73,8 +83,6 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
         b.Entity<Playlist>().HasKey(playlist => playlist.PlaylistId);
         b.Entity<Playlist>().HasIndex(playlist => playlist.ChannelId);
         b.Entity<Playlist>().Property(playlist => playlist.ETag).HasMaxLength(128);
-        b.Entity<Playlist>().HasOne<Channel>().WithMany().HasForeignKey(playlist => playlist.ChannelId)
-            .OnDelete(DeleteBehavior.Cascade);
         b.Entity<Playlist>().Property(playlist => playlist.UpdatedAt);
         b.Entity<Playlist>().Property(playlist => playlist.LastMembershipSyncAt);
 
@@ -237,5 +245,14 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
 
             entity.HasIndex(cost => cost.IsEnabled);
         });
+
+        //Domain events are not meant to be persisted
+        foreach (var entityType in b.Model.GetEntityTypes())
+        {
+            if (typeof(Entity).IsAssignableFrom(entityType.ClrType))
+            {
+                b.Entity(entityType.ClrType).Ignore(nameof(Entity.DomainEvents));
+            }
+        }
     }
 }
