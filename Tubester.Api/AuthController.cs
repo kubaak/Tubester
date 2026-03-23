@@ -71,7 +71,8 @@ public sealed class AuthController : ControllerBase
     /// <returns></returns>
     [HttpGet("me")]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-    public IActionResult Me()
+    [ProducesResponseType(typeof(AuthMeResponse), StatusCodes.Status200OK)]
+    public ActionResult<AuthMeResponse> Me()
     {
         var name = User.Identity?.Name;
         var email = User.FindFirst(ClaimTypes.Email)?.Value;
@@ -98,5 +99,40 @@ public sealed class AuthController : ControllerBase
             picture,
             hasWriteAccess
         });
+    }
+    
+    /// <summary>
+    /// 
+    /// </summary>
+    public sealed class AuthMeResponse
+    {
+        /// <summary>
+        /// 
+        /// </summary>
+        public string? Name { get; init; }
+        /// <summary>
+        /// 
+        /// </summary>
+        public string? Email { get; init; }
+        /// <summary>
+        /// 
+        /// </summary>
+        public string? Sub { get; init; }
+        /// <summary>
+        /// 
+        /// </summary>
+        public string? ChannelId { get; init; }
+        /// <summary>
+        /// 
+        /// </summary>
+        public string? ChannelTitle { get; init; }
+        /// <summary>
+        /// 
+        /// </summary>
+        public string? Picture { get; init; }
+        /// <summary>
+        /// 
+        /// </summary>
+        public bool HasWriteAccess { get; init; }
     }
 }

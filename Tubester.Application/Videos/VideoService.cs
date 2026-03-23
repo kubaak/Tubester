@@ -397,6 +397,61 @@ public class VideoService(
         };
     }
 
+    public async Task<VideoDetailsDto?> SaveDraftMetadataAsync(
+        string userId,
+        UpdateVideoMetadataRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new ArgumentException("User id is required.", nameof(userId));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.VideoId))
+        {
+            return null;
+        }
+
+        var channelId = channelContext.GetRequiredChannelId();
+        var video = await videoRepository.GetVideoByIdAsync(channelId, request.VideoId, cancellationToken);
+
+        if (video is null)
+        {
+            return null;
+        }
+
+        var title = request.Title?.Trim() ?? string.Empty;
+        var description = request.Description ?? string.Empty;
+        var tags = SanitizeTags(request.Tags ?? Array.Empty<string>());
+
+        var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
+        video.ApplyDetails(
+            title,
+            description,
+            video.PublishedAt,
+            video.Duration,
+            video.Visibility,
+            tags,
+            video.CategoryId,
+            video.DefaultLanguage,
+            video.DefaultAudioLanguage,
+            video.Location,
+            video.LocationDescription,
+            nowUtc,
+            null,
+            video.CommentsAllowed
+        );
+
+        await videoRepository.UpsertAsync(channelId, [video], cancellationToken);
+
+        return new VideoDetailsDto
+        {
+            Title = title,
+            Description = description,
+            Tags = tags.ToArray(),
+            IsAiTemplateInProgress = video.IsAiTemplateInProgress
+        };
+    }
 
     private static string[] SanitizeTags(IReadOnlyList<string> tags)
     {
