@@ -3,7 +3,7 @@ using Tubester.Abstractions.Analytics;
 
 namespace Tubester.Persistence.Analytics;
 
-public class UserEventLogger(TubesterDb TubesterDb) : IUserEventLogger
+public class UserEventLogger(TubesterDb tubesterDb) : IUserEventLogger
 {
     public async Task LogAsync(
         string userId,
@@ -36,7 +36,7 @@ public class UserEventLogger(TubesterDb TubesterDb) : IUserEventLogger
             MetadataJson = metadataJson
         };
 
-        await TubesterDb.UserEvents.AddAsync(userEvent, cancellationToken);
-        await TubesterDb.SaveChangesAsync(cancellationToken);
+        await tubesterDb.UserEvents.AddAsync(userEvent, cancellationToken);
+        await tubesterDb.SaveChangesAsync(cancellationToken);
     }
 }

@@ -200,4 +200,43 @@ public sealed class VideosController(
 
         return Ok(updatedVideoDetails);
     }
+
+    /// <summary>
+    /// Saves draft video metadata (title, description, tags) without submitting to YouTube.
+    /// </summary>
+    /// <param name="request"></param>
+    /// <param name="cancellationToken"></param>
+    [HttpPost("save-draft")]
+    [ProducesResponseType(typeof(VideoDetailsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<VideoDetailsDto>> SaveDraft(
+        [FromBody] UpdateVideoMetadataRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.VideoId))
+        {
+            return BadRequest(new { error = "VideoId is required and cannot be empty." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Title))
+        {
+            return BadRequest(new { error = "Title is required and cannot be empty." });
+        }
+
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return Unauthorized();
+        }
+
+        var savedVideoDetails = await videoService.SaveDraftMetadataAsync(userId, request, cancellationToken);
+
+        if (savedVideoDetails is null)
+        {
+            return NotFound();
+        }
+
+        return Ok(savedVideoDetails);
+    }
 }

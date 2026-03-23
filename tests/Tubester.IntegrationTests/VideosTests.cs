@@ -958,6 +958,215 @@ public class VideosTests(TestFixture fixture)
         Assert.Empty(result.Items); // No videos in DB, but request should be valid
     }
 
+    [Fact]
+    public async Task SaveDraft_ValidRequest_SavesMetadataToDbWithoutCallingYouTube()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        const string uploadPlaylistId = "PLSaveDraftUploads";
+        const string channelId = "save-draft-channel";
+
+        fixture.ApiFactory.MockCurrentChannelContext
+            .Setup(channelContext => channelContext.GetRequiredChannelId())
+            .Returns(channelId);
+
+        const string originalVideoId = "videoDraft1";
+        var originalVideo = Video.Create(
+            uploadPlaylistId,
+            originalVideoId,
+            "Original Title",
+            "Original Description",
+            TestFixture.TestingDateTimeOffset,
+            TimeSpan.FromMinutes(2),
+            VideoVisibility.Public,
+            ["original"],
+            "22",
+            "en",
+            "en",
+            null,
+            null,
+            TestFixture.TestingDateTimeOffset,
+            "etag-save-draft"
+        );
+
+        using (var serviceScope = fixture.ApiServices.CreateScope())
+        {
+            var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
+            var user = User.Create(
+                MockAuthenticationExtensions.TestSub,
+                MockAuthenticationExtensions.TestEmail,
+                MockAuthenticationExtensions.TestName,
+                MockAuthenticationExtensions.TestPicture,
+                TestFixture.TestingDateTimeOffset);
+            var channel = Channel.Create(channelId, MockAuthenticationExtensions.TestSub, "Save Draft Channel",
+                uploadPlaylistId, TestFixture.TestingDateTimeOffset);
+
+            databaseContext.Users.Add(user);
+            await databaseContext.SaveChangesAsync();
+            databaseContext.Channels.Add(channel);
+            databaseContext.Videos.Add(originalVideo);
+            await databaseContext.SaveChangesAsync();
+        }
+
+        const string newTitle = "Draft Title";
+        const string newDescription = "Draft Description";
+        var newTags = new[] { "draft-tag-one", "draft-tag-two" };
+
+        var request = new UpdateVideoMetadataRequest(
+            originalVideoId,
+            newTitle,
+            newDescription,
+            newTags
+        );
+
+        var requestJson = JsonSerializer.Serialize(request, _serializerOptions);
+        var requestHttpContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
+
+        // Clear any invocations from previous tests
+        fixture.ApiFactory.MockYouTubeIntegration.Invocations.Clear();
+
+        // Act
+        var response = await fixture.HttpClient.PostAsync("/api/videos/save-draft", requestHttpContent);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var responseJson = await response.Content.ReadAsStringAsync();
+        var videoDetails = JsonSerializer.Deserialize<VideoDetailsDto>(responseJson, _serializerOptions);
+
+        Assert.NotNull(videoDetails);
+        Assert.Equal(newTitle, videoDetails.Title);
+        Assert.Equal(newDescription, videoDetails.Description);
+        Assert.Equal(newTags, videoDetails.Tags);
+
+        // Verify YouTube was never called
+        fixture.ApiFactory.MockYouTubeIntegration.Verify(youTubeIntegration =>
+                youTubeIntegration.UpdateVideoAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<IReadOnlyList<string>>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<(double lat, double lng)?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        // Verify DB was updated
+        using (var verifyScope = fixture.ApiServices.CreateScope())
+        {
+            var databaseContext = verifyScope.ServiceProvider.GetRequiredService<TubesterDb>();
+            var videoInDatabase = await databaseContext.Videos.FindAsync(originalVideoId);
+
+            Assert.NotNull(videoInDatabase);
+            Assert.Equal(newTitle, videoInDatabase.Title);
+            Assert.Equal(newDescription, videoInDatabase.Description);
+            Assert.Equal(newTags, videoInDatabase.Tags);
+        }
+    }
+
+    [Fact]
+    public async Task SaveDraft_VideoDoesNotExist_ReturnsNotFound()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        const string uploadPlaylistId = "PLSaveDraftUploads";
+        const string channelId = "save-draft-channel";
+
+        fixture.ApiFactory.MockCurrentChannelContext
+            .Setup(channelContext => channelContext.GetRequiredChannelId())
+            .Returns(channelId);
+
+        using (var serviceScope = fixture.ApiServices.CreateScope())
+        {
+            var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
+            var user = User.Create(
+                MockAuthenticationExtensions.TestSub,
+                MockAuthenticationExtensions.TestEmail,
+                MockAuthenticationExtensions.TestName,
+                MockAuthenticationExtensions.TestPicture,
+                TestFixture.TestingDateTimeOffset);
+            var channel = Channel.Create(channelId, MockAuthenticationExtensions.TestSub, "Save Draft Channel",
+                uploadPlaylistId, TestFixture.TestingDateTimeOffset);
+
+            databaseContext.Users.Add(user);
+            databaseContext.Channels.Add(channel);
+            await databaseContext.SaveChangesAsync();
+        }
+
+        var request = new UpdateVideoMetadataRequest(
+            "does-not-exist",
+            "Some Title",
+            "Some Description",
+            ["tag"]
+        );
+
+        var requestJson = JsonSerializer.Serialize(request, _serializerOptions);
+        var requestHttpContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
+
+        // Act
+        var response = await fixture.HttpClient.PostAsync("/api/videos/save-draft", requestHttpContent);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SaveDraft_EmptyVideoId_ReturnsBadRequest()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        var request = new UpdateVideoMetadataRequest(
+            "",
+            "Some Title",
+            "Some Description",
+            ["tag"]
+        );
+
+        var requestJson = JsonSerializer.Serialize(request, _serializerOptions);
+        var requestHttpContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
+
+        // Act
+        var response = await fixture.HttpClient.PostAsync("/api/videos/save-draft", requestHttpContent);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        Assert.Contains("VideoId is required", responseContent);
+    }
+
+    [Fact]
+    public async Task SaveDraft_EmptyTitle_ReturnsBadRequest()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        var request = new UpdateVideoMetadataRequest(
+            "someVideoId",
+            "",
+            "Some Description",
+            ["tag"]
+        );
+
+        var requestJson = JsonSerializer.Serialize(request, _serializerOptions);
+        var requestHttpContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
+
+        // Act
+        var response = await fixture.HttpClient.PostAsync("/api/videos/save-draft", requestHttpContent);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Title is required", responseContent);
+    }
+
     private static async IAsyncEnumerable<T> CreateAsyncEnumerable<T>(IEnumerable<T> items)
     {
         foreach (var item in items)

@@ -31,4 +31,9 @@ public interface IVideoService
         string userId,
         UpdateVideoMetadataRequest request,
         CancellationToken cancellationToken);
+
+    Task<VideoDetailsDto?> SaveDraftMetadataAsync(
+        string userId,
+        UpdateVideoMetadataRequest request,
+        CancellationToken cancellationToken);
 }
