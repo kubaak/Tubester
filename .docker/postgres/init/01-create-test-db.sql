@@ -1,1 +1,0 @@
-CREATE DATABASE Tubester_test OWNER app;

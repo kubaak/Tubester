@@ -32,13 +32,11 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-
-    //TODO
-    // If you don't want to maintain a list of known proxies/networks (common on VPS),
-    // clear these so forwarded headers are accepted.
-    // options.KnownNetworks.Clear();
-    // options.KnownProxies.Clear();
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedProto;
+    
+    //clearing so forwarded headers are accepted. Safe behind proxy (ngingx)
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
 });
 
 builder.Services.AddControllers();
@@ -84,6 +82,7 @@ app.UseExceptionHandler();
 app.UseRouting();
 app.UseSwagger();
 app.UseSwaggerUI();
+//In local development to get redirected back to the client after the login
 if (app.Environment.IsDevelopment())
 {
     app.MapWhen(ctx => !ctx.Request.Path.StartsWithSegments("/api"), spa =>
@@ -97,16 +96,6 @@ if (app.Environment.IsDevelopment())
             }
         });
     });
-
-    var cfg = app.Services.GetRequiredService<IConfiguration>();
-    if (cfg.GetValue<bool>("Seed:Enable"))
-    {
-        using var scope = app.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<TubesterDb>();
-
-        db.Database.Migrate();
-        await DbSeeder.SeedAsync(db);
-    }
 }
 
 app.UseAuthentication();

@@ -69,3 +69,6 @@ nunit-*.xml
 
 # Youtube Tokens
 *.TokenResponse-user
+
+# Secrets
+secrets/*

@@ -13,10 +13,10 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Hangfire.Core" Version="1.8.22"/>
+        <PackageReference Include="Hangfire.Core" Version="1.8.23" />
         <PackageReference Include="Hangfire.RecurringJobExtensions" Version="1.1.6"/>
-        <PackageReference Include="Microsoft.AspNetCore.WebUtilities" Version="10.0.0"/>
-        <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.0"/>
+        <PackageReference Include="Microsoft.AspNetCore.WebUtilities" Version="10.0.5" />
+        <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.5" />
     </ItemGroup>
 
 </Project>

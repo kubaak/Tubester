@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tubester-client
+  namespace: tubester
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tubester-client
+  template:
+    metadata:
+      labels:
+        app: tubester-client
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: client
+          image: ghcr.io/kubaak/tubester-client:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
