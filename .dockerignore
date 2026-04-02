@@ -1,0 +1,12 @@
+﻿**/bin/
+**/obj/
+**/.vs/
+**/.idea/
+**/.vscode/
+.git/
+.gitignore
+Dockerfile*
+docker-compose*
+README.md
+# Secrets
+secrets/*

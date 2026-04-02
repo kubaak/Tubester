@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: tubester-api
+  namespace: tubester
+spec:
+  selector:
+    app: tubester-api
+  ports:
+    - port: 80
+      targetPort: 5000

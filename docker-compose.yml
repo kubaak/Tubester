@@ -10,13 +10,39 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql
+      - youtubester_pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app -d tubester"]
       interval: 10s
       timeout: 5s
       retries: 10
     restart: unless-stopped
+    
+  api:
+    build:
+      context: ./
+      dockerfile: Tubester.Api/Dockerfile
+    env_file:
+      - secrets/local/.env
+    restart: unless-stopped
+
+  client:
+    build:
+      context: ../Tubester-Client
+      dockerfile: Dockerfile
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    depends_on:
+      - api
+      - client
+    ports:
+      - "8080:80"
+    volumes:
+      - ./.docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
 
 volumes:
-  pgdata: {}
+  youtubester_pgdata:
+    external: true

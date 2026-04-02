@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tubester-api
+  namespace: tubester
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tubester-api
+  template:
+    metadata:
+      labels:
+        app: tubester-api
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: api
+          image: ghcr.io/kubaak/tubester-api:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: Production
+          envFrom:
+            - secretRef:
+                name: tubester-api-secrets

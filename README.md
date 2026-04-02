@@ -157,3 +157,24 @@ Typical local loop:
    ```bash
    dotnet test
    ```
+
+## GitHub
+### Publish a package
+todo versioned tags and private packages
+#### Login to Github (Bash)
+```
+read -s GH_TOKEN
+echo "$GH_TOKEN" | docker login ghcr.io -u kubaak --password-stdin
+```
+
+#### Tag
+```js
+docker tag tubester-api ghcr.io/kubaak/tubester-api:latest
+docker tag tubester-client ghcr.io/kubaak/tubester-client:latest
+```
+
+#### Push
+```
+docker push ghcr.io/kubaak/tubester-api:latest
+docker push ghcr.io/kubaak/tubester-client:latest
+```
