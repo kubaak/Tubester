@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Google.Apis.YouTube.v3;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.OpenApi;
 using Tubester.Abstractions.Analytics;
@@ -13,19 +14,19 @@ using Tubester.Integration;
 namespace Tubester.Api.Extensions;
 
 /// <summary>
-/// 
+/// Service registration extensions.
 /// </summary>
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Auth setup: Cookie (session) + Google (login)
+    /// Auth setup: Cookie (session) + Google (login).
     /// </summary>
-    /// <param name="services"></param>
-    /// <param name="configuration"></param>
-    /// <returns></returns>
-    public static IServiceCollection AddCookieWithGoogle(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddCookieWithGoogle(
+        this IServiceCollection services,
+        IConfiguration configuration)
     {
-        services.AddAuthentication(options =>
+        services
+            .AddAuthentication(options =>
             {
                 options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
             })
@@ -63,111 +64,21 @@ public static class ServiceCollectionExtensions
             })
             .AddGoogle("GoogleRead", o =>
             {
-                o.ClientId = configuration["GoogleAuth:ClientId"]!;
-                o.ClientSecret = configuration["GoogleAuth:ClientSecret"]!;
-                o.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-                o.SaveTokens = true;
-                o.AccessType = "offline";
-                o.CallbackPath = "/api/auth/google/callback";
-                o.CorrelationCookie.SameSite = SameSiteMode.None;
-                o.CorrelationCookie.SecurePolicy = CookieSecurePolicy.Always;
-                o.Scope.Add("openid");
-                o.Scope.Add("profile");
-                o.Scope.Add("email");
-                o.Scope.Add(YouTubeService.Scope.YoutubeReadonly);
-                o.Events = new OAuthEvents
-                {
-                    OnTicketReceived = async context =>
-                    {
-                        var accessToken = context.Properties?.GetTokenValue("access_token");
-                        var refreshToken = context.Properties?.GetTokenValue("refresh_token");
-                        var expiresAtRaw = context.Properties?.GetTokenValue("expires_at");
-                        DateTimeOffset? expiresAt = null;
-                        if (!string.IsNullOrWhiteSpace(expiresAtRaw) &&
-                            DateTimeOffset.TryParse(expiresAtRaw, out var parsedExpiresAt))
-                        {
-                            expiresAt = parsedExpiresAt;
-                        }
-
-                        if (string.IsNullOrWhiteSpace(accessToken))
-                        {
-                            var loggerFactory = context.HttpContext.RequestServices
-                                .GetRequiredService<ILoggerFactory>();
-                            var logger = loggerFactory.CreateLogger("Tubester.Api.Authentication");
-                            logger.LogWarning(
-                                "Access token was not available during Google login; skipping channel enrichment");
-                            return;
-                        }
-
-                        var youTubeIntegration = context.HttpContext.RequestServices
-                            .GetRequiredService<IYouTubeIntegration>();
-                        var userChannel = await youTubeIntegration.GetCurrentChannelAsync(
-                            accessToken, context.HttpContext.RequestAborted);
-
-                        if (userChannel is null)
-                        {
-                            return;
-                        }
-
-                        var claimsIdentity = (ClaimsIdentity)context.Principal!.Identity!;
-                        claimsIdentity.AddClaim(new Claim("yt_channel_id", userChannel.Id));
-                        claimsIdentity.AddClaim(new Claim("yt_channel_title", userChannel.Title ?? string.Empty));
-                        claimsIdentity.AddClaim(new Claim("yt_channel_picture", userChannel.Picture ?? string.Empty));
-
-                        var principal = context.Principal;
-                        if (principal is null)
-                        {
-                            return;
-                        }
-
-                        var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
-                        if (string.IsNullOrWhiteSpace(userId))
-                        {
-                            return;
-                        }
-
-                        var email = principal.FindFirstValue(ClaimTypes.Email);
-                        var name = principal.Identity?.Name;
-                        var picture = principal.FindFirst("picture")?.Value;
-
-                        var requestServices = context.HttpContext.RequestServices;
-                        var userRepository = requestServices.GetRequiredService<IUserRepository>();
-                        var userEventLogger = requestServices.GetRequiredService<IUserEventLogger>();
-                        var dateTimeOffsetProvider = requestServices.GetRequiredService<IDateTimeOffsetProvider>();
-                        var cancellationToken = context.HttpContext.RequestAborted;
-                        var now = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
-                        await userRepository.UpsertUserAsync(userId, email, name, picture, now, cancellationToken);
-
-                        await userEventLogger.LogAsync(
-                            userId,
-                            UserEventType.Login,
-                            null,
-                            null,
-                            new
-                            {
-                                scheme = context.Scheme.Name,
-                                hasRefreshToken = !string.IsNullOrWhiteSpace(refreshToken)
-                            },
-                            cancellationToken);
-                    }
-                };
+                ConfigureGoogleOptions(
+                    o,
+                    configuration,
+                    callbackPath: "/api/auth/google/callback",
+                    youtubeScope: YouTubeService.Scope.YoutubeReadonly,
+                    events: CreateReadOAuthEvents());
             })
             .AddGoogle("GoogleWrite", o =>
             {
-                o.ClientId = configuration["GoogleAuth:ClientId"]!;
-                o.ClientSecret = configuration["GoogleAuth:ClientSecret"]!;
-                o.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-                o.SaveTokens = true;
-                o.AccessType = "online";
-                o.CallbackPath = "/api/auth/google/write/callback";
-                o.CorrelationCookie.SameSite = SameSiteMode.None;
-                o.CorrelationCookie.SecurePolicy = CookieSecurePolicy.Always;
-                o.Scope.Add("openid");
-                o.Scope.Add("profile");
-                o.Scope.Add("email");
-                o.Scope.Add(YouTubeService.Scope.YoutubeForceSsl);
-
-                o.Events = CreateOAuthEvents();
+                ConfigureGoogleOptions(
+                    o,
+                    configuration,
+                    callbackPath: "/api/auth/google/write/callback",
+                    youtubeScope: YouTubeService.Scope.YoutubeForceSsl,
+                    events: CreateWriteOAuthEvents());
             });
 
         services.AddAuthorization(options =>
@@ -180,89 +91,11 @@ public static class ServiceCollectionExtensions
         });
 
         return services;
-
-        OAuthEvents CreateOAuthEvents()
-        {
-            return new OAuthEvents
-            {
-                OnTicketReceived = async context =>
-                {
-                    var accessToken = context.Properties?.GetTokenValue("access_token");
-                    if (string.IsNullOrWhiteSpace(accessToken))
-                    {
-                        var loggerFactory = context.HttpContext.RequestServices
-                            .GetRequiredService<ILoggerFactory>();
-                        var logger = loggerFactory.CreateLogger("Tubester.Api.Authentication");
-                        logger.LogWarning(
-                            "Access token was not available during Google login; skipping channel enrichment.");
-                        return;
-                    }
-
-                    var youTubeIntegration = context.HttpContext.RequestServices
-                        .GetRequiredService<IYouTubeIntegration>();
-                    var userChannel = await youTubeIntegration.GetCurrentChannelAsync(
-                        accessToken,
-                        context.HttpContext.RequestAborted);
-
-                    if (userChannel is null)
-                    {
-                        return;
-                    }
-
-                    var claimsIdentity = (ClaimsIdentity)context.Principal!.Identity!;
-                    claimsIdentity.AddClaim(new Claim("yt_channel_id", userChannel.Id));
-                    claimsIdentity.AddClaim(new Claim("yt_channel_title", userChannel.Title ?? string.Empty));
-                    claimsIdentity.AddClaim(new Claim("yt_channel_picture", userChannel.Picture ?? string.Empty));
-
-                    claimsIdentity.AddClaim(new Claim("yt_write_granted", "true"));
-
-                    var principal = context.Principal;
-                    if (principal is null)
-                    {
-                        return;
-                    }
-
-                    var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
-                    if (string.IsNullOrWhiteSpace(userId))
-                    {
-                        return;
-                    }
-
-                    var refreshToken = context.Properties?.GetTokenValue("refresh_token");
-
-                    var requestServices = context.HttpContext.RequestServices;
-                    var userEventLogger = requestServices.GetRequiredService<IUserEventLogger>();
-                    var cancellationToken = context.HttpContext.RequestAborted;
-
-                    await userEventLogger.LogAsync(
-                        userId,
-                        UserEventType.Login,
-                        null,
-                        null,
-                        new
-                        {
-                            scheme = context.Scheme.Name,
-                            hasRefreshToken = !string.IsNullOrWhiteSpace(refreshToken)
-                        },
-                        cancellationToken);
-
-                    await userEventLogger.LogAsync(
-                        userId,
-                        UserEventType.WriteConsentGranted,
-                        null,
-                        null,
-                        new { scheme = context.Scheme.Name },
-                        cancellationToken);
-                }
-            };
-        }
     }
 
     /// <summary>
-    /// Adds swagger services
+    /// Adds swagger services.
     /// </summary>
-    /// <param name="services"></param>
-    /// <returns></returns>
     public static IServiceCollection AddSwagger(this IServiceCollection services)
     {
         services.AddSwaggerGen(options =>
@@ -288,6 +121,182 @@ public static class ServiceCollectionExtensions
 
             options.OperationFilter<Swagger.RequiresYouTubeWriteOperationFilter>();
         });
+
         return services;
+    }
+
+    private static void ConfigureGoogleOptions(
+        GoogleOptions options,
+        IConfiguration configuration,
+        string callbackPath,
+        string youtubeScope,
+        OAuthEvents events)
+    {
+        options.ClientId = configuration["GoogleAuth:ClientId"]!;
+        options.ClientSecret = configuration["GoogleAuth:ClientSecret"]!;
+        options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+        //to use OAuth token in the subsequent requests in the same signed-in session
+        options.SaveTokens = true;
+        //no refresh token
+        options.AccessType = "online";
+        options.CallbackPath = callbackPath;
+        options.CorrelationCookie.SameSite = SameSiteMode.None;
+        options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.Always;
+
+        options.Scope.Add("openid");
+        options.Scope.Add("profile");
+        options.Scope.Add("email");
+        options.Scope.Add(youtubeScope);
+
+        options.Events = events;
+    }
+
+    private static OAuthEvents CreateReadOAuthEvents()
+    {
+        return new OAuthEvents
+        {
+            OnTicketReceived = async context =>
+            {
+                var accessToken = await TryEnrichYouTubeClaimsAsync(context);
+                if (string.IsNullOrWhiteSpace(accessToken))
+                {
+                    return;
+                }
+
+                var principal = context.Principal;
+                if (principal is null)
+                {
+                    return;
+                }
+
+                var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (string.IsNullOrWhiteSpace(userId))
+                {
+                    return;
+                }
+
+                var email = principal.FindFirstValue(ClaimTypes.Email);
+                var name = principal.Identity?.Name;
+                var picture = principal.FindFirst("picture")?.Value;
+
+                var requestServices = context.HttpContext.RequestServices;
+                var userRepository = requestServices.GetRequiredService<IUserRepository>();
+                var dateTimeOffsetProvider = requestServices.GetRequiredService<IDateTimeOffsetProvider>();
+                var cancellationToken = context.HttpContext.RequestAborted;
+                var now = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
+
+                await userRepository.UpsertUserAsync(
+                    userId,
+                    email,
+                    name,
+                    picture,
+                    now,
+                    cancellationToken);
+
+                await LogLoginAsync(context, userId);
+            }
+        };
+    }
+
+    private static OAuthEvents CreateWriteOAuthEvents()
+    {
+        return new OAuthEvents
+        {
+            OnTicketReceived = async context =>
+            {
+                var accessToken = await TryEnrichYouTubeClaimsAsync(context);
+                if (string.IsNullOrWhiteSpace(accessToken))
+                {
+                    return;
+                }
+
+                var principal = context.Principal;
+                if (principal is null)
+                {
+                    return;
+                }
+
+                var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (string.IsNullOrWhiteSpace(userId))
+                {
+                    return;
+                }
+
+                var claimsIdentity = (ClaimsIdentity)principal.Identity!;
+                claimsIdentity.AddClaim(new Claim("yt_write_granted", "true"));
+
+                var requestServices = context.HttpContext.RequestServices;
+                var userEventLogger = requestServices.GetRequiredService<IUserEventLogger>();
+                var cancellationToken = context.HttpContext.RequestAborted;
+
+                await LogLoginAsync(context, userId);
+
+                await userEventLogger.LogAsync(
+                    userId,
+                    UserEventType.WriteConsentGranted,
+                    null,
+                    null,
+                    new { scheme = context.Scheme.Name },
+                    cancellationToken);
+            }
+        };
+    }
+
+    private static async Task<string?> TryEnrichYouTubeClaimsAsync(TicketReceivedContext context)
+    {
+        var accessToken = context.Properties?.GetTokenValue("access_token");
+        if (string.IsNullOrWhiteSpace(accessToken))
+        {
+            var loggerFactory = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>();
+            var logger = loggerFactory.CreateLogger("Tubester.Api.Authentication");
+            logger.LogWarning(
+                "Access token was not available during Google login; skipping channel enrichment");
+            return null;
+        }
+
+        var youTubeIntegration = context.HttpContext.RequestServices.GetRequiredService<IYouTubeIntegration>();
+        var userChannel = await youTubeIntegration.GetCurrentChannelAsync(
+            accessToken,
+            context.HttpContext.RequestAborted);
+
+        if (userChannel is null || context.Principal?.Identity is not ClaimsIdentity claimsIdentity)
+        {
+            return accessToken;
+        }
+
+        AddOrReplaceClaim(claimsIdentity, "yt_channel_id", userChannel.Id);
+        AddOrReplaceClaim(claimsIdentity, "yt_channel_title", userChannel.Title ?? string.Empty);
+        AddOrReplaceClaim(claimsIdentity, "yt_channel_picture", userChannel.Picture ?? string.Empty);
+
+        return accessToken;
+    }
+
+    private static async Task LogLoginAsync(TicketReceivedContext context, string userId)
+    {
+        var requestServices = context.HttpContext.RequestServices;
+        var userEventLogger = requestServices.GetRequiredService<IUserEventLogger>();
+        var cancellationToken = context.HttpContext.RequestAborted;
+
+        await userEventLogger.LogAsync(
+            userId,
+            UserEventType.Login,
+            null,
+            null,
+            new
+            {
+                scheme = context.Scheme.Name
+            },
+            cancellationToken);
+    }
+
+    private static void AddOrReplaceClaim(ClaimsIdentity identity, string claimType, string value)
+    {
+        var existingClaims = identity.FindAll(claimType).ToList();
+        foreach (var existingClaim in existingClaims)
+        {
+            identity.RemoveClaim(existingClaim);
+        }
+
+        identity.AddClaim(new Claim(claimType, value));
     }
 }

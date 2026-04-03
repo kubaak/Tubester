@@ -1,0 +1,21 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tubester-db-migration
+  namespace: tubester
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: migration
+          image: ghcr.io/kubaak/tubester-api:latest
+          envFrom:
+            - secretRef:
+                name: tubester-api-secrets
+          command: ["./efbundle"]
+          args: ["--connection", "$(ConnectionStrings__TubesterDb)"]
+      restartPolicy: Never
