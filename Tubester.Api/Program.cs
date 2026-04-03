@@ -33,7 +33,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedProto;
-    
+
     //clearing so forwarded headers are accepted. Safe behind proxy (ngingx)
     options.KnownIPNetworks.Clear();
     options.KnownProxies.Clear();
@@ -82,26 +82,8 @@ app.UseExceptionHandler();
 app.UseRouting();
 app.UseSwagger();
 app.UseSwaggerUI();
-//In local development to get redirected back to the client after the login
-if (app.Environment.IsDevelopment())
-{
-    app.MapWhen(ctx => !ctx.Request.Path.StartsWithSegments("/api"), spa =>
-    {
-        spa.UseSpa(spaApp =>
-        {
-            spaApp.Options.SourcePath = "../Tubester.Client";
-            if (app.Environment.IsDevelopment())
-            {
-                spaApp.UseProxyToSpaDevelopmentServer("http://localhost:5173");
-            }
-        });
-    });
-}
-
 app.UseAuthentication();
 app.UseAuthorization();
-app.MapControllers();
-
 var hangfireAdminEmails = app.Configuration
     .GetSection("Hangfire:AdminEmails")
     .Get<string[]>() ?? [];
@@ -110,8 +92,24 @@ var dashboardOptions = new DashboardOptions
     Authorization = [new EmailHangfireAuthorizationFilter(hangfireAdminEmails)]
 };
 app.UseHangfireDashboard("/hangfire", dashboardOptions);
-
-
+//In local development to get redirected back to the client after the login
+if (app.Environment.IsDevelopment())
+{
+    app.MapWhen(ctx => !ctx.Request.Path.StartsWithSegments("/api") &&
+                       !ctx.Request.Path.StartsWithSegments("/hangfire") &&
+                       !ctx.Request.Path.StartsWithSegments("/swagger"), spa =>
+    {
+        spa.UseSpa(spaApp =>
+        {
+            spaApp.Options.SourcePath = "../Tubester-Client";
+            if (app.Environment.IsDevelopment())
+            {
+                spaApp.UseProxyToSpaDevelopmentServer("http://localhost:5173");
+            }
+        });
+    });
+}
+app.MapControllers();
 app.Run();
 
 namespace Tubester.Api

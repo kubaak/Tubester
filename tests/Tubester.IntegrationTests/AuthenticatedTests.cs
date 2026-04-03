@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
-using Xunit;
 using Tubester.IntegrationTests.TestHost;
+using Xunit;
 
 namespace Tubester.IntegrationTests;
 

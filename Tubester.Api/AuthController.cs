@@ -100,7 +100,7 @@ public sealed class AuthController : ControllerBase
             hasWriteAccess
         });
     }
-    
+
     /// <summary>
     /// 
     /// </summary>

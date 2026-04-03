@@ -2,8 +2,8 @@ using AutoFixture;
 using AutoFixture.AutoMoq;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Xunit;
 using Tubester.Persistence;
+using Xunit;
 
 namespace Tubester.IntegrationTests.TestHost;
 

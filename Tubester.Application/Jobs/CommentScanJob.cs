@@ -38,6 +38,10 @@ public sealed class CommentScanJob(
             logger.LogError(ex, "Comment scan failed");
             throw;
         }
+        finally
+        {
+            await channelRepository.ReleaseCommentScanLockAsync(channelId, CancellationToken.None);
+        }
     }
 
     private static bool IsEmojiOnly(string text)

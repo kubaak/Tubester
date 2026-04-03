@@ -9,11 +9,35 @@ public sealed class Channel : Entity
     public string? ETag { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset? LastUploadsCutoff { get; private set; }
+    public bool IsCommentScanRunning { get; private set; }
 
     public static Channel Create(string channelId, string userId, string name, string uploadsPlaylistId,
         DateTimeOffset updatedAt, DateTimeOffset? lastUploadsCutoff = null, string? eTag = null)
     {
         return new Channel(channelId, userId, name, uploadsPlaylistId, updatedAt, lastUploadsCutoff, eTag);
+    }
+
+    /// <summary>Attempts to start a comment scan. Returns false if a scan is already running.</summary>
+    public bool StartCommentScan(DateTimeOffset nowUtc)
+    {
+        RequireUtc(nowUtc);
+
+        if (IsCommentScanRunning)
+        {
+            return false;
+        }
+
+        IsCommentScanRunning = true;
+        UpdatedAt = nowUtc;
+        return true;
+    }
+
+    /// <summary>Marks the current comment scan as completed.</summary>
+    public void CompleteCommentScan(DateTimeOffset nowUtc)
+    {
+        RequireUtc(nowUtc);
+        IsCommentScanRunning = false;
+        UpdatedAt = nowUtc;
     }
 
     /// <summary>Advance the uploads cutoff if the candidate is newer. Returns true if updated.</summary>

@@ -3,13 +3,13 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
-using Xunit;
 using Tubester.Abstractions.Users;
 using Tubester.Application.Channels;
 using Tubester.Domain;
 using Tubester.Integration.Dtos;
 using Tubester.IntegrationTests.TestHost;
 using Tubester.Persistence;
+using Xunit;
 
 namespace Tubester.IntegrationTests;
 
