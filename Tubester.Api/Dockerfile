@@ -28,6 +28,15 @@ RUN dotnet publish Tubester.Api/Tubester.Api.csproj \
     -o /app \
     --no-restore
 
+# Build EF Core migrations bundle
+RUN dotnet tool install --global dotnet-ef
+ENV PATH="$PATH:/root/.dotnet/tools"
+RUN dotnet ef migrations bundle \
+    --project Tubester.Persistence/Tubester.Persistence.csproj \
+    --startup-project Tubester.Api/Tubester.Api.csproj \
+    --output /app/efbundle \
+    --force
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build /app .

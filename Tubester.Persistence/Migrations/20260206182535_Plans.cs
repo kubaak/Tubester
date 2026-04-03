@@ -27,6 +27,20 @@ namespace Tubester.Persistence.Migrations
                     table.PrimaryKey("PK_ActionCosts", x => x.ActionType);
                 });
 
+            var seedTimestamp = new DateTimeOffset(2026, 2, 6, 18, 25, 35, TimeSpan.Zero);
+
+            migrationBuilder.InsertData(
+                table: "ActionCosts",
+                columns: new[] { "ActionType", "Cost", "IsEnabled", "UpdatedAtUtc", "Notes" },
+                values: new object[,]
+                {
+                    { "CopyTemplateExecuted", 1, true, seedTimestamp, "Copies template metadata between videos via YouTube API" },
+                    { "AiTemplateEnqueued", 5, true, seedTimestamp, "Enqueues AI template generation job" },
+                    { "AiTemplateSubmitted", 2, true, seedTimestamp, "Submits AI-generated template changes to YouTube" },
+                    { "AiReplyGenerated", 3, true, seedTimestamp, "Generates an AI reply for a comment" },
+                    { "ReplyPostedToYouTube", 1, true, seedTimestamp, "Posts a reply to YouTube" }
+                });
+
             migrationBuilder.CreateTable(
                 name: "LedgerEntries",
                 columns: table => new
@@ -63,6 +77,17 @@ namespace Tubester.Persistence.Migrations
                 {
                     table.PrimaryKey("PK_Plans", x => x.Id);
                 });
+
+            migrationBuilder.InsertData(
+                table: "Plans",
+                columns: new[] { "Id", "Code", "Name", "MonthlyCredits", "IsActive", "CreatedAtUtc", "UpdatedAtUtc" },
+                values: new object[,]
+                {
+                    { 1, "free", "Free", 50, true, seedTimestamp, seedTimestamp },
+                    { 2, "pro", "Pro", 999_999, true, seedTimestamp, seedTimestamp }
+                });
+
+            migrationBuilder.Sql("SELECT setval('\"Plans_Id_seq\"', (SELECT MAX(\"Id\") FROM \"Plans\"));");
 
             migrationBuilder.CreateTable(
                 name: "Wallets",
@@ -137,6 +162,18 @@ namespace Tubester.Persistence.Migrations
                 name: "IX_Subscriptions_PlanId",
                 table: "Subscriptions",
                 column: "PlanId");
+
+            migrationBuilder.Sql($@"
+                INSERT INTO ""Subscriptions"" (""UserId"", ""PlanId"", ""PeriodStartUtc"", ""PeriodEndUtc"", ""Status"")
+                SELECT ""Id"", 1, '{seedTimestamp:o}', '{seedTimestamp.AddDays(30):o}', 'Active'
+                FROM ""Users""
+                WHERE ""Id"" NOT IN (SELECT ""UserId"" FROM ""Subscriptions"");
+
+                INSERT INTO ""Wallets"" (""UserId"", ""Balance"", ""PeriodStartUtc"", ""PeriodEndUtc"", ""UpdatedAtUtc"")
+                SELECT ""Id"", 50, '{seedTimestamp:o}', '{seedTimestamp.AddDays(30):o}', '{seedTimestamp:o}'
+                FROM ""Users""
+                WHERE ""Id"" NOT IN (SELECT ""UserId"" FROM ""Wallets"");
+            ");
 
             migrationBuilder.AddColumn<string>(
                 name: "UserId",

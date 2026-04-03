@@ -45,12 +45,52 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
-      - name: Deploy on server
+      - name: Run database migration
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.PROD_HOST }}
           username: ${{ secrets.PROD_USER }}
           key: ${{ secrets.PROD_SSH_KEY }}
+          envs: FULL_IMAGE
           script: |
-            kubectl -n tubester set image deployment/tubester-api api=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+            kubectl -n tubester delete job tubester-db-migration --ignore-not-found
+            cat <<EOF | kubectl apply -f -
+            apiVersion: batch/v1
+            kind: Job
+            metadata:
+              name: tubester-db-migration
+              namespace: tubester
+            spec:
+              backoffLimit: 3
+              ttlSecondsAfterFinished: 300
+              template:
+                spec:
+                  imagePullSecrets:
+                    - name: ghcr-secret
+                  containers:
+                    - name: migration
+                      image: ${FULL_IMAGE}
+                      envFrom:
+                        - secretRef:
+                            name: tubester-api-secrets
+                      command: ["./efbundle"]
+                      args: ["--connection", "\$(ConnectionStrings__TubesterDb)"]
+                  restartPolicy: Never
+            EOF
+            kubectl -n tubester wait --for=condition=complete --timeout=120s job/tubester-db-migration || \
+              (echo "Migration failed. Logs:" && kubectl -n tubester logs job/tubester-db-migration && exit 1)
+        env:
+          FULL_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+
+      - name: Deploy API
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          envs: FULL_IMAGE
+          script: |
+            kubectl -n tubester set image deployment/tubester-api api=${FULL_IMAGE}
             kubectl -n tubester rollout status deployment/tubester-api
+        env:
+          FULL_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
