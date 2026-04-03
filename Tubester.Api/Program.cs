@@ -91,6 +91,11 @@ var dashboardOptions = new DashboardOptions
 {
     Authorization = [new EmailHangfireAuthorizationFilter(hangfireAdminEmails)]
 };
+app.Use(async (ctx, next) =>
+{
+    Console.WriteLine($"Scheme={ctx.Request.Scheme}, Host={ctx.Request.Host}, Path={ctx.Request.Path}");
+    await next();
+});
 app.UseHangfireDashboard("/hangfire", dashboardOptions);
 //In local development to get redirected back to the client after the login
 if (app.Environment.IsDevelopment())
