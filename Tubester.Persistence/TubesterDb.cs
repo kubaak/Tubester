@@ -48,6 +48,7 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
         b.Entity<Channel>().Property(channel => channel.ETag).HasMaxLength(128);
         b.Entity<Channel>().Property(channel => channel.UpdatedAt);
         b.Entity<Channel>().Property(channel => channel.LastUploadsCutoff);
+        b.Entity<Channel>().Property(channel => channel.IsCommentScanRunning);
         b.Entity<Channel>().HasIndex(channel => channel.UserId);
         b.Entity<Channel>()
             .HasOne<User>()

@@ -20,10 +20,16 @@ public class CommentsController(ICommentScanService commentScanService) : Contro
     [ProducesResponseType(typeof(ActionResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-    public ActionResult Pull(
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult> Pull(
         CancellationToken cancellationToken)
     {
-        var result = commentScanService.ScanCommentsAsync(cancellationToken);
+        var result = await commentScanService.ScanCommentsAsync(cancellationToken);
+        if (result is null)
+        {
+            return Conflict("A comment scan is already running for this channel.");
+        }
+
         return Ok(result);
     }
 }

@@ -29,4 +29,15 @@ public interface IChannelRepository
     /// <param name="channel">Channel to persist.</param>
     /// <param name="cancellationToken">Token used to cancel the operation.</param>
     Task UpsertChannelAsync(Channel channel, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Atomically acquires the comment scan lock for the specified channel.
+    /// Returns true if the lock was acquired, false if a scan is already running.
+    /// </summary>
+    Task<bool> TryAcquireCommentScanLockAsync(string channelId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Releases the comment scan lock for the specified channel.
+    /// </summary>
+    Task ReleaseCommentScanLockAsync(string channelId, CancellationToken cancellationToken);
 }

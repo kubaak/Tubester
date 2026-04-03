@@ -28,7 +28,7 @@ public sealed class DomainEventDispatcher(
                             handler?.GetType().Name, eventType.Name);
                         continue;
                     }
-                    
+
                     if (method.Invoke(handler, [domainEvent, cancellationToken]) is Task task)
                     {
                         await task;

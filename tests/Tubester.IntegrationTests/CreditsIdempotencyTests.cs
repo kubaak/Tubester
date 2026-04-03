@@ -4,7 +4,6 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
-using Xunit;
 using Tubester.Abstractions.Analytics;
 using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Users;
@@ -13,6 +12,7 @@ using Tubester.Domain;
 using Tubester.IntegrationTests.TestHost;
 using Tubester.Persistence;
 using Tubester.Persistence.Credits;
+using Xunit;
 
 namespace Tubester.IntegrationTests;
 

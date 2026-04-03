@@ -84,7 +84,7 @@ public sealed class ChannelSyncService(
                       await PullChannelAsync(userId, channelId, cancellationToken);
 
         var currentTime = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
-        commentScanService.ScanCommentsAsync(cancellationToken);
+        await commentScanService.ScanCommentsAsync(cancellationToken);
         return await SyncInternalAsync(channel, currentTime, cancellationToken);
     }
 

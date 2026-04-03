@@ -6,13 +6,21 @@ namespace Tubester.Application;
 
 public class CommentScanService(
     IBackgroundJobClient backgroundJobClient,
-    ICurrentChannelContext currentChannelContext) : ICommentScanService
+    ICurrentChannelContext currentChannelContext,
+    IChannelRepository channelRepository) : ICommentScanService
 {
-    public string ScanCommentsAsync(CancellationToken cancellationToken)
+    public async Task<string?> ScanCommentsAsync(CancellationToken cancellationToken)
     {
         var channelId = currentChannelContext.GetRequiredChannelId();
-        var res = backgroundJobClient.Enqueue<CommentScanJob>(
+
+        var lockAcquired = await channelRepository.TryAcquireCommentScanLockAsync(channelId, cancellationToken);
+        if (!lockAcquired)
+        {
+            return null;
+        }
+
+        var jobId = backgroundJobClient.Enqueue<CommentScanJob>(
             j => j.Run(channelId, JobCancellationToken.Null));
-        return res;
+        return jobId;
     }
 }
