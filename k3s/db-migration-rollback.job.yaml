@@ -1,0 +1,25 @@
+﻿apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tubester-db-rollback
+  namespace: tubester
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: rollback
+          image: ghcr.io/kubaak/tubester-api:sha-1864ae8aa7955be1762dd5d92cde072ce4a9bb64
+          command:
+            - ./efbundle
+          args:
+            - Analytics
+            - --connection
+            - $(ConnectionStrings__TubesterDb)
+          envFrom:
+            - secretRef:
+                name: tubester-api-secrets

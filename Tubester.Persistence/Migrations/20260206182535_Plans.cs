@@ -27,7 +27,7 @@ namespace Tubester.Persistence.Migrations
                     table.PrimaryKey("PK_ActionCosts", x => x.ActionType);
                 });
 
-            var seedTimestamp = new DateTimeOffset(2026, 2, 6, 18, 25, 35, TimeSpan.Zero);
+            var seedTimestamp = DateTime.UtcNow;
 
             migrationBuilder.InsertData(
                 table: "ActionCosts",
@@ -173,6 +173,15 @@ namespace Tubester.Persistence.Migrations
                 SELECT ""Id"", 50, '{seedTimestamp:o}', '{seedTimestamp.AddDays(30):o}', '{seedTimestamp:o}'
                 FROM ""Users""
                 WHERE ""Id"" NOT IN (SELECT ""UserId"" FROM ""Wallets"");
+
+                INSERT INTO ""LedgerEntries"" (""UserId"", ""OccurredAtUtc"", ""ActionType"", ""Delta"", ""IdempotencyKey"", ""ReferenceId"", ""MetadataJson"")
+                SELECT ""Id"", '{seedTimestamp:o}', 'PeriodGrant', 50,
+                       'migration_seed_free_plan_' || ""Id"", NULL,
+                       json_build_object('type', 'period_grant', 'periodStartUtc', '{seedTimestamp:o}', 'periodEndUtc', '{seedTimestamp.AddDays(30):o}', 'periodCredits', 50)::text
+                FROM ""Users""
+                WHERE ""Id"" NOT IN (
+                    SELECT ""UserId"" FROM ""LedgerEntries"" WHERE ""IdempotencyKey"" LIKE 'migration_seed_free_plan_%'
+                );
             ");
 
             migrationBuilder.AddColumn<string>(
