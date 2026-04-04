@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Tubester.Abstractions.Channels;
+using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Playlists;
 using Tubester.Abstractions.Videos;
 using Tubester.Application.Common;
@@ -18,6 +19,7 @@ public sealed class ChannelSyncService(
     IChannelRepository channelRepository,
     ICurrentChannelContext channelContext,
     ICommentScanService commentScanService,
+    ICreditsStore creditsStore,
     ILogger<ChannelSyncService> logger,
     IDateTimeOffsetProvider dateTimeOffsetProvider) : IChannelSyncService
 {
@@ -77,15 +79,27 @@ public sealed class ChannelSyncService(
         return existingChannel;
     }
 
-    public async Task<ChannelSyncResult> SyncChannelAsync(string userId, CancellationToken cancellationToken)
+    public async Task<ChannelSyncResult?> SyncChannelAsync(string userId, CancellationToken cancellationToken)
     {
+        var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
+        var subscription = await creditsStore.GetUserSubscriptionAsync(userId, cancellationToken);
+
+        if (subscription is null)
+        {
+            await creditsStore.AssignFreeSubscriptionAsync(userId, nowUtc, cancellationToken);
+        }
+        else if (!subscription.IsActive)
+        {
+            logger.LogWarning("User {UserId} has an inactive subscription; sync aborted", userId);
+            return null;
+        }
+
         var channelId = channelContext.GetRequiredChannelId();
         var channel = await channelRepository.GetChannelAsync(channelId, cancellationToken) ??
                       await PullChannelAsync(userId, channelId, cancellationToken);
 
-        var currentTime = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
         await commentScanService.ScanCommentsAsync(cancellationToken);
-        return await SyncInternalAsync(channel, currentTime, cancellationToken);
+        return await SyncInternalAsync(channel, nowUtc, cancellationToken);
     }
 
     public async Task<IReadOnlyList<ChannelDto>> GetAvailableYoutubeChannelsForUserAsync(

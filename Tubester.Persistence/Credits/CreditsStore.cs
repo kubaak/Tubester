@@ -363,6 +363,83 @@ public sealed class CreditsStore(TubesterDb databaseContext) : ICreditsStore
         return new GrantResult { Granted = true, NewBalance = periodCredits };
     }
 
+    public async Task<UserSubscriptionDto?> GetUserSubscriptionAsync(
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new ArgumentException("User id is required.", nameof(userId));
+        }
+
+        var subscription = await databaseContext.Subscriptions
+            .AsNoTracking()
+            .Include(entity => entity.Plan)
+            .FirstOrDefaultAsync(entity => entity.UserId == userId, cancellationToken);
+
+        if (subscription is null)
+        {
+            return null;
+        }
+
+        return new UserSubscriptionDto
+        {
+            UserId = subscription.UserId,
+            PlanId = subscription.PlanId,
+            PlanCode = subscription.Plan.Code,
+            IsActive = subscription.Status == SubscriptionStatus.Active
+        };
+    }
+
+    public async Task AssignFreeSubscriptionAsync(
+        string userId,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new ArgumentException("User id is required.", nameof(userId));
+        }
+
+        var freePlan = await databaseContext.Plans
+            .AsNoTracking()
+            .FirstOrDefaultAsync(plan => plan.Code == "free", cancellationToken)
+            ?? throw new InvalidOperationException("Free plan not found.");
+
+        if (nowUtc.Offset != TimeSpan.Zero)
+        {
+            nowUtc = nowUtc.ToUniversalTime();
+        }
+
+        var periodStartUtc = nowUtc;
+        var periodEndUtc = nowUtc.AddDays(30);
+        var status = nameof(SubscriptionStatus.Active);
+
+        var inserted = await databaseContext.Database.ExecuteSqlInterpolatedAsync($"""
+
+             INSERT INTO "Subscriptions" ("UserId", "PlanId", "PeriodStartUtc", "PeriodEndUtc", "Status")
+             VALUES ({userId}, {freePlan.Id}, {periodStartUtc}, {periodEndUtc}, {status})
+             ON CONFLICT ("UserId") DO NOTHING;
+
+             """, cancellationToken);
+
+        if (inserted == 0)
+        {
+            return;
+        }
+
+        var idempotencyKey = $"free_assign:{userId}:{periodStartUtc:O}";
+
+        await GrantPeriodCreditsAsync(
+            userId,
+            periodStartUtc,
+            periodEndUtc,
+            freePlan.MonthlyCredits,
+            idempotencyKey,
+            nowUtc,
+            cancellationToken);
+    }
+
     public async Task RefundAsync(
         string userId,
         string actionType,

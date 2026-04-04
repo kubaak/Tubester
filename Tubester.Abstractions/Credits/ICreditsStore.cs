@@ -46,4 +46,20 @@ public interface ICreditsStore
         string refundIdempotencyKey,
         DateTimeOffset occurredAtUtc,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets the subscription for the specified user regardless of status or period.
+    /// Returns null if the user has no subscription.
+    /// </summary>
+    Task<UserSubscriptionDto?> GetUserSubscriptionAsync(
+        string userId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Assigns the free plan subscription to the specified user, creates a wallet, and grants initial credits.
+    /// </summary>
+    Task AssignFreeSubscriptionAsync(
+        string userId,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken);
 }
