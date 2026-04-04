@@ -33,6 +33,11 @@ public sealed class ChannelsController(
         }
 
         var result = await channelSyncService.SyncChannelAsync(userId, cancellationToken);
+        if (result is null)
+        {
+            return Problem("User subscription is not active.", statusCode: StatusCodes.Status403Forbidden);
+        }
+
         return Ok(result);
     }
 }

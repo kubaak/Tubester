@@ -9,6 +9,7 @@ using Tubester.Domain;
 using Tubester.Integration.Dtos;
 using Tubester.IntegrationTests.TestHost;
 using Tubester.Persistence;
+using Tubester.Persistence.Credits;
 using Xunit;
 
 namespace Tubester.IntegrationTests;
@@ -48,6 +49,7 @@ public sealed class ChannelTests(TestFixture fixture)
             var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
             databaseContext.Users.Add(dummyUser);
             databaseContext.Channels.Add(dummyChannel);
+            databaseContext.Plans.Add(CreateFreePlan());
             await databaseContext.SaveChangesAsync();
         }
 
@@ -240,6 +242,7 @@ public sealed class ChannelTests(TestFixture fixture)
             var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
             databaseContext.Users.Add(dummyUser);
             databaseContext.Channels.Add(dummyChannel);
+            databaseContext.Plans.Add(CreateFreePlan());
             await databaseContext.SaveChangesAsync();
         }
 
@@ -347,6 +350,316 @@ public sealed class ChannelTests(TestFixture fixture)
         Assert.Single(videos);
         Assert.Equal("video789", videos[0].VideoId);
         Assert.Equal("Updated Title", videos[0].Title);
+    }
+
+    [Fact]
+    public async Task Sync_WithoutSubscription_AssignsFreeSubscriptionAndGrantsCredits()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        const string testChannelId = "UCSubMissingChannel";
+        const string testUploadsPlaylistId = "PLSubMissingUploads";
+        const string userId = MockAuthenticationExtensions.TestSub;
+
+        using (var scope = fixture.ApiServices.CreateScope())
+        {
+            var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+            databaseContext.Users.Add(User.Create(
+                userId,
+                MockAuthenticationExtensions.TestEmail,
+                MockAuthenticationExtensions.TestName,
+                MockAuthenticationExtensions.TestPicture,
+                TestFixture.TestingDateTimeOffset));
+
+            databaseContext.Channels.Add(Channel.Create(
+                testChannelId,
+                userId,
+                "SubMissingChannel",
+                testUploadsPlaylistId,
+                TestFixture.TestingDateTimeOffset));
+
+            databaseContext.Plans.Add(CreateFreePlan());
+            await databaseContext.SaveChangesAsync();
+        }
+
+        SetupMinimalSyncMocks(testChannelId, testUploadsPlaylistId);
+
+        // Act
+        var response = await fixture.HttpClient.PostAsync("/api/channels/sync/current", null);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var verificationScope = fixture.ApiServices.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        // Verify subscription was created with free plan
+        var subscription = await verificationDb.Subscriptions
+            .AsNoTracking()
+            .Include(entity => entity.Plan)
+            .SingleOrDefaultAsync(entity => entity.UserId == userId);
+
+        Assert.NotNull(subscription);
+        Assert.Equal("free", subscription.Plan.Code);
+        Assert.Equal(SubscriptionStatus.Active, subscription.Status);
+        Assert.Equal(TestFixture.TestingDateTimeOffset, subscription.PeriodStartUtc);
+        Assert.Equal(TestFixture.TestingDateTimeOffset.AddDays(30), subscription.PeriodEndUtc);
+
+        // Verify wallet was created with monthly credits
+        var wallet = await verificationDb.Wallets
+            .AsNoTracking()
+            .SingleOrDefaultAsync(entity => entity.UserId == userId);
+
+        Assert.NotNull(wallet);
+        Assert.Equal(50, wallet.Balance);
+        Assert.Equal(TestFixture.TestingDateTimeOffset, wallet.PeriodStartUtc);
+        Assert.Equal(TestFixture.TestingDateTimeOffset.AddDays(30), wallet.PeriodEndUtc);
+
+        // Verify ledger has a single PeriodGrant entry
+        var ledgerEntries = await verificationDb.LedgerEntries
+            .AsNoTracking()
+            .Where(entry => entry.UserId == userId)
+            .ToListAsync();
+
+        var grantEntry = Assert.Single(ledgerEntries);
+        Assert.Equal("PeriodGrant", grantEntry.ActionType);
+        Assert.Equal(50, grantEntry.Delta);
+    }
+
+    [Fact]
+    public async Task Sync_WithActiveSubscription_SyncsWithoutModifyingCredits()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        const string testChannelId = "UCSubActiveChannel";
+        const string testUploadsPlaylistId = "PLSubActiveUploads";
+        const string userId = MockAuthenticationExtensions.TestSub;
+        const int initialBalance = 42;
+        const int monthlyCredits = 100;
+
+        using (var scope = fixture.ApiServices.CreateScope())
+        {
+            var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+            databaseContext.Users.Add(User.Create(
+                userId,
+                MockAuthenticationExtensions.TestEmail,
+                MockAuthenticationExtensions.TestName,
+                MockAuthenticationExtensions.TestPicture,
+                TestFixture.TestingDateTimeOffset));
+
+            databaseContext.Channels.Add(Channel.Create(
+                testChannelId,
+                userId,
+                "SubActiveChannel",
+                testUploadsPlaylistId,
+                TestFixture.TestingDateTimeOffset));
+
+            var plan = new Plan
+            {
+                Code = "ActiveTestPlan",
+                Name = "Active Test Plan",
+                MonthlyCredits = monthlyCredits,
+                IsActive = true,
+                CreatedAtUtc = TestFixture.TestingDateTimeOffset,
+                UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+            };
+
+            databaseContext.Plans.Add(plan);
+            await databaseContext.SaveChangesAsync();
+
+            databaseContext.Subscriptions.Add(new Subscription
+            {
+                UserId = userId,
+                PlanId = plan.Id,
+                PeriodStartUtc = TestFixture.TestingDateTimeOffset,
+                PeriodEndUtc = TestFixture.TestingDateTimeOffset.AddMonths(1),
+                Status = SubscriptionStatus.Active
+            });
+
+            databaseContext.Wallets.Add(new Wallet
+            {
+                UserId = userId,
+                Balance = initialBalance,
+                PeriodStartUtc = TestFixture.TestingDateTimeOffset,
+                PeriodEndUtc = TestFixture.TestingDateTimeOffset.AddMonths(1),
+                UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+            });
+
+            databaseContext.LedgerEntries.Add(new LedgerEntry
+            {
+                UserId = userId,
+                OccurredAtUtc = TestFixture.TestingDateTimeOffset,
+                ActionType = "PeriodGrant",
+                Delta = monthlyCredits,
+                IdempotencyKey = $"grant:{userId}:{TestFixture.TestingDateTimeOffset:O}"
+            });
+
+            await databaseContext.SaveChangesAsync();
+        }
+
+        SetupMinimalSyncMocks(testChannelId, testUploadsPlaylistId);
+
+        // Act
+        var response = await fixture.HttpClient.PostAsync("/api/channels/sync/current", null);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var syncResult = JsonSerializer.Deserialize<ChannelSyncResult>(responseContent,
+            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        Assert.NotNull(syncResult);
+
+        using var verificationScope = fixture.ApiServices.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        // Verify subscription is unchanged
+        var subscription = await verificationDb.Subscriptions
+            .AsNoTracking()
+            .SingleOrDefaultAsync(entity => entity.UserId == userId);
+
+        Assert.NotNull(subscription);
+        Assert.Equal(SubscriptionStatus.Active, subscription.Status);
+
+        // Verify wallet balance is unchanged
+        var wallet = await verificationDb.Wallets
+            .AsNoTracking()
+            .SingleOrDefaultAsync(entity => entity.UserId == userId);
+
+        Assert.NotNull(wallet);
+        Assert.Equal(initialBalance, wallet.Balance);
+
+        // Verify no new ledger entries were created
+        var ledgerEntries = await verificationDb.LedgerEntries
+            .AsNoTracking()
+            .Where(entry => entry.UserId == userId)
+            .ToListAsync();
+
+        var grantEntry = Assert.Single(ledgerEntries);
+        Assert.Equal("PeriodGrant", grantEntry.ActionType);
+        Assert.Equal(monthlyCredits, grantEntry.Delta);
+    }
+
+    [Fact]
+    public async Task Sync_WithInactiveSubscription_ReturnsForbiddenAndDoesNotModifyCredits()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        const string testChannelId = "UCSubInactiveChannel";
+        const string testUploadsPlaylistId = "PLSubInactiveUploads";
+        const string userId = MockAuthenticationExtensions.TestSub;
+
+        using (var scope = fixture.ApiServices.CreateScope())
+        {
+            var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+            databaseContext.Users.Add(User.Create(
+                userId,
+                MockAuthenticationExtensions.TestEmail,
+                MockAuthenticationExtensions.TestName,
+                MockAuthenticationExtensions.TestPicture,
+                TestFixture.TestingDateTimeOffset));
+
+            databaseContext.Channels.Add(Channel.Create(
+                testChannelId,
+                userId,
+                "SubInactiveChannel",
+                testUploadsPlaylistId,
+                TestFixture.TestingDateTimeOffset));
+
+            var plan = new Plan
+            {
+                Code = "InactiveTestPlan",
+                Name = "Inactive Test Plan",
+                MonthlyCredits = 100,
+                IsActive = true,
+                CreatedAtUtc = TestFixture.TestingDateTimeOffset,
+                UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+            };
+
+            databaseContext.Plans.Add(plan);
+            await databaseContext.SaveChangesAsync();
+
+            databaseContext.Subscriptions.Add(new Subscription
+            {
+                UserId = userId,
+                PlanId = plan.Id,
+                PeriodStartUtc = TestFixture.TestingDateTimeOffset,
+                PeriodEndUtc = TestFixture.TestingDateTimeOffset.AddMonths(1),
+                Status = SubscriptionStatus.Unknown
+            });
+
+            await databaseContext.SaveChangesAsync();
+        }
+
+        // No YouTube mocks needed — sync returns before reaching YouTube
+
+        // Act
+        var response = await fixture.HttpClient.PostAsync("/api/channels/sync/current", null);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+
+        using var verificationScope = fixture.ApiServices.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        // Verify subscription is still inactive
+        var subscription = await verificationDb.Subscriptions
+            .AsNoTracking()
+            .SingleOrDefaultAsync(entity => entity.UserId == userId);
+
+        Assert.NotNull(subscription);
+        Assert.Equal(SubscriptionStatus.Unknown, subscription.Status);
+
+        // Verify no wallet was created
+        var wallet = await verificationDb.Wallets
+            .AsNoTracking()
+            .SingleOrDefaultAsync(entity => entity.UserId == userId);
+
+        Assert.Null(wallet);
+
+        // Verify no ledger entries were created
+        var ledgerEntries = await verificationDb.LedgerEntries
+            .AsNoTracking()
+            .Where(entry => entry.UserId == userId)
+            .ToListAsync();
+
+        Assert.Empty(ledgerEntries);
+    }
+
+    private void SetupMinimalSyncMocks(string channelId, string uploadsPlaylistId)
+    {
+        fixture.ApiFactory.MockYouTubeIntegration
+            .Setup(x => x.GetAllVideosAsync(uploadsPlaylistId,
+                It.IsAny<DateTimeOffset?>(), It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncEnumerable(Array.Empty<VideoDto>()));
+
+        fixture.ApiFactory.MockYouTubeIntegration
+            .Setup(x => x.GetPlaylistsAsync(channelId,
+                It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncEnumerable(Array.Empty<PlaylistDto>()));
+
+        fixture.ApiFactory.MockCurrentChannelContext
+            .Setup(x => x.GetRequiredChannelId())
+            .Returns(channelId);
+    }
+
+    private static Plan CreateFreePlan()
+    {
+        return new Plan
+        {
+            Code = "free",
+            Name = "Free",
+            MonthlyCredits = 50,
+            IsActive = true,
+            CreatedAtUtc = TestFixture.TestingDateTimeOffset,
+            UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+        };
     }
 
     private static async IAsyncEnumerable<T> CreateAsyncEnumerable<T>(IEnumerable<T> items)
