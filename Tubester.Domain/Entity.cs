@@ -15,4 +15,12 @@ public abstract class Entity
         _domainEvents.AddRange(source._domainEvents);
         source._domainEvents.Clear();
     }
+    
+    protected static void RequireUtc(DateTimeOffset timestamp)
+    {
+        if (timestamp.Offset != TimeSpan.Zero)
+        {
+            throw new ArgumentException("Timestamp must be in UTC.", nameof(timestamp));
+        }
+    }
 }

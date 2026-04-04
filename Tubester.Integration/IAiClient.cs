@@ -6,5 +6,5 @@ public interface IAiClient
         CancellationToken cancellationToken);
 
     Task<string?> SuggestReplyAsync(string videoTitle, IEnumerable<string> tags, string commentText,
-        CancellationToken cancellationToken);
+        string language, CancellationToken cancellationToken);
 }

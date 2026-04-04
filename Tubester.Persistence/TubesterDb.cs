@@ -24,6 +24,7 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
     public DbSet<Wallet> Wallets => Set<Wallet>();
     public DbSet<LedgerEntry> LedgerEntries => Set<LedgerEntry>();
     public DbSet<ActionCost> ActionCosts => Set<ActionCost>();
+    public DbSet<ChannelSettings> ChannelSettings => Set<ChannelSettings>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -60,6 +61,29 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
             .WithMany()
             .HasForeignKey(v => v.UploadsPlaylistId)
             .HasPrincipalKey(c => c.UploadsPlaylistId);
+
+        b.Entity<ChannelSettings>(entity =>
+        {
+            entity.HasKey(channelSettings => channelSettings.ChannelId);
+
+            entity.HasIndex(channelSettings => channelSettings.ChannelId)
+                .IsUnique();
+
+            entity.HasOne<Channel>()
+                .WithOne()
+                .HasForeignKey<ChannelSettings>(channelSettings => channelSettings.ChannelId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.Property(channelSettings => channelSettings.ReplyLanguage)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.Property(channelSettings => channelSettings.ResponseForNonTextualComments)
+                .HasMaxLength(500);
+
+            entity.Property(channelSettings => channelSettings.UpdatedAtUtc)
+                .IsRequired();
+        });
         b.Entity<Playlist>()
             .HasOne<Channel>()
             .WithMany()

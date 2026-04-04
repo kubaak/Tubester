@@ -17,6 +17,7 @@ public sealed class ChannelSyncService(
     IYouTubeIntegration youTubeIntegration,
     IVideoRepository videoRepository,
     IChannelRepository channelRepository,
+    IChannelSettingsRepository channelSettingsRepository,
     ICurrentChannelContext channelContext,
     ICommentScanService commentScanService,
     ICreditsStore creditsStore,
@@ -98,7 +99,24 @@ public sealed class ChannelSyncService(
         var channel = await channelRepository.GetChannelAsync(channelId, cancellationToken) ??
                       await PullChannelAsync(userId, channelId, cancellationToken);
 
-        await commentScanService.ScanCommentsAsync(cancellationToken);
+        // Ensure default settings exist for this channel
+        var settings = await channelSettingsRepository.GetByChannelIdAsync(channelId, cancellationToken);
+        if (settings is null)
+        {
+            settings = ChannelSettings.CreateDefault(channelId, nowUtc);
+            await channelSettingsRepository.UpsertAsync(settings, cancellationToken);
+        }
+
+        if (settings.IsCommentAssistantEnabled)
+        {
+            await commentScanService.ScanCommentsAsync(cancellationToken);
+        }
+        else
+        {
+            logger.LogInformation(
+                "Skipping comment scan for channel {ChannelId}: comment assistant disabled", channelId);
+        }
+
         return await SyncInternalAsync(channel, nowUtc, cancellationToken);
     }
 
