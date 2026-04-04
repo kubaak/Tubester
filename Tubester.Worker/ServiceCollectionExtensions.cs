@@ -46,6 +46,7 @@ public static class ServiceCollectionExtensions
 
         // Repositories
         services.AddScoped<IChannelRepository, ChannelRepository>();
+        services.AddScoped<IChannelSettingsRepository, ChannelSettingsRepository>();
         services.AddScoped<IVideoRepository, VideoRepository>();
         services.AddScoped<IPlaylistRepository, PlaylistRepository>();
         services.AddScoped<IReplyRepository, ReplyRepository>();

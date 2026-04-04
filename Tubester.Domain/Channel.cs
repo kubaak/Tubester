@@ -17,21 +17,6 @@ public sealed class Channel : Entity
         return new Channel(channelId, userId, name, uploadsPlaylistId, updatedAt, lastUploadsCutoff, eTag);
     }
 
-    /// <summary>Attempts to start a comment scan. Returns false if a scan is already running.</summary>
-    public bool StartCommentScan(DateTimeOffset nowUtc)
-    {
-        RequireUtc(nowUtc);
-
-        if (IsCommentScanRunning)
-        {
-            return false;
-        }
-
-        IsCommentScanRunning = true;
-        UpdatedAt = nowUtc;
-        return true;
-    }
-
     /// <summary>Marks the current comment scan as completed.</summary>
     public void CompleteCommentScan(DateTimeOffset nowUtc)
     {
@@ -104,14 +89,6 @@ public sealed class Channel : Entity
         }
 
         return value;
-    }
-
-    private static void RequireUtc(DateTimeOffset ts)
-    {
-        if (ts.Offset != TimeSpan.Zero)
-        {
-            throw new ArgumentException("Timestamp must be in UTC.", nameof(ts));
-        }
     }
 
     private Channel(string channelId, string userId, string name, string uploadsPlaylistId, DateTimeOffset updatedAt,

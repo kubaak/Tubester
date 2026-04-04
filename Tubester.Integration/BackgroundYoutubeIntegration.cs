@@ -95,7 +95,8 @@ public class BackgroundYoutubeIntegration : IBackgroundYoutubeIntegration
                     top.Id!,
                     videoId,
                     author,
-                    top.Snippet?.TextDisplay ?? string.Empty
+                    top.Snippet?.TextDisplay ?? string.Empty,
+                    top.Snippet?.PublishedAtDateTimeOffset
                 );
             }
 

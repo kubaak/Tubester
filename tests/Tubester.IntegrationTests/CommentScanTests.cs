@@ -1,8 +1,8 @@
 using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
-using Tubester.Application.Jobs;
 using Tubester.Abstractions.Users;
+using Tubester.Application.Jobs;
 using Tubester.Domain;
 using Tubester.IntegrationTests.TestHost;
 using Tubester.Persistence;

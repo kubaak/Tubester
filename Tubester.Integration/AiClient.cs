@@ -54,7 +54,7 @@ public sealed class AiClient(HttpClient httpClient, IOptions<AiOptions> aiOption
     }
 
     public async Task<string?> SuggestReplyAsync(string videoTitle, IEnumerable<string> tags, string commentText,
-        CancellationToken cancellationToken)
+        string language, CancellationToken cancellationToken)
     {
         logger.LogInformation("Getting suggested reply for Title: {Title}, Comment: {Comment}", videoTitle,
             commentText);
@@ -62,7 +62,7 @@ public sealed class AiClient(HttpClient httpClient, IOptions<AiOptions> aiOption
 
                        System: You are the channel owner. Be brief, kind, and helpful. Return JSON only.
                        User:
-                       Write a reply ≤ 2 sentences. If hostile, defuse politely.
+                       Write a reply ≤ 2 sentences in {{language}}. If hostile, defuse politely.
                        If unsure about a fact, say you're not sure.
                        If this comment has no letters or digits (emoji-only), a short emoji reply is OK.
                        Video title: "{{videoTitle}}"

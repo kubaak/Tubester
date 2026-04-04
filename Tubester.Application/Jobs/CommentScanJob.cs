@@ -19,6 +19,7 @@ public sealed class CommentScanJob(
     IVideoRepository videoRepository,
     IReplyRepository replyRepository,
     IChannelRepository channelRepository,
+    IChannelSettingsRepository channelSettingsRepository,
     ICreditsService creditsService,
     IDateTimeOffsetProvider dateTimeOffsetProvider)
 {
@@ -58,8 +59,17 @@ public sealed class CommentScanJob(
             return 0;
         }
 
+        var settings = await channelSettingsRepository.GetByChannelIdAsync(channelId, cancellationToken);
+        if (settings is null || !settings.IsCommentAssistantEnabled)
+        {
+            logger.LogInformation(
+                "Skipping comment scan for channel {ChannelId}: comment assistant disabled", channelId);
+            return 0;
+        }
+
         var userId = channel.UserId;
         var drafted = 0;
+        var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
 
         foreach (var video in await videoRepository.GetCommentableVideosAsync(channelId, cancellationToken))
         {
@@ -69,12 +79,40 @@ public sealed class CommentScanJob(
                 continue;
             }
 
+            if (settings.MaxSuggestedRepliesPerSync > 0 && drafted >= settings.MaxSuggestedRepliesPerSync)
+            {
+                logger.LogInformation(
+                    "Skipping further comments for channel {ChannelId}: max suggestions reached ({MaxSuggestions})",
+                    channelId, settings.MaxSuggestedRepliesPerSync);
+                break;
+            }
+
             try
             {
                 await foreach (var thread in youTubeIntegration.GetUnansweredTopLevelCommentsAsync(
                                    channelId, video.VideoId, cancellationToken))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+
+                    if (settings.MaxSuggestedRepliesPerSync > 0 && drafted >= settings.MaxSuggestedRepliesPerSync)
+                    {
+                        logger.LogInformation(
+                            "Skipping further comments for channel {ChannelId}: max suggestions reached ({MaxSuggestions})",
+                            channelId, settings.MaxSuggestedRepliesPerSync);
+                        break;
+                    }
+
+                    if (settings.MaxCommentAgeDays > 0 && thread.PublishedAt.HasValue)
+                    {
+                        var commentAge = nowUtc - thread.PublishedAt.Value;
+                        if (commentAge.TotalDays < settings.MaxCommentAgeDays)
+                        {
+                            logger.LogDebug(
+                                "Skipping comment {CommentId} for channel {ChannelId}: comment not eligible because too new",
+                                thread.ParentCommentId, channelId);
+                            continue;
+                        }
+                    }
 
                     // Try to claim the comment first with Drafting status.
                     // If someone else already claimed it, skip without AI call.
@@ -95,7 +133,9 @@ public sealed class CommentScanJob(
                     string replyText;
                     if (IsEmojiOnly(thread.Text))
                     {
-                        replyText = "🔥🙌";
+                        replyText = !string.IsNullOrWhiteSpace(settings.ResponseForNonTextualComments)
+                            ? settings.ResponseForNonTextualComments
+                            : "🔥🙌";
                     }
                     else
                     {
@@ -125,6 +165,7 @@ public sealed class CommentScanJob(
                                 video.Title ?? string.Empty,
                                 video.Tags,
                                 thread.Text,
+                                settings.ReplyLanguage,
                                 cancellationToken);
                         }
                         catch
@@ -163,7 +204,6 @@ public sealed class CommentScanJob(
                 await videoRepository.MarkCommentsDisabledAsync(channelId, ex.VideoId, cancellationToken);
             }
         }
-
 
         return drafted;
     }

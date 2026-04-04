@@ -13,7 +13,7 @@ public class HangfireDashboardTests(TestFixture fixture)
         var response = await fixture.HttpClient.GetAsync("/hangfire/jobs/enqueued");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
-    
+
     [Fact]
     public async Task InvalidEndpointReturnsNotFound()
     {

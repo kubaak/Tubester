@@ -1423,7 +1423,8 @@ public sealed class CreditsTests(TestFixture fixture)
             commentId,
             videoId,
             "author-channel-id",
-            "Great video! Can you explain more?");
+            "Great video! Can you explain more?",
+            TestFixture.TestingDateTimeOffset.AddDays(-15));
 
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration
             .Setup(integration => integration.GetUnansweredTopLevelCommentsAsync(
@@ -1437,8 +1438,18 @@ public sealed class CreditsTests(TestFixture fixture)
                 video.Title!,
                 video.Tags,
                 commentThread.Text,
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync("Thanks for watching! I'll cover that in a future video.");
+
+        using (var setupScope = fixture.WorkerServices.CreateScope())
+        {
+            var databaseContext = setupScope.ServiceProvider.GetRequiredService<TubesterDb>();
+            var channelSettings = Domain.ChannelSettings.CreateDefault(channelId, TestFixture.TestingDateTimeOffset);
+            channelSettings.Apply(true, true, 10, 10, "English", null, TestFixture.TestingDateTimeOffset);
+            databaseContext.ChannelSettings.Add(channelSettings);
+            await databaseContext.SaveChangesAsync(CancellationToken.None);
+        }
 
         using (var jobScope = fixture.WorkerServices.CreateScope())
         {
@@ -1575,7 +1586,8 @@ public sealed class CreditsTests(TestFixture fixture)
             commentId,
             videoId,
             "author-channel-id",
-            "Great video! Can you explain more?");
+            "Great video! Can you explain more?",
+            TestFixture.TestingDateTimeOffset.AddDays(-15));
 
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration
             .Setup(integration => integration.GetUnansweredTopLevelCommentsAsync(
@@ -1589,8 +1601,18 @@ public sealed class CreditsTests(TestFixture fixture)
                 video.Title!,
                 video.Tags,
                 commentThread.Text,
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new Exception("Simulated AI client failure."));
+
+        using (var setupScope = fixture.WorkerServices.CreateScope())
+        {
+            var databaseContext = setupScope.ServiceProvider.GetRequiredService<TubesterDb>();
+            var channelSettings = Domain.ChannelSettings.CreateDefault(channelId, TestFixture.TestingDateTimeOffset);
+            channelSettings.Apply(true, true, 10, 10, "English", null, TestFixture.TestingDateTimeOffset);
+            databaseContext.ChannelSettings.Add(channelSettings);
+            await databaseContext.SaveChangesAsync(CancellationToken.None);
+        }
 
         using (var jobScope = fixture.WorkerServices.CreateScope())
         {
@@ -1726,7 +1748,8 @@ public sealed class CreditsTests(TestFixture fixture)
             commentId,
             videoId,
             "author-channel-id",
-            "Great video! Can you explain more?");
+            "Great video! Can you explain more?",
+            TestFixture.TestingDateTimeOffset.AddDays(-15));
 
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration
             .Setup(integration => integration.GetUnansweredTopLevelCommentsAsync(
@@ -1741,8 +1764,18 @@ public sealed class CreditsTests(TestFixture fixture)
                 It.IsAny<string>(),
                 It.IsAny<IReadOnlyList<string>>(),
                 It.IsAny<string>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new Exception("AI client should not be called."));
+
+        using (var setupScope = fixture.WorkerServices.CreateScope())
+        {
+            var databaseContext = setupScope.ServiceProvider.GetRequiredService<TubesterDb>();
+            var channelSettings = Domain.ChannelSettings.CreateDefault(channelId, TestFixture.TestingDateTimeOffset);
+            channelSettings.Apply(true, true, 10, 10, "English", null, TestFixture.TestingDateTimeOffset);
+            databaseContext.ChannelSettings.Add(channelSettings);
+            await databaseContext.SaveChangesAsync(CancellationToken.None);
+        }
 
         using (var jobScope = fixture.WorkerServices.CreateScope())
         {
@@ -1785,6 +1818,7 @@ public sealed class CreditsTests(TestFixture fixture)
             client => client.SuggestReplyAsync(
                 It.IsAny<string>(),
                 It.IsAny<IReadOnlyList<string>>(),
+                It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()),
             Times.Never);
