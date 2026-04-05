@@ -12,7 +12,7 @@ namespace Tubester.Api;
 [Authorize]
 public sealed class ChannelsController(
     IChannelSyncService channelSyncService)
-    : ControllerBase
+    : ApiControllerBase
 {
     /// <summary>
     /// Immediately synchronizes the current channel for the currently signed-in user.

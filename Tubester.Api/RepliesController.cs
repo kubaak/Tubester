@@ -15,7 +15,7 @@ namespace Tubester.Api;
 [Route("api/replies")]
 [Tags("Replies")]
 [Authorize]
-public class RepliesController(IReplyService service) : ControllerBase
+public class RepliesController(IReplyService service) : ApiControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Reply>>> GetDrafts(CancellationToken cancellationToken = default)
