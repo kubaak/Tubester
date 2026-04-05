@@ -1,0 +1,30 @@
+﻿services:
+  db-tunnel:
+    build:
+      context: ../..
+      dockerfile: .docker/worker/db-tunnel.Dockerfile
+    container_name: tubester-db-tunnel
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ../../secrets/production/keys/github-actions-deploy:/mounted-key/id_ed25519:ro
+    networks:
+      - tubester
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: Tubester.Worker/Dockerfile
+    container_name: tubester-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - db-tunnel
+    networks:
+      - tubester
+
+networks:
+  tubester:
+    driver: bridge

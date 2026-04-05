@@ -8,12 +8,12 @@ namespace Tubester.Api;
 /// <summary>Channel Settings</summary>
 [ApiController]
 [Route("api/channel-settings")]
-[Tags("Channel Settings")]
+[Tags("ChannelSettings")]
 [Authorize]
 public sealed class ChannelSettingsController(
     IChannelSettingsService channelSettingsService,
     ICurrentChannelContext currentChannelContext)
-    : ControllerBase
+    : ApiControllerBase
 {
     /// <summary>
     /// Returns the comment assistant settings for the specified channel.

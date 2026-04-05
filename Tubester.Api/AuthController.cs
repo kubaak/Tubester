@@ -9,11 +9,10 @@ namespace Tubester.Api;
 /// <summary>
 /// Authentication Controller
 /// </summary>
-[ApiController]
 [Route("api/auth")]
 [Tags("Authentication")]
 [Authorize]
-public sealed class AuthController : ControllerBase
+public sealed class AuthController : ApiControllerBase
 {
     /// <summary>
     /// 

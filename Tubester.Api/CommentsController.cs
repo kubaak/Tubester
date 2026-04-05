@@ -9,7 +9,7 @@ namespace Tubester.Api;
 [Route("api/coments")]
 [Tags("comments")]
 [Authorize]
-public class CommentsController(ICommentScanService commentScanService) : ControllerBase
+public class CommentsController(ICommentScanService commentScanService) : ApiControllerBase
 {
     /// <summary>
     /// Registers the gob to pull the comments

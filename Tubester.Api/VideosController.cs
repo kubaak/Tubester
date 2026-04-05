@@ -21,7 +21,7 @@ namespace Tubester.Api;
 public sealed class VideosController(
     IVideoService videoService,
     IAiTemplateOrchestrationService aiTemplateOrchestrationService
-) : ControllerBase
+) : ApiControllerBase
 {
     /// <summary>
     /// Copies video template metadata from source to target video using cached data.
