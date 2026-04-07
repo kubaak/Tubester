@@ -440,6 +440,36 @@ public sealed class CreditsStore(TubesterDb databaseContext) : ICreditsStore
             cancellationToken);
     }
 
+    public async Task<SubscriptionSummaryDto?> GetSubscriptionSummaryAsync(
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new ArgumentException("User id is required.", nameof(userId));
+        }
+
+        var subscription = await databaseContext.Subscriptions
+            .AsNoTracking()
+            .Include(entity => entity.Plan)
+            .FirstOrDefaultAsync(entity => entity.UserId == userId, cancellationToken);
+
+        if (subscription is null)
+        {
+            return null;
+        }
+
+        return new SubscriptionSummaryDto
+        {
+            PlanCode = subscription.Plan.Code,
+            PlanName = subscription.Plan.Name,
+            Status = subscription.Status.ToString(),
+            PeriodStartUtc = subscription.PeriodStartUtc,
+            PeriodEndUtc = subscription.PeriodEndUtc,
+            MonthlyCredits = subscription.Plan.MonthlyCredits
+        };
+    }
+
     public async Task RefundAsync(
         string userId,
         string actionType,

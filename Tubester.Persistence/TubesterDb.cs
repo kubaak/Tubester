@@ -25,6 +25,7 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
     public DbSet<LedgerEntry> LedgerEntries => Set<LedgerEntry>();
     public DbSet<ActionCost> ActionCosts => Set<ActionCost>();
     public DbSet<ChannelSettings> ChannelSettings => Set<ChannelSettings>();
+    public DbSet<AccountSettings> AccountSettings => Set<AccountSettings>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -82,6 +83,26 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
                 .HasMaxLength(500);
 
             entity.Property(channelSettings => channelSettings.UpdatedAtUtc)
+                .IsRequired();
+        });
+        b.Entity<AccountSettings>(entity =>
+        {
+            entity.HasKey(s => s.UserId);
+
+            entity.HasOne<User>()
+                .WithOne()
+                .HasForeignKey<AccountSettings>(s => s.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.Property(s => s.PreferredTheme)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.Property(s => s.PreferredLanguage)
+                .IsRequired()
+                .HasMaxLength(20);
+
+            entity.Property(s => s.UpdatedAtUtc)
                 .IsRequired();
         });
         b.Entity<Playlist>()
