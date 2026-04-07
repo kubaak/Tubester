@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Tubester.Persistence;
@@ -11,9 +12,11 @@ using Tubester.Persistence;
 namespace Tubester.Persistence.Migrations
 {
     [DbContext(typeof(TubesterDb))]
-    partial class TubesterDbModelSnapshot : ModelSnapshot
+    [Migration("20260406165135_AccountSettings")]
+    partial class AccountSettings
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

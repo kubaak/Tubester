@@ -62,4 +62,12 @@ public interface ICreditsStore
         string userId,
         DateTimeOffset nowUtc,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets a subscription summary for the specified user regardless of status or period.
+    /// Returns null if the user has no subscription.
+    /// </summary>
+    Task<SubscriptionSummaryDto?> GetSubscriptionSummaryAsync(
+        string userId,
+        CancellationToken cancellationToken);
 }
