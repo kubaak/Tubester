@@ -440,8 +440,6 @@ public sealed class YouTubeIntegration(
         string? categoryId,
         string? defaultLanguage,
         string? defaultAudioLanguage,
-        (double lat, double lng)? location,
-        string? locationDescription,
         CancellationToken cancellationToken)
     {
         var youTubeService = CreateReadOnlyServiceAsync(await GetCurrentUsersAccessToken(cancellationToken));
@@ -456,19 +454,9 @@ public sealed class YouTubeIntegration(
             DefaultAudioLanguage = defaultAudioLanguage
         };
 
-        var video = new Video { Id = videoId, Snippet = snippet, RecordingDetails = new VideoRecordingDetails() };
+        var video = new Video { Id = videoId, Snippet = snippet };
 
-        if (location is not null)
-        {
-            video.RecordingDetails.Location = new GeoPoint
-            {
-                Latitude = location.Value.lat,
-                Longitude = location.Value.lng
-            };
-            video.RecordingDetails.LocationDescription = locationDescription;
-        }
-
-        var up = youTubeService.Videos.Update(video, "snippet,recordingDetails");
+        var up = youTubeService.Videos.Update(video, "snippet");
         await up.ExecuteAsync(cancellationToken);
     }
 

@@ -29,11 +29,16 @@ public interface IVideoService
 
     Task<VideoDetailsDto?> UpdateVideoMetadataAsync(
         string userId,
+        string operationId,
         UpdateVideoMetadataRequest request,
         CancellationToken cancellationToken);
 
     Task<VideoDetailsDto?> SaveDraftMetadataAsync(
         string userId,
         UpdateVideoMetadataRequest request,
+        CancellationToken cancellationToken);
+
+    Task<VideoDetailsDto?> ResyncVideoAsync(
+        string videoId,
         CancellationToken cancellationToken);
 }

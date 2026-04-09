@@ -26,8 +26,6 @@ public interface IYouTubeIntegration
         string? categoryId,
         string? defaultLanguage,
         string? defaultAudioLanguage,
-        (double lat, double lng)? location,
-        string? locationDescription,
         CancellationToken cancellationToken);
 
     Task AddVideoToPlaylistAsync(string playlistId, string videoId, CancellationToken cancellationToken);

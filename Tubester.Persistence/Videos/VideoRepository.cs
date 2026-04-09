@@ -74,7 +74,7 @@ public sealed class VideoRepository(TubesterDb db) : IVideoRepository
                 var changed = existingVideo.ApplyDetails(
                     video.Title, video.Description, video.PublishedAt, video.Duration,
                     video.Visibility, video.Tags, video.CategoryId, video.DefaultLanguage,
-                    video.DefaultAudioLanguage, video.Location, video.LocationDescription, currentTimeUtc, video.ETag,
+                    video.DefaultAudioLanguage, currentTimeUtc, video.ETag,
                     video.CommentsAllowed
                 );
                 existingVideo.TransferEventsFrom(video);

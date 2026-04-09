@@ -1,6 +1,5 @@
 using System.Net;
 using Microsoft.Extensions.DependencyInjection;
-using Moq;
 using Tubester.Abstractions.Users;
 using Tubester.Application.Jobs;
 using Tubester.Domain;

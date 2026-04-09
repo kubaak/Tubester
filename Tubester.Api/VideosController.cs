@@ -1,6 +1,6 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Tubester.Abstractions.Account;
 using Tubester.Application.Contracts;
 using Tubester.Application.Contracts.Videos;
 using Tubester.Application.Exceptions;
@@ -20,7 +20,8 @@ namespace Tubester.Api;
 [Authorize]
 public sealed class VideosController(
     IVideoService videoService,
-    IAiTemplateOrchestrationService aiTemplateOrchestrationService
+    IAiTemplateOrchestrationService aiTemplateOrchestrationService,
+    ICurrentUserContext currentUserContext
 ) : ApiControllerBase
 {
     /// <summary>
@@ -30,7 +31,7 @@ public sealed class VideosController(
     /// <param name="ct"></param>
     /// <returns>Job ID for the background operation.</returns>
     [HttpPost("copy-template")]
-    [Authorize(Policy = "RequiresYouTubeWrite")]
+    [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> CopyTemplate(
@@ -53,7 +54,7 @@ public sealed class VideosController(
             return BadRequest(new { error = "SourceVideoId and TargetVideoId must be different." });
         }
 
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = currentUserContext.UserId;
         if (string.IsNullOrWhiteSpace(userId))
         {
             return Unauthorized();
@@ -63,6 +64,12 @@ public sealed class VideosController(
         return Ok(result);
     }
 
+    /// <summary>
+    /// Improve video metadata using AI
+    /// </summary>
+    /// <param name="request"></param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
     [HttpPost("ai-template")]
     [ProducesResponseType(typeof(AiTemplateEnqueueResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -70,6 +77,13 @@ public sealed class VideosController(
         [FromBody] AiVideoTemplateRequest request,
         CancellationToken ct = default)
     {
+        var operationId = Request.Headers["OperationId"].FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(operationId))
+        {
+            return BadRequest("Missing OperationId header.");
+        }
+        
         if (string.IsNullOrWhiteSpace(request.TargetVideoId))
         {
             return BadRequest(new { error = "TargetVideoId is required and cannot be empty." });
@@ -80,7 +94,7 @@ public sealed class VideosController(
             return BadRequest(new { error = "PromptEnrichment is required and cannot be empty." });
         }
 
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = currentUserContext.UserId;
         if (string.IsNullOrWhiteSpace(userId))
         {
             return Unauthorized();
@@ -88,7 +102,7 @@ public sealed class VideosController(
 
         try
         {
-            var result = await aiTemplateOrchestrationService.EnqueueAiTemplateAsync(userId, request, ct);
+            var result = await aiTemplateOrchestrationService.EnqueueAiTemplateAsync(userId, operationId, request, ct);
             return Ok(new AiTemplateEnqueueResult(result));
         }
         catch (AiTemplatingNotStartedException e)
@@ -136,7 +150,7 @@ public sealed class VideosController(
     }
 
     /// <summary>
-    /// Gets video metadata (title, description, tags) for a single video.
+    /// Gets video details (title, description, tags) for a single video.
     /// </summary>
     /// <param name="videoId">YouTube video ID.</param>
     /// <param name="ct"></param>
@@ -175,6 +189,13 @@ public sealed class VideosController(
         [FromBody] UpdateVideoMetadataRequest request,
         CancellationToken cancellationToken = default)
     {
+        var operationId = Request.Headers["OperationId"].FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(operationId))
+        {
+            return BadRequest("Missing OperationId header.");
+        }
+        
         if (string.IsNullOrWhiteSpace(request.VideoId))
         {
             return BadRequest(new { error = "VideoId is required and cannot be empty." });
@@ -185,13 +206,13 @@ public sealed class VideosController(
             return BadRequest(new { error = "Title is required and cannot be empty." });
         }
 
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = currentUserContext.UserId;
         if (string.IsNullOrWhiteSpace(userId))
         {
             return Unauthorized();
         }
 
-        var updatedVideoDetails = await videoService.UpdateVideoMetadataAsync(userId, request, cancellationToken);
+        var updatedVideoDetails = await videoService.UpdateVideoMetadataAsync(userId, operationId, request, cancellationToken);
 
         if (updatedVideoDetails is null)
         {
@@ -224,7 +245,7 @@ public sealed class VideosController(
             return BadRequest(new { error = "Title is required and cannot be empty." });
         }
 
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = currentUserContext.UserId;
         if (string.IsNullOrWhiteSpace(userId))
         {
             return Unauthorized();
@@ -238,5 +259,34 @@ public sealed class VideosController(
         }
 
         return Ok(savedVideoDetails);
+    }
+
+    /// <summary>
+    /// Resyncs a video's details and playlists from YouTube.
+    /// </summary>
+    /// <param name="videoId">YouTube video ID.</param>
+    /// <param name="ct"></param>
+    /// <returns>Updated video details with current playlists.</returns>
+    [HttpPost("resync")]
+    [ProducesResponseType(typeof(VideoDetailsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<VideoDetailsDto>> ResyncVideo(
+        string videoId,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(videoId))
+        {
+            return BadRequest(new { error = "VideoId is required and cannot be empty." });
+        }
+
+        var result = await videoService.ResyncVideoAsync(videoId, ct);
+
+        if (result is null)
+        {
+            return NotFound();
+        }
+
+        return Ok(result);
     }
 }

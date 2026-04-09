@@ -86,8 +86,6 @@ public sealed class Video : Entity
         string? categoryId,
         string? defaultLanguage,
         string? defaultAudioLanguage,
-        GeoLocation? location,
-        string? locationDescription,
         DateTimeOffset nowUtc,
         string? etag,
         bool? commentsAllowed = null)
@@ -174,18 +172,6 @@ public sealed class Video : Entity
         if (!StringComparer.Ordinal.Equals(DefaultAudioLanguage, defaultAudioLanguage))
         {
             DefaultAudioLanguage = defaultAudioLanguage;
-            dirty = true;
-        }
-
-        if (Location != location)
-        {
-            Location = location;
-            dirty = true;
-        }
-
-        if (!StringComparer.Ordinal.Equals(LocationDescription, locationDescription))
-        {
-            LocationDescription = locationDescription;
             dirty = true;
         }
 

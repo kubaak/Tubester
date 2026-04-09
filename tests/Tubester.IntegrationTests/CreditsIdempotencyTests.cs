@@ -3,8 +3,6 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Moq;
-using Tubester.Abstractions.Analytics;
 using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Users;
 using Tubester.Application.Contracts.Videos;
@@ -22,21 +20,21 @@ public sealed class CreditsIdempotencyTests(TestFixture fixture)
     private readonly JsonSerializerOptions _serializerOptions =
         new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
+    private const string OperationId = "credits-idempotency-operation";
+
     [Fact]
-    public async Task CopyTemplate_SameIdempotencyKey_DoesNotDoubleCharge()
+    public async Task AiTemplate_SameIdempotencyKey_DoesNotDoubleCharge()
     {
         await fixture.ResetDbAsync();
 
         const string channelId = "credits-idempotency-channel";
         const string uploadsPlaylistId = "ULCreditsIdempotency";
         const string userId = MockAuthenticationExtensions.TestSub;
-        const string operationId = "credits-idempotency-operation";
 
         fixture.ApiFactory.MockCurrentChannelContext
             .Setup(channelContext => channelContext.GetRequiredChannelId())
             .Returns(channelId);
 
-        var sourceVideo = CreateSourceVideo(uploadsPlaylistId);
         var targetVideo = CreateTargetVideo(uploadsPlaylistId);
 
         using (var serviceScope = fixture.ApiServices.CreateScope())
@@ -59,7 +57,7 @@ public sealed class CreditsIdempotencyTests(TestFixture fixture)
                     TestFixture.TestingDateTimeOffset),
                 CancellationToken.None);
 
-            databaseContext.Videos.AddRange(sourceVideo, targetVideo);
+            databaseContext.Videos.Add(targetVideo);
 
             var plan = new Plan
             {
@@ -85,51 +83,47 @@ public sealed class CreditsIdempotencyTests(TestFixture fixture)
 
             await databaseContext.Subscriptions.AddAsync(userSubscription, CancellationToken.None);
 
-            var copyTemplateCost = new ActionCost
+            var aiTemplateEnqueuedCost = new ActionCost
             {
-                ActionType = CreditActionType.CopyTemplateExecuted.ToString(),
+                ActionType = CreditActionType.AiTemplateEnqueued.ToString(),
                 Cost = 2,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
-                Notes = "Credits idempotency test cost for CopyTemplateExecuted."
+                Notes = "Credits idempotency test cost for AiTemplateEnqueued."
             };
 
-            await databaseContext.ActionCosts.AddAsync(copyTemplateCost, CancellationToken.None);
+            await databaseContext.ActionCosts.AddAsync(aiTemplateEnqueuedCost, CancellationToken.None);
             await databaseContext.SaveChangesAsync(CancellationToken.None);
         }
 
-        fixture.ApiFactory.MockYouTubeIntegration
-            .Setup(youTubeIntegration => youTubeIntegration.UpdateVideoAsync(
-                targetVideo.VideoId,
-                sourceVideo.Title!,
-                sourceVideo.Description!,
-                It.Is<IReadOnlyList<string>>(tags => tags.SequenceEqual(sourceVideo.Tags)),
-                targetVideo.CategoryId,
-                sourceVideo.DefaultLanguage,
-                sourceVideo.DefaultAudioLanguage,
-                It.IsAny<(double lat, double lng)?>(),
-                targetVideo.LocationDescription,
-                It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
-        var request = new CopyVideoTemplateRequest(
-            sourceVideo.VideoId,
+        var request = new AiVideoTemplateRequest(
             targetVideo.VideoId,
-            operationId,
-            true,
-            false,
-            true,
-            false,
-            true
-        );
+            "Generate better metadata")
+        {
+            GenerateTitle = true,
+            GenerateDescription = true,
+            GenerateTags = true
+        };
 
         var requestJson = JsonSerializer.Serialize(request, _serializerOptions);
         var requestContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
 
-        var response1 = await fixture.HttpClient.PostAsync("/api/videos/copy-template", requestContent);
+        var requestMessage1 = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = requestContent
+        };
+        requestMessage1.Headers.Add("OperationId", OperationId);
+
+        var response1 = await fixture.HttpClient.SendAsync(requestMessage1);
         Assert.Equal(HttpStatusCode.OK, response1.StatusCode);
 
-        var response2 = await fixture.HttpClient.PostAsync("/api/videos/copy-template", requestContent);
+        var requestMessage2 = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = requestContent
+        };
+        requestMessage2.Headers.Add("OperationId", OperationId);
+
+        var response2 = await fixture.HttpClient.SendAsync(requestMessage2);
         Assert.Equal(HttpStatusCode.OK, response2.StatusCode);
 
         using (var verificationScope = fixture.ApiServices.CreateScope())
@@ -155,21 +149,18 @@ public sealed class CreditsIdempotencyTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task CopyTemplate_DifferentIdempotencyKey_DoubleCharge()
+    public async Task AiTemplate_DifferentIdempotencyKey_DoubleCharge()
     {
         await fixture.ResetDbAsync();
 
         const string channelId = "credits-idempotency-channel";
         const string uploadsPlaylistId = "ULCreditsIdempotency";
         const string userId = MockAuthenticationExtensions.TestSub;
-        const string operationId1 = "credits-idempotency-operation1";
-        const string operationId2 = "credits-idempotency-operation2";
 
         fixture.ApiFactory.MockCurrentChannelContext
             .Setup(channelContext => channelContext.GetRequiredChannelId())
             .Returns(channelId);
 
-        var sourceVideo = CreateSourceVideo(uploadsPlaylistId);
         var targetVideo = CreateTargetVideo(uploadsPlaylistId);
 
         using (var serviceScope = fixture.ApiServices.CreateScope())
@@ -192,7 +183,7 @@ public sealed class CreditsIdempotencyTests(TestFixture fixture)
                     TestFixture.TestingDateTimeOffset),
                 CancellationToken.None);
 
-            databaseContext.Videos.AddRange(sourceVideo, targetVideo);
+            databaseContext.Videos.Add(targetVideo);
 
             var plan = new Plan
             {
@@ -218,63 +209,59 @@ public sealed class CreditsIdempotencyTests(TestFixture fixture)
 
             await databaseContext.Subscriptions.AddAsync(userSubscription, CancellationToken.None);
 
-            var copyTemplateCost = new ActionCost
+            var aiTemplateEnqueuedCost = new ActionCost
             {
-                ActionType = CreditActionType.CopyTemplateExecuted.ToString(),
+                ActionType = CreditActionType.AiTemplateEnqueued.ToString(),
                 Cost = 2,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
-                Notes = "Credits idempotency test cost for CopyTemplateExecuted."
+                Notes = "Credits idempotency test cost for AiTemplateEnqueued."
             };
 
-            await databaseContext.ActionCosts.AddAsync(copyTemplateCost, CancellationToken.None);
+            await databaseContext.ActionCosts.AddAsync(aiTemplateEnqueuedCost, CancellationToken.None);
             await databaseContext.SaveChangesAsync(CancellationToken.None);
         }
 
-        fixture.ApiFactory.MockYouTubeIntegration
-            .Setup(youTubeIntegration => youTubeIntegration.UpdateVideoAsync(
-                targetVideo.VideoId,
-                sourceVideo.Title!,
-                sourceVideo.Description!,
-                It.Is<IReadOnlyList<string>>(tags => tags.SequenceEqual(sourceVideo.Tags)),
-                targetVideo.CategoryId,
-                sourceVideo.DefaultLanguage,
-                sourceVideo.DefaultAudioLanguage,
-                It.IsAny<(double lat, double lng)?>(),
-                targetVideo.LocationDescription,
-                It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
-        var request1 = new CopyVideoTemplateRequest(
-            sourceVideo.VideoId,
+        var request1 = new AiVideoTemplateRequest(
             targetVideo.VideoId,
-            operationId1,
-            true,
-            false,
-            true,
-            false,
-            true
-        );
+            "Generate better metadata")
+        {
+            GenerateTitle = true,
+            GenerateDescription = true,
+            GenerateTags = true
+        };
+
         var requestJson1 = JsonSerializer.Serialize(request1, _serializerOptions);
         var requestContent1 = new StringContent(requestJson1, Encoding.UTF8, "application/json");
 
-        var response1 = await fixture.HttpClient.PostAsync("/api/videos/copy-template", requestContent1);
+        var requestMessage1 = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = requestContent1
+        };
+        requestMessage1.Headers.Add("OperationId", OperationId);
+
+        var response1 = await fixture.HttpClient.SendAsync(requestMessage1);
         Assert.Equal(HttpStatusCode.OK, response1.StatusCode);
 
-        var request2 = new CopyVideoTemplateRequest(
-            sourceVideo.VideoId,
+        var request2 = new AiVideoTemplateRequest(
             targetVideo.VideoId,
-            operationId2,
-            true,
-            false,
-            true,
-            false,
-            true
-        );
+            "Generate better metadata")
+        {
+            GenerateTitle = true,
+            GenerateDescription = true,
+            GenerateTags = true
+        };
 
         var requestJson2 = JsonSerializer.Serialize(request2, _serializerOptions);
         var requestContent2 = new StringContent(requestJson2, Encoding.UTF8, "application/json");
-        var response2 = await fixture.HttpClient.PostAsync("/api/videos/copy-template", requestContent2);
+
+        var requestMessage2 = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = requestContent2
+        };
+        requestMessage2.Headers.Add("OperationId", "different-operation-id");
+
+        var response2 = await fixture.HttpClient.SendAsync(requestMessage2);
         Assert.Equal(HttpStatusCode.OK, response2.StatusCode);
 
         using (var verificationScope = fixture.ApiServices.CreateScope())
@@ -294,7 +281,7 @@ public sealed class CreditsIdempotencyTests(TestFixture fixture)
                 .OrderBy(entry => entry.OccurredAtUtc)
                 .ToListAsync();
 
-            // One grant + one spend only
+            // One grant + two spends
             Assert.Equal(3, ledgerEntries.Count);
         }
     }

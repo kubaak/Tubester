@@ -19,6 +19,7 @@ public class AiTemplateOrchestrationService(
 {
     public async Task<string> EnqueueAiTemplateAsync(
         string userId,
+        string operationId,
         AiVideoTemplateRequest request,
         CancellationToken cancellationToken)
     {
@@ -40,7 +41,7 @@ public class AiTemplateOrchestrationService(
         try
         {
             var aiTemplateEnqueueIdempotencyKey =
-                $"ai-template-enqueue:{userId}:{request.TargetVideoId}";
+                $"ai-template-enqueue:{userId}:{request.TargetVideoId}:{operationId}";
 
             var aiTemplateEnqueueSpendSucceeded = await creditsService.TrySpendAsync(
                 userId,

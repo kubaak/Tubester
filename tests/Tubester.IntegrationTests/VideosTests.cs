@@ -5,7 +5,6 @@ using AutoFixture;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
-using Tubester.Abstractions.Analytics;
 using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Users;
 using Tubester.Application.Contracts;
@@ -170,6 +169,95 @@ public class VideosTests(TestFixture fixture)
         Assert.NotNull(videoDetails.Tags);
         Assert.Equal(tags, videoDetails.Tags);
         Assert.False(videoDetails.IsAiTemplateInProgress);
+        Assert.Null(videoDetails.Location);
+        Assert.Null(videoDetails.LocationDescription);
+        Assert.Empty(videoDetails.Playlists);
+        Assert.NotNull(videoDetails.Category);
+        Assert.Equal("22", videoDetails.Category.Id);
+        Assert.Null(videoDetails.Category.Name);
+        Assert.Equal("en", videoDetails.DefaultLanguage);
+        Assert.Equal("en", videoDetails.DefaultAudioLanguage);
+    }
+
+    [Fact]
+    public async Task GetVideo_WithLocationAndPlaylist_ReturnsCorrectDetails()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        const string uploadPlaylistId = "PLVideoLocUploads";
+        const string channelId = "video-loc-channel";
+        const string playlistId = "PLVideoLocPlaylist1";
+
+        fixture.ApiFactory.MockCurrentChannelContext
+            .Setup(channelContext => channelContext.GetRequiredChannelId())
+            .Returns(channelId);
+
+        const string videoId = "videoLoc1";
+        var location = new GeoLocation(51.5074, -0.1278);
+
+        var video = Video.Create(
+            uploadPlaylistId,
+            videoId,
+            "London Video",
+            "Filmed in London",
+            TestFixture.TestingDateTimeOffset,
+            TimeSpan.FromMinutes(5),
+            VideoVisibility.Public,
+            ["london"],
+            "19",
+            "en",
+            "en",
+            location,
+            "London, UK",
+            TestFixture.TestingDateTimeOffset,
+            "etag-loc"
+        );
+
+        using (var serviceScope = fixture.ApiServices.CreateScope())
+        {
+            var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
+            var user = User.Create(
+                MockAuthenticationExtensions.TestSub,
+                MockAuthenticationExtensions.TestEmail,
+                MockAuthenticationExtensions.TestName,
+                MockAuthenticationExtensions.TestPicture,
+                TestFixture.TestingDateTimeOffset);
+            var channel = Channel.Create(channelId, MockAuthenticationExtensions.TestSub, "Video Loc Channel",
+                uploadPlaylistId, TestFixture.TestingDateTimeOffset);
+            var playlist = Playlist.Create(playlistId, channelId, "My Playlist", TestFixture.TestingDateTimeOffset);
+
+            databaseContext.Users.Add(user);
+            databaseContext.Channels.Add(channel);
+            databaseContext.Videos.Add(video);
+            databaseContext.Playlists.Add(playlist);
+            await databaseContext.SaveChangesAsync();
+
+            databaseContext.VideoPlaylists.Add(VideoPlaylist.Create(videoId, playlistId));
+            await databaseContext.SaveChangesAsync();
+        }
+
+        // Act
+        var response = await fixture.HttpClient.GetAsync($"/api/videos/{videoId}");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var content = await response.Content.ReadAsStringAsync();
+        var videoDetails = JsonSerializer.Deserialize<VideoDetailsDto>(content, _serializerOptions);
+
+        Assert.NotNull(videoDetails);
+        Assert.NotNull(videoDetails.Location);
+        Assert.Equal(51.5074, videoDetails.Location.Latitude);
+        Assert.Equal(-0.1278, videoDetails.Location.Longitude);
+        Assert.Equal("London, UK", videoDetails.LocationDescription);
+        Assert.Single(videoDetails.Playlists);
+        Assert.Equal(playlistId, videoDetails.Playlists[0].Id);
+        Assert.Equal("My Playlist", videoDetails.Playlists[0].Name);
+        Assert.NotNull(videoDetails.Category);
+        Assert.Equal("19", videoDetails.Category.Id);
+        Assert.Equal("en", videoDetails.DefaultLanguage);
+        Assert.Equal("en", videoDetails.DefaultAudioLanguage);
     }
 
     [Fact]
@@ -297,6 +385,13 @@ public class VideosTests(TestFixture fixture)
         const string newDescription = "Updated Description";
         var newTags = new[] { "tag-one", "tag-two" };
 
+        var request = new UpdateVideoMetadataRequest(
+            originalVideoId,
+            newTitle,
+            newDescription,
+            newTags
+        );
+        
         fixture.ApiFactory.MockYouTubeIntegration
             .Setup(youTubeIntegration => youTubeIntegration.UpdateVideoAsync(
                 originalVideoId,
@@ -306,23 +401,19 @@ public class VideosTests(TestFixture fixture)
                 originalVideo.CategoryId,
                 originalVideo.DefaultLanguage,
                 originalVideo.DefaultAudioLanguage,
-                It.IsAny<(double lat, double lng)?>(),
-                originalVideo.LocationDescription,
                 It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
-        var request = new UpdateVideoMetadataRequest(
-            originalVideoId,
-            newTitle,
-            newDescription,
-            newTags
-        );
-
         var requestJson = JsonSerializer.Serialize(request, _serializerOptions);
-        var requestHttpContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
+        var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
 
         // Act
-        var response = await fixture.HttpClient.PostAsync("/api/videos/update", requestHttpContent);
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/update")
+        {
+            Content = content
+        };
+        requestMessage.Headers.Add("OperationId", OperationId);
+        var response = await fixture.HttpClient.SendAsync(requestMessage);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -335,6 +426,11 @@ public class VideosTests(TestFixture fixture)
         Assert.Equal(newDescription, videoDetails.Description);
         Assert.Equal(newTags, videoDetails.Tags);
         Assert.False(videoDetails.IsAiTemplateInProgress);
+        Assert.Empty(videoDetails.Playlists);
+        Assert.NotNull(videoDetails.Category);
+        Assert.Equal("22", videoDetails.Category.Id);
+        Assert.Equal("en", videoDetails.DefaultLanguage);
+        Assert.Equal("en", videoDetails.DefaultAudioLanguage);
 
         fixture.ApiFactory.MockYouTubeIntegration.Verify(youTubeIntegration =>
                 youTubeIntegration.UpdateVideoAsync(
@@ -345,8 +441,6 @@ public class VideosTests(TestFixture fixture)
                     originalVideo.CategoryId,
                     originalVideo.DefaultLanguage,
                     originalVideo.DefaultAudioLanguage,
-                    It.IsAny<(double lat, double lng)?>(),
-                    originalVideo.LocationDescription,
                     It.IsAny<CancellationToken>()),
             Times.Once);
 
@@ -368,7 +462,7 @@ public class VideosTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task CopyTemplate_ValidRequest_CallsYoutubeService_AndLogsAnalytics()
+    public async Task CopyTemplate_ValidRequest_PersistsToDb_AndLogsAnalytics()
     {
         const string channelId = "Channel-XYZ";
         const string uploadPlaylistId = "ULTestPlaylist123";
@@ -431,23 +525,12 @@ public class VideosTests(TestFixture fixture)
             await databaseContext.SaveChangesAsync(CancellationToken.None);
         }
 
-        fixture.ApiFactory.MockYouTubeIntegration.Setup(x =>
-                x.UpdateVideoAsync(targetVideo.VideoId, sourceVideo.Title!, sourceVideo.Description!,
-                    sourceVideo.Tags, targetVideo.CategoryId, sourceVideo.DefaultLanguage,
-                    sourceVideo.DefaultAudioLanguage,
-                    It.IsAny<(double lat, double lng)?>(),
-                    targetVideo.LocationDescription, It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
         var request = new CopyVideoTemplateRequest(
             sourceVideo.VideoId,
             targetVideo.VideoId,
-            OperationId,
             true,
-            false,
             true,
-            false,
-            true
+            false
         );
 
         var json = JsonSerializer.Serialize(request, _serializerOptions);
@@ -461,21 +544,6 @@ public class VideosTests(TestFixture fixture)
 
         var responseContent = await response.Content.ReadAsStringAsync();
         Assert.False(string.IsNullOrWhiteSpace(responseContent));
-
-        fixture.ApiFactory.MockYouTubeIntegration.Verify(x =>
-                x.UpdateVideoAsync(
-                    targetVideo.VideoId,
-                    sourceVideo.Title!,
-                    sourceVideo.Description!,
-                    It.Is<IReadOnlyList<string>>(tags =>
-                        tags.SequenceEqual(sourceVideo.Tags)),
-                    targetVideo.CategoryId,
-                    sourceVideo.DefaultLanguage,
-                    sourceVideo.DefaultAudioLanguage,
-                    It.IsAny<(double lat, double lng)?>(),
-                    targetVideo.LocationDescription,
-                    It.IsAny<CancellationToken>()),
-            Times.Once);
 
         // Verify CopyTemplateExecuted analytics event is logged
         using (var verifyScope = fixture.ApiServices.CreateScope())
@@ -502,8 +570,7 @@ public class VideosTests(TestFixture fixture)
 
         var request = new CopyVideoTemplateRequest(
             "",
-            "targetVideoId456",
-            OperationId
+            "targetVideoId456"
         );
 
         var json = JsonSerializer.Serialize(request, _serializerOptions);
@@ -527,8 +594,7 @@ public class VideosTests(TestFixture fixture)
 
         var request = new CopyVideoTemplateRequest(
             "sourceVideoId123",
-            "",
-            OperationId
+            ""
         );
 
         var json = JsonSerializer.Serialize(request, _serializerOptions);
@@ -552,8 +618,7 @@ public class VideosTests(TestFixture fixture)
 
         var request = new CopyVideoTemplateRequest(
             "sameVideoId123",
-            "sameVideoId123",
-            OperationId
+            "sameVideoId123"
         );
 
         var json = JsonSerializer.Serialize(request, _serializerOptions);
@@ -651,7 +716,12 @@ public class VideosTests(TestFixture fixture)
         var requestContent = new StringContent(serializedRequest, Encoding.UTF8, "application/json");
 
         // Act
-        var videosEndpointResponse = await fixture.HttpClient.PostAsync("/api/videos/ai-template", requestContent);
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = requestContent
+        };
+        requestMessage.Headers.Add("OperationId", OperationId);
+        var videosEndpointResponse = await fixture.HttpClient.SendAsync(requestMessage);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, videosEndpointResponse.StatusCode);
@@ -717,7 +787,12 @@ public class VideosTests(TestFixture fixture)
         var requestContent = new StringContent(serializedRequest, Encoding.UTF8, "application/json");
 
         // Act
-        var videosEndpointResponse = await fixture.HttpClient.PostAsync("/api/videos/ai-template", requestContent);
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = requestContent
+        };
+        requestMessage.Headers.Add("OperationId", OperationId);
+        var videosEndpointResponse = await fixture.HttpClient.SendAsync(requestMessage);
 
         // Assert
         Assert.Equal(HttpStatusCode.BadRequest, videosEndpointResponse.StatusCode);
@@ -741,7 +816,12 @@ public class VideosTests(TestFixture fixture)
         var requestContent = new StringContent(serializedRequest, Encoding.UTF8, "application/json");
 
         // Act
-        var videosEndpointResponse = await fixture.HttpClient.PostAsync("/api/videos/ai-template", requestContent);
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = requestContent
+        };
+        requestMessage.Headers.Add("OperationId", OperationId);
+        var videosEndpointResponse = await fixture.HttpClient.SendAsync(requestMessage);
 
         // Assert
         Assert.Equal(HttpStatusCode.BadRequest, videosEndpointResponse.StatusCode);
@@ -770,7 +850,12 @@ public class VideosTests(TestFixture fixture)
         var requestContent = new StringContent(serializedRequest, Encoding.UTF8, "application/json");
 
         // Act
-        var videosEndpointResponse = await fixture.HttpClient.PostAsync("/api/videos/ai-template", requestContent);
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = requestContent
+        };
+        requestMessage.Headers.Add("OperationId", OperationId);
+        var videosEndpointResponse = await fixture.HttpClient.SendAsync(requestMessage);
 
         // Assert
         Assert.Equal(HttpStatusCode.BadRequest, videosEndpointResponse.StatusCode);
@@ -1039,6 +1124,13 @@ public class VideosTests(TestFixture fixture)
         Assert.Equal(newTitle, videoDetails.Title);
         Assert.Equal(newDescription, videoDetails.Description);
         Assert.Equal(newTags, videoDetails.Tags);
+        Assert.Null(videoDetails.Location);
+        Assert.Null(videoDetails.LocationDescription);
+        Assert.Empty(videoDetails.Playlists);
+        Assert.NotNull(videoDetails.Category);
+        Assert.Equal("22", videoDetails.Category.Id);
+        Assert.Equal("en", videoDetails.DefaultLanguage);
+        Assert.Equal("en", videoDetails.DefaultAudioLanguage);
 
         // Verify YouTube was never called
         fixture.ApiFactory.MockYouTubeIntegration.Verify(youTubeIntegration =>
@@ -1049,8 +1141,6 @@ public class VideosTests(TestFixture fixture)
                     It.IsAny<IReadOnlyList<string>>(),
                     It.IsAny<string?>(),
                     It.IsAny<string?>(),
-                    It.IsAny<string?>(),
-                    It.IsAny<(double lat, double lng)?>(),
                     It.IsAny<string?>(),
                     It.IsAny<CancellationToken>()),
             Times.Never);
