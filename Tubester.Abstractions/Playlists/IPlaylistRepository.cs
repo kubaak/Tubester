@@ -8,6 +8,8 @@ public interface IPlaylistRepository
 
     Task<List<string>> GetPlaylistIdsByVideoAsync(string videoId, CancellationToken cancellationToken);
 
+    Task<List<Playlist>> GetPlaylistsByVideoAsync(string videoId, CancellationToken cancellationToken);
+
     Task<Playlist?> GetAsync(string playlistId, CancellationToken cancellationToken);
 
     Task<(int inserted, int updated)> UpsertAsync(

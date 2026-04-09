@@ -1,6 +1,5 @@
 using Hangfire;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.EntityFrameworkCore;
 using Tubester.Abstractions.Account;
 using Tubester.Abstractions.Analytics;
 using Tubester.Abstractions.Auth;

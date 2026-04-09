@@ -42,8 +42,6 @@ public sealed class AiVideoTemplatingService(
             targetVideo.CategoryId,
             targetVideo.DefaultLanguage,
             targetVideo.DefaultAudioLanguage,
-            targetVideo.Location,
-            targetVideo.LocationDescription,
             nowUtc,
             null,
             targetVideo.CommentsAllowed);

@@ -114,12 +114,20 @@ public class VideoService(
             return null;
         }
 
+        var playlists = await playlistRepository.GetPlaylistsByVideoAsync(videoId, cancellationToken);
+
         return new VideoDetailsDto
         {
             Title = video.Title,
             Description = video.Description,
             Tags = video.Tags,
-            IsAiTemplateInProgress = video.IsAiTemplateInProgress
+            IsAiTemplateInProgress = video.IsAiTemplateInProgress,
+            Location = video.Location is { } loc ? new GeoLocationDto(loc.Latitude, loc.Longitude) : null,
+            LocationDescription = video.LocationDescription,
+            Playlists = [.. playlists.Select(p => new PlaylistDto(p.PlaylistId, p.Title))],
+            Category = video.CategoryId is { } catId ? new CategoryDto(catId, null) : null,
+            DefaultLanguage = video.DefaultLanguage,
+            DefaultAudioLanguage = video.DefaultAudioLanguage
         };
     }
 
@@ -134,162 +142,98 @@ public class VideoService(
         }
 
         var channelId = channelContext.GetRequiredChannelId();
+        
+        // Load source and target videos from DB
+        var sourceVideo =
+            await videoRepository.GetVideoByIdAsync(channelId, request.SourceVideoId, cancellationToken)
+            ?? throw new ArgumentException($"Source video {request.SourceVideoId} not found in cache.");
 
-        var copyTemplateIdempotencyKey =
-            $"copy-template:{userId}:{request.SourceVideoId}:{request.TargetVideoId}:{request.OperationId}";
+        var targetVideo =
+            await videoRepository.GetVideoByIdAsync(channelId, request.TargetVideoId, cancellationToken)
+            ?? throw new ArgumentException($"Target video {request.TargetVideoId} not found in cache.");
 
+        // Build effective metadata starting from source
+        var newTitle = sourceVideo.Title ?? string.Empty;
+        var newDescription = sourceVideo.Description ?? string.Empty;
+        var newTags = request.CopyTags ? SanitizeTags(sourceVideo.Tags) : targetVideo.Tags;
+        var categoryId = request.CopyCategory ? sourceVideo.CategoryId : targetVideo.CategoryId;
+        var defaultLanguage =
+            request.CopyDefaultLanguages ? sourceVideo.DefaultLanguage : targetVideo.DefaultLanguage;
+        var defaultAudioLanguage = request.CopyDefaultLanguages
+            ? sourceVideo.DefaultAudioLanguage
+            : targetVideo.DefaultAudioLanguage;
 
-        // First, check and deduct credits. This acts as a gate before performing external work.
-        var copyTemplateSpendSucceeded = await creditsService.TrySpendAsync(
+        // Persist changes to DB
+        var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
+        targetVideo.ApplyDetails(
+            newTitle,
+            newDescription,
+            targetVideo.PublishedAt,
+            targetVideo.Duration,
+            targetVideo.Visibility,
+            newTags,
+            categoryId,
+            defaultLanguage,
+            defaultAudioLanguage,
+            nowUtc,
+            null, //we won't know the etag at from this point 
+            targetVideo.CommentsAllowed
+        );
+
+        await videoRepository.UpsertAsync(channelId, [targetVideo], cancellationToken);
+
+        await userEventLogger.LogAsync(
             userId,
-            CreditActionType.CopyTemplateExecuted.ToString(),
-            copyTemplateIdempotencyKey,
+            UserEventType.CopyTemplateExecuted,
             request.TargetVideoId,
-            new { sourceVideoId = request.SourceVideoId, targetVideoId = request.TargetVideoId },
+            null,
+            new
+            {
+                sourceVideoId = request.SourceVideoId,
+                copyTags = request.CopyTags,
+                copyPlaylists = request.CopyPlaylists,
+                copyCategory = request.CopyCategory,
+                copyDefaultLanguages = request.CopyDefaultLanguages
+            },
             cancellationToken);
 
-        if (!copyTemplateSpendSucceeded)
+        if (!request.CopyPlaylists)
         {
-            throw new ForbiddenException("Insufficient credits to copy template.");
-        }
-
-        try
-        {
-            // Load source and target videos from DB
-            var sourceVideo =
-                await videoRepository.GetVideoByIdAsync(channelId, request.SourceVideoId, cancellationToken)
-                ?? throw new ArgumentException($"Source video {request.SourceVideoId} not found in cache.");
-
-            var targetVideo =
-                await videoRepository.GetVideoByIdAsync(channelId, request.TargetVideoId, cancellationToken)
-                ?? throw new ArgumentException($"Target video {request.TargetVideoId} not found in cache.");
-
-            // Build effective metadata starting from source
-            var newTitle = sourceVideo.Title ?? string.Empty;
-            var newDescription = sourceVideo.Description ?? string.Empty;
-            var newTags = request.CopyTags ? SanitizeTags(sourceVideo.Tags) : targetVideo.Tags;
-            var location = request.CopyLocation
-                ? ConvertToLocationTuple(sourceVideo.Location)
-                : ConvertToLocationTuple(targetVideo.Location);
-            var locationDescription =
-                request.CopyLocation ? sourceVideo.LocationDescription : targetVideo.LocationDescription;
-            var categoryId = request.CopyCategory ? sourceVideo.CategoryId : targetVideo.CategoryId;
-            var defaultLanguage =
-                request.CopyDefaultLanguages ? sourceVideo.DefaultLanguage : targetVideo.DefaultLanguage;
-            var defaultAudioLanguage = request.CopyDefaultLanguages
-                ? sourceVideo.DefaultAudioLanguage
-                : targetVideo.DefaultAudioLanguage;
-
-            // Update target video on YouTube. At this point, credits have already been checked/deducted.
-            await youTubeIntegration.UpdateVideoAsync(
-                request.TargetVideoId,
-                newTitle,
-                newDescription,
-                newTags,
-                categoryId,
-                defaultLanguage,
-                defaultAudioLanguage,
-                location,
-                locationDescription,
-                cancellationToken);
-
-            // Persist changes to DB only after successful YouTube update
-            var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
-            targetVideo.ApplyDetails(
-                newTitle,
-                newDescription,
-                targetVideo.PublishedAt,
-                targetVideo.Duration,
-                targetVideo.Visibility,
-                newTags,
-                categoryId,
-                defaultLanguage,
-                defaultAudioLanguage,
-                ConvertFromLocationTuple(location),
-                locationDescription,
-                nowUtc,
-                null, //we won't know the etag at from this point 
-                targetVideo.CommentsAllowed
-            );
-
-            await videoRepository.UpsertAsync(channelId, [targetVideo], cancellationToken);
-
-            await userEventLogger.LogAsync(
-                userId,
-                UserEventType.CopyTemplateExecuted,
-                request.TargetVideoId,
-                null,
-                new
-                {
-                    sourceVideoId = request.SourceVideoId,
-                    copyTags = request.CopyTags,
-                    copyLocation = request.CopyLocation,
-                    copyPlaylists = request.CopyPlaylists,
-                    copyCategory = request.CopyCategory,
-                    copyDefaultLanguages = request.CopyDefaultLanguages
-                },
-                cancellationToken);
-
-            if (!request.CopyPlaylists)
-            {
-                return new CopyVideoTemplateResult(
-                    request.SourceVideoId,
-                    request.TargetVideoId,
-                    newTitle,
-                    newDescription,
-                    newTags,
-                    locationDescription,
-                    location,
-                    [],
-                    request.CopyCategory,
-                    request.CopyDefaultLanguages
-                );
-            }
-
-            var playlistIds =
-                (await playlistRepository.GetPlaylistIdsByVideoAsync(sourceVideo.VideoId, cancellationToken))
-                .ToHashSet();
-            foreach (var playlistId in playlistIds)
-            {
-                await youTubeIntegration.AddVideoToPlaylistAsync(playlistId, targetVideo.VideoId,
-                    cancellationToken);
-            }
-
-            await playlistRepository.SetMembershipsToPlaylistsAsync(targetVideo.VideoId, playlistIds,
-                cancellationToken);
-
-
             return new CopyVideoTemplateResult(
                 request.SourceVideoId,
                 request.TargetVideoId,
                 newTitle,
                 newDescription,
                 newTags,
-                locationDescription,
-                location,
-                playlistIds.ToArray(),
+                [],
                 request.CopyCategory,
                 request.CopyDefaultLanguages
             );
         }
-        catch
-        {
-            var copyTemplateRefundIdempotencyKey =
-                $"copy-template-refund:{userId}:{request.SourceVideoId}:{request.TargetVideoId}:{request.OperationId}";
 
-            await creditsService.RefundAsync(
-                userId,
-                CreditActionType.CopyTemplateExecuted.ToString(),
-                copyTemplateIdempotencyKey,
-                copyTemplateRefundIdempotencyKey,
-                cancellationToken);
+        var playlistIds =
+            (await playlistRepository.GetPlaylistIdsByVideoAsync(sourceVideo.VideoId, cancellationToken))
+            .ToHashSet();
 
-            throw;
-        }
+        await playlistRepository.SetMembershipsToPlaylistsAsync(targetVideo.VideoId, playlistIds,
+            cancellationToken);
+
+
+        return new CopyVideoTemplateResult(
+            request.SourceVideoId,
+            request.TargetVideoId,
+            newTitle,
+            newDescription,
+            newTags,
+            playlistIds.ToArray(),
+            request.CopyCategory,
+            request.CopyDefaultLanguages
+        );
     }
 
     public async Task<VideoDetailsDto?> UpdateVideoMetadataAsync(
         string userId,
+        string operationId,
         UpdateVideoMetadataRequest request,
         CancellationToken cancellationToken)
     {
@@ -315,14 +259,8 @@ public class VideoService(
         var description = request.Description ?? string.Empty;
         var tags = SanitizeTags(request.Tags ?? Array.Empty<string>());
 
-        var location = ((double lat, double lng)?)null;
-        if (video.Location is not null)
-        {
-            location = (video.Location.Latitude, video.Location.Longitude);
-        }
-
         var aiTemplateSubmittedIdempotencyKey =
-            $"ai-template-submitted:{userId}:{request.VideoId}";
+            $"ai-template-submitted:{userId}:{request.VideoId}:{operationId}";
 
         var aiTemplateSubmittedSpendSucceeded = await creditsService.TrySpendAsync(
             userId,
@@ -351,8 +289,6 @@ public class VideoService(
             video.CategoryId,
             video.DefaultLanguage,
             video.DefaultAudioLanguage,
-            location,
-            video.LocationDescription,
             cancellationToken);
 
         var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
@@ -366,8 +302,6 @@ public class VideoService(
             video.CategoryId,
             video.DefaultLanguage,
             video.DefaultAudioLanguage,
-            video.Location,
-            video.LocationDescription,
             nowUtc,
             null,
             video.CommentsAllowed
@@ -388,12 +322,20 @@ public class VideoService(
             },
             cancellationToken);
 
+        var aiTemplatePlaylists = await playlistRepository.GetPlaylistsByVideoAsync(request.VideoId, cancellationToken);
+
         return new VideoDetailsDto
         {
             Title = title,
             Description = description,
             Tags = tags.ToArray(),
-            IsAiTemplateInProgress = video.IsAiTemplateInProgress
+            IsAiTemplateInProgress = video.IsAiTemplateInProgress,
+            Location = video.Location is { } aiTemplateLoc ? new GeoLocationDto(aiTemplateLoc.Latitude, aiTemplateLoc.Longitude) : null,
+            LocationDescription = video.LocationDescription,
+            Playlists = [.. aiTemplatePlaylists.Select(p => new PlaylistDto(p.PlaylistId, p.Title))],
+            Category = video.CategoryId is { } aiTemplateCatId ? new CategoryDto(aiTemplateCatId, null) : null,
+            DefaultLanguage = video.DefaultLanguage,
+            DefaultAudioLanguage = video.DefaultAudioLanguage
         };
     }
 
@@ -435,8 +377,6 @@ public class VideoService(
             video.CategoryId,
             video.DefaultLanguage,
             video.DefaultAudioLanguage,
-            video.Location,
-            video.LocationDescription,
             nowUtc,
             null,
             video.CommentsAllowed
@@ -444,12 +384,20 @@ public class VideoService(
 
         await videoRepository.UpsertAsync(channelId, [video], cancellationToken);
 
+        var draftPlaylists = await playlistRepository.GetPlaylistsByVideoAsync(request.VideoId, cancellationToken);
+
         return new VideoDetailsDto
         {
             Title = title,
             Description = description,
             Tags = tags.ToArray(),
-            IsAiTemplateInProgress = video.IsAiTemplateInProgress
+            IsAiTemplateInProgress = video.IsAiTemplateInProgress,
+            Location = video.Location is { } draftLoc ? new GeoLocationDto(draftLoc.Latitude, draftLoc.Longitude) : null,
+            LocationDescription = video.LocationDescription,
+            Playlists = [.. draftPlaylists.Select(p => new PlaylistDto(p.PlaylistId, p.Title))],
+            Category = video.CategoryId is { } draftCatId ? new CategoryDto(draftCatId, null) : null,
+            DefaultLanguage = video.DefaultLanguage,
+            DefaultAudioLanguage = video.DefaultAudioLanguage
         };
     }
 
@@ -488,5 +436,103 @@ public class VideoService(
     private static GeoLocation? ConvertFromLocationTuple((double lat, double lng)? location)
     {
         return location.HasValue ? new GeoLocation(location.Value.lat, location.Value.lng) : null;
+    }
+
+    public async Task<VideoDetailsDto?> ResyncVideoAsync(
+        string videoId,
+        CancellationToken cancellationToken)
+    {
+
+        if (string.IsNullOrWhiteSpace(videoId))
+        {
+            return null;
+        }
+
+        var channelId = channelContext.GetRequiredChannelId();
+        var video = await videoRepository.GetVideoByIdAsync(channelId, videoId, cancellationToken);
+
+        if (video is null)
+        {
+            return null;
+        }
+
+        // Fetch fresh video details from YouTube
+        var videoDtos = await youTubeIntegration.GetVideosAsync([videoId], cancellationToken);
+        var videoDto = videoDtos.ToList().FirstOrDefault();
+
+        if (videoDto is null)
+        {
+            return null;
+        }
+
+        var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
+
+        // Convert privacy status string to VideoVisibility enum
+        var visibility = videoDto.PrivacyStatus.ToLowerInvariant() switch
+        {
+            "public" => VideoVisibility.Public,
+            "unlisted" => VideoVisibility.Unlisted,
+            "private" => VideoVisibility.Private,
+            "scheduled" => VideoVisibility.Scheduled,
+            _ => VideoVisibility.Private
+        };
+
+        // Update video details
+        video.ApplyDetails(
+            videoDto.Title,
+            videoDto.Description,
+            videoDto.PublishedAt,
+            videoDto.Duration,
+            visibility,
+            videoDto.Tags,
+            videoDto.CategoryId,
+            videoDto.DefaultLanguage,
+            videoDto.DefaultAudioLanguage,
+            nowUtc,
+            videoDto.ETag,
+            videoDto.CommentsAllowed
+        );
+
+        await videoRepository.UpsertAsync(channelId, [video], cancellationToken);
+
+        // Resync playlists for this video
+        var channelPlaylists = await playlistRepository.GetByChannelAsync(channelId, cancellationToken);
+        var updatedPlaylistIds = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var playlist in channelPlaylists)
+        {
+            var playlistVideoIds = youTubeIntegration.GetPlaylistVideoIdsAsync(
+                playlist.PlaylistId, 
+                cancellationToken);
+            
+            await foreach (var pid in playlistVideoIds)
+            {
+                if (string.Equals(pid, videoId, StringComparison.Ordinal))
+                {
+                    updatedPlaylistIds.Add(playlist.PlaylistId);
+                    break;
+                }
+            }
+        }
+
+        // Update playlist memberships
+        await playlistRepository.SetMembershipsToPlaylistsAsync(videoId, updatedPlaylistIds, cancellationToken);
+
+        // Return updated video details with playlists
+        var playlists = await playlistRepository.GetPlaylistsByVideoAsync(videoId, cancellationToken);
+
+        return new VideoDetailsDto
+        {
+            Title = video.Title,
+            Description = video.Description,
+            Tags = video.Tags,
+            IsAiTemplateInProgress = video.IsAiTemplateInProgress,
+            Location = video.Location is { } loc ? new GeoLocationDto(loc.Latitude, loc.Longitude) : null,
+            LocationDescription = video.LocationDescription,
+            Playlists = [.. playlists.Select(p => new PlaylistDto(p.PlaylistId, p.Title))],
+            Category = video.CategoryId is { } catId ? new CategoryDto(catId, null) : null,
+            DefaultLanguage = video.DefaultLanguage,
+            DefaultAudioLanguage = video.DefaultAudioLanguage
+        };
     }
 }

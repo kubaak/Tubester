@@ -75,6 +75,7 @@ public class ReplyService(
 
     public async Task<BatchDecisionResultDto> ApplyBatchAsync(
         string userId,
+        string operationId,
         IEnumerable<DraftDecisionDto> decisions,
         CancellationToken cancellationToken)
     {
@@ -108,7 +109,7 @@ public class ReplyService(
                 draft.ApproveText(userId, d.ApprovedText, dateTimeOffsetProvider.GetUtcNowDateTimeOffset());
 
                 var replyPostedIdempotencyKey =
-                    $"reply-posted:{userId}:{draft.VideoId}:{draft.CommentId}";
+                    $"reply-posted:{userId}:{draft.VideoId}:{draft.CommentId}:{operationId}";
 
                 var replyPostedSpendSucceeded = await creditsService.TrySpendAsync(
                     userId,

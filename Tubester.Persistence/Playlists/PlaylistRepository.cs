@@ -23,6 +23,18 @@ public sealed class PlaylistRepository(TubesterDb databaseContext) : IPlaylistRe
             .ToListAsync(cancellationToken);
     }
 
+    public Task<List<Playlist>> GetPlaylistsByVideoAsync(string videoId, CancellationToken cancellationToken)
+    {
+        return databaseContext.VideoPlaylists
+            .AsNoTracking()
+            .Where(vp => vp.VideoId == videoId)
+            .Join(databaseContext.Playlists,
+                vp => vp.PlaylistId,
+                p => p.PlaylistId,
+                (_, p) => p)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<Playlist?> GetAsync(string playlistId, CancellationToken cancellationToken)
     {
         return await databaseContext.Playlists

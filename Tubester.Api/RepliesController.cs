@@ -40,7 +40,7 @@ public class RepliesController(IReplyService service) : ApiControllerBase
     /// <summary>
     /// Approves batch of replies
     /// </summary>
-    /// <param name="decisions"></param>
+    /// <param name="request"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
     [HttpPost("approve")]
@@ -49,10 +49,17 @@ public class RepliesController(IReplyService service) : ApiControllerBase
     [ProducesResponseType(typeof(BatchDecisionResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<BatchDecisionResultDto>> BatchApprove(
-        [FromBody] DraftDecisionDto[] decisions,
+        [FromBody] BatchDecisionRequest request,
         CancellationToken cancellationToken)
     {
-        if (decisions.Length == 0)
+        var operationId = Request.Headers["OperationId"].FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(operationId))
+        {
+            return BadRequest("Missing OperationId header.");
+        }
+        
+        if (request.Decisions.Length == 0)
         {
             return BadRequest("Missing decisions.");
         }
@@ -63,7 +70,7 @@ public class RepliesController(IReplyService service) : ApiControllerBase
             return Unauthorized();
         }
 
-        var result = await service.ApplyBatchAsync(userId, decisions, cancellationToken);
+        var result = await service.ApplyBatchAsync(userId, operationId, request.Decisions, cancellationToken);
         return Ok(result);
     }
 

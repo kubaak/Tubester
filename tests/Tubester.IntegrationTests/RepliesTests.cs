@@ -4,7 +4,6 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
-using Tubester.Abstractions.Analytics;
 using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Users;
 using Tubester.Application.Contracts.Replies;
@@ -21,6 +20,8 @@ public class RepliesTests(TestFixture fixture)
 {
     private readonly JsonSerializerOptions _serializerOptions =
         new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
+    private const string OperationId = "replies-idempotency-operation";
 
     [Fact]
     public async Task GetReplies_EmptyDb_ReturnsEmptyList()
@@ -264,9 +265,9 @@ public class RepliesTests(TestFixture fixture)
         var decision1 = new DraftDecisionDto("comment1", "Approved text 1");
         var decision2 = new DraftDecisionDto("comment2", "Approved text 2");
 
-        var decisions = new[] { decision1, decision2 };
+        var request = new BatchDecisionRequest([decision1, decision2]);
 
-        var json = JsonSerializer.Serialize(decisions, _serializerOptions);
+        var json = JsonSerializer.Serialize(request, _serializerOptions);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
         var sequence = new MockSequence();
@@ -288,7 +289,12 @@ public class RepliesTests(TestFixture fixture)
             .Returns(Task.CompletedTask);
 
         // Act
-        var response = await fixture.HttpClient.PostAsync("/api/replies/approve", content);
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/replies/approve")
+        {
+            Content = content
+        };
+        requestMessage.Headers.Add("OperationId", OperationId);
+        var response = await fixture.HttpClient.SendAsync(requestMessage);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -341,8 +347,8 @@ public class RepliesTests(TestFixture fixture)
         await fixture.ResetDbAsync();
         fixture.ApiFactory.MockYouTubeIntegration.Reset();
 
-        var decisions = Array.Empty<DraftDecisionDto>();
-        var json = JsonSerializer.Serialize(decisions, _serializerOptions);
+        var request = new BatchDecisionRequest([]);
+        var json = JsonSerializer.Serialize(request, _serializerOptions);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
         // Act

@@ -10,6 +10,7 @@ public interface IReplyService
 
     Task<BatchDecisionResultDto> ApplyBatchAsync(
         string userId,
+        string operationId,
         IEnumerable<DraftDecisionDto> decisions,
         CancellationToken cancellationToken);
 
