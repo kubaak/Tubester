@@ -453,4 +453,189 @@ public class RepliesTests(TestFixture fixture)
         var responseContent = await response.Content.ReadAsStringAsync();
         Assert.Contains("CommentIds cannot be empty", responseContent);
     }
+
+    [Fact]
+    public async Task GetReplies_DraftReply_IncludesThumbnailUrl()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        const string testChannelId = "thumbnail-url-channel";
+        const string testUploadsPlaylistId = "PLThumbnailUploads";
+        fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
+            .Returns(testChannelId);
+
+        var user = User.Create(
+            MockAuthenticationExtensions.TestSub,
+            MockAuthenticationExtensions.TestEmail,
+            MockAuthenticationExtensions.TestName,
+            MockAuthenticationExtensions.TestPicture,
+            TestFixture.TestingDateTimeOffset);
+
+        var channel = Channel.Create(testChannelId, MockAuthenticationExtensions.TestSub, "Thumbnail Test Channel",
+            testUploadsPlaylistId, DateTimeOffset.UtcNow);
+
+        const string videoId = "testVideo123";
+        var video = Video.Create(
+            testUploadsPlaylistId,
+            videoId,
+            "Thumbnail Test Video",
+            "Testing thumbnail URL",
+            TestFixture.TestingDateTimeOffset,
+            TimeSpan.FromMinutes(5),
+            VideoVisibility.Public,
+            ["test"],
+            "22",
+            "en",
+            "en",
+            null,
+            null,
+            TestFixture.TestingDateTimeOffset,
+            "etag-thumbnail"
+        );
+
+        var reply = Reply.Create(
+            "thumbnail-comment-1",
+            videoId,
+            "Thumbnail Test Video",
+            "Test comment for thumbnail",
+            TestFixture.TestingDateTimeOffset);
+        reply.SuggestText("Suggested reply with thumbnail", TestFixture.TestingDateTimeOffset.AddMinutes(5));
+
+        using (var scope = fixture.ApiServices.CreateScope())
+        {
+            var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
+            databaseContext.Users.Add(user);
+            databaseContext.Channels.Add(channel);
+            databaseContext.Videos.Add(video);
+            databaseContext.Replies.Add(reply);
+            await databaseContext.SaveChangesAsync();
+        }
+
+        // Act
+        var response = await fixture.HttpClient.GetAsync("/api/replies");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var content = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<JsonElement[]>(content, _serializerOptions);
+
+        Assert.NotNull(result);
+        Assert.Single(result);
+
+        var replyResult = result.First();
+        Assert.True(replyResult.TryGetProperty("thumbnailUrl", out var thumbnailUrlElement));
+        var thumbnailUrl = thumbnailUrlElement.GetString();
+        Assert.NotNull(thumbnailUrl);
+        Assert.Equal($"https://i.ytimg.com/vi/{videoId}/sddefault.jpg", thumbnailUrl);
+    }
+
+    [Fact]
+    public async Task GetReplies_MultipleDraftReplies_EachHasCorrectThumbnailUrl()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        const string testChannelId = "multi-thumbnail-channel";
+        const string testUploadsPlaylistId = "PLMultiThumbnailUploads";
+        fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
+            .Returns(testChannelId);
+
+        var user = User.Create(
+            MockAuthenticationExtensions.TestSub,
+            MockAuthenticationExtensions.TestEmail,
+            MockAuthenticationExtensions.TestName,
+            MockAuthenticationExtensions.TestPicture,
+            TestFixture.TestingDateTimeOffset);
+
+        var channel = Channel.Create(testChannelId, MockAuthenticationExtensions.TestSub, "Multi Thumbnail Test Channel",
+            testUploadsPlaylistId, DateTimeOffset.UtcNow);
+
+        var video1 = Video.Create(
+            testUploadsPlaylistId,
+            "videoAlpha",
+            "Video Alpha",
+            "First video",
+            TestFixture.TestingDateTimeOffset,
+            TimeSpan.FromMinutes(3),
+            VideoVisibility.Public,
+            ["test"],
+            "22",
+            "en",
+            "en",
+            null,
+            null,
+            TestFixture.TestingDateTimeOffset,
+            "etag-alpha"
+        );
+
+        var video2 = Video.Create(
+            testUploadsPlaylistId,
+            "videoBeta",
+            "Video Beta",
+            "Second video",
+            TestFixture.TestingDateTimeOffset,
+            TimeSpan.FromMinutes(4),
+            VideoVisibility.Public,
+            ["test"],
+            "22",
+            "en",
+            "en",
+            null,
+            null,
+            TestFixture.TestingDateTimeOffset,
+            "etag-beta"
+        );
+
+        var reply1 = Reply.Create(
+            "multi-comment-1",
+            "videoAlpha",
+            "Video Alpha",
+            "Comment on alpha",
+            TestFixture.TestingDateTimeOffset);
+        reply1.SuggestText("Reply on alpha", TestFixture.TestingDateTimeOffset.AddMinutes(5));
+
+        var reply2 = Reply.Create(
+            "multi-comment-2",
+            "videoBeta",
+            "Video Beta",
+            "Comment on beta",
+            TestFixture.TestingDateTimeOffset);
+        reply2.SuggestText("Reply on beta", TestFixture.TestingDateTimeOffset.AddMinutes(10));
+
+        using (var scope = fixture.ApiServices.CreateScope())
+        {
+            var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
+            databaseContext.Users.Add(user);
+            databaseContext.Channels.Add(channel);
+            databaseContext.Videos.AddRange(video1, video2);
+            databaseContext.Replies.AddRange(reply1, reply2);
+            await databaseContext.SaveChangesAsync();
+        }
+
+        // Act
+        var response = await fixture.HttpClient.GetAsync("/api/replies");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var content = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<JsonElement[]>(content, _serializerOptions);
+
+        Assert.NotNull(result);
+        Assert.Equal(2, result.Length);
+
+        var reply1Result = result.FirstOrDefault(r => r.GetProperty("commentId").GetString() == "multi-comment-1");
+        var reply2Result = result.FirstOrDefault(r => r.GetProperty("commentId").GetString() == "multi-comment-2");
+
+        Assert.NotEqual(JsonValueKind.Undefined, reply1Result.ValueKind);
+        Assert.NotEqual(JsonValueKind.Undefined, reply2Result.ValueKind);
+
+        var thumbnail1 = reply1Result.GetProperty("thumbnailUrl").GetString();
+        var thumbnail2 = reply2Result.GetProperty("thumbnailUrl").GetString();
+
+        Assert.Equal("https://i.ytimg.com/vi/videoAlpha/sddefault.jpg", thumbnail1);
+        Assert.Equal("https://i.ytimg.com/vi/videoBeta/sddefault.jpg", thumbnail2);
+    }
 }
