@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Users;
+using Tubester.Application.Contracts;
 using Tubester.Application.Contracts.Replies;
 using Tubester.Domain;
 using Tubester.IntegrationTests.TestHost;
@@ -24,27 +25,7 @@ public class RepliesTests(TestFixture fixture)
     private const string OperationId = "replies-idempotency-operation";
 
     [Fact]
-    public async Task GetReplies_EmptyDb_ReturnsEmptyList()
-    {
-        // Arrange
-        await fixture.ResetDbAsync();
-
-        const string testChannelId = "testChannelID123";
-        fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
-            .Returns(testChannelId);
-
-        // Act
-        var response = await fixture.HttpClient.GetAsync("/api/replies");
-
-        // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var content = await response.Content.ReadAsStringAsync();
-        Assert.Equal("[]", content);
-    }
-
-    [Fact]
-    public async Task GetReplies_WithRepliesInDb_ReturnsRepliesForApproval()
+    public async Task SearchSuggestedReplies_EmptyDb_ReturnsEmptyPage()
     {
         // Arrange
         await fixture.ResetDbAsync();
@@ -53,24 +34,109 @@ public class RepliesTests(TestFixture fixture)
         const string testUploadsPlaylistId = "PLTestUploads123";
         fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
             .Returns(testChannelId);
-        var user = User.Create(
-            MockAuthenticationExtensions.TestSub,
-            MockAuthenticationExtensions.TestEmail,
-            MockAuthenticationExtensions.TestName,
-            MockAuthenticationExtensions.TestPicture,
-            TestFixture.TestingDateTimeOffset);
 
-        var channel = Channel.Create(testChannelId, MockAuthenticationExtensions.TestSub, "testChannelName123",
-            testUploadsPlaylistId, DateTimeOffset.UtcNow);
+        await SetupTestDataAsync(testChannelId, testUploadsPlaylistId);
+
+        var request = new SearchSuggestedRepliesRequest();
+        var json = JsonSerializer.Serialize(request, _serializerOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        // Act
+        var response = await fixture.HttpClient.PostAsync("/api/replies/suggested/search", content);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<PagedResult<ReplyListItemDto>>(responseContent, _serializerOptions);
+
+        Assert.NotNull(result);
+        Assert.Empty(result.Items);
+        Assert.Null(result.NextPageToken);
+    }
+
+    [Fact]
+    public async Task SearchSuggestedReplies_WithSuggestedReplies_ReturnsPaginatedResults()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        const string testChannelId = "testChannelID123";
+        const string testUploadsPlaylistId = "PLTestUploads123";
+        fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
+            .Returns(testChannelId);
+
+        var suggestedReply1 = Reply.Create(
+            "comment1",
+            "video1",
+            "Test Video 1",
+            "First comment text",
+            TestFixture.TestingDateTimeOffset,
+            TestFixture.TestingDateTimeOffset.AddDays(-1));
+        suggestedReply1.SuggestText("Suggested reply 1", TestFixture.TestingDateTimeOffset.AddMinutes(5));
+
+        var suggestedReply2 = Reply.Create(
+            "comment2",
+            "video1",
+            "Test Video 1",
+            "Second comment text",
+            TestFixture.TestingDateTimeOffset.AddMinutes(1),
+            TestFixture.TestingDateTimeOffset.AddDays(-1));
+        suggestedReply2.SuggestText("Suggested reply 2", TestFixture.TestingDateTimeOffset.AddMinutes(6));
+
+        var nonSuggestedReply = Reply.Create(
+            "comment3",
+            "video1",
+            "Test Video 1",
+            "Pulled comment text",
+            TestFixture.TestingDateTimeOffset.AddMinutes(2),
+            TestFixture.TestingDateTimeOffset.AddDays(-1));
+
+        await SetupTestDataAsync(
+            testChannelId,
+            testUploadsPlaylistId,
+            suggestedReply1,
+            suggestedReply2,
+            nonSuggestedReply);
+
+        var request = new SearchSuggestedRepliesRequest();
+        var json = JsonSerializer.Serialize(request, _serializerOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        // Act
+        var response = await fixture.HttpClient.PostAsync("/api/replies/suggested/search", content);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<PagedResult<ReplyListItemDto>>(responseContent, _serializerOptions);
+
+        Assert.NotNull(result);
+        Assert.Equal(2, result.Items.Count);
+        Assert.Null(result.NextPageToken);
+    }
+
+    [Fact]
+    public async Task SearchSuggestedReplies_FilterByVideoIds_ReturnsMatchingReplies()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        const string testChannelId = "testChannelID123";
+        const string testUploadsPlaylistId = "PLTestUploads123";
+        fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
+            .Returns(testChannelId);
+
         var video1 = Video.Create(
             testUploadsPlaylistId,
             "video1",
-            "Cooking Tutorial",
-            "Learn how to cook",
+            "Test Video 1",
+            "Description 1",
             TestFixture.TestingDateTimeOffset,
             TimeSpan.FromMinutes(10),
             VideoVisibility.Public,
-            new[] { "cooking", "tutorial" },
+            ["test"],
             "22",
             "en",
             "en",
@@ -80,61 +146,227 @@ public class RepliesTests(TestFixture fixture)
             "etag1"
         );
 
-        var suggestedReply = Reply.Create(
-            "comment1",
-            "video1",
-            "Test Video 1",
-            "Original comment text",
-            TestFixture.TestingDateTimeOffset);
-        suggestedReply.SuggestText("Suggested reply text", TestFixture.TestingDateTimeOffset.AddMinutes(5));
-
-        var pulledReply = Reply.Create(
-            "comment2",
-            "video1",
-            "Test Video 1",
-            "Another comment text",
-            TestFixture.TestingDateTimeOffset);
-
-        var postedReply = Reply.Create(
-            "comment3",
+        var video2 = Video.Create(
+            testUploadsPlaylistId,
             "video2",
             "Test Video 2",
-            "Posted comment text",
+            "Description 2",
+            TestFixture.TestingDateTimeOffset.AddMinutes(1),
+            TimeSpan.FromMinutes(5),
+            VideoVisibility.Public,
+            ["test"],
+            "22",
+            "en",
+            "en",
+            null,
+            null,
+            TestFixture.TestingDateTimeOffset,
+            "etag2"
+        );
+
+        var reply1 = Reply.Create("comment1", "video1", "Video 1", "Comment on video 1", TestFixture.TestingDateTimeOffset,
+            TestFixture.TestingDateTimeOffset.AddDays(-1));
+        reply1.SuggestText("Reply 1", TestFixture.TestingDateTimeOffset.AddMinutes(5));
+
+        var reply2 = Reply.Create("comment2", "video2", "Video 2", "Comment on video 2", TestFixture.TestingDateTimeOffset.AddMinutes(1),
+            TestFixture.TestingDateTimeOffset.AddDays(-1));
+        reply2.SuggestText("Reply 2", TestFixture.TestingDateTimeOffset.AddMinutes(6));
+
+        var user = User.Create(
+            MockAuthenticationExtensions.TestSub,
+            MockAuthenticationExtensions.TestEmail,
+            MockAuthenticationExtensions.TestName,
+            MockAuthenticationExtensions.TestPicture,
             TestFixture.TestingDateTimeOffset);
-        postedReply.SuggestText("Some reply", TestFixture.TestingDateTimeOffset.AddMinutes(5));
-        postedReply.ApproveText(MockAuthenticationExtensions.TestSub, "Final reply", TestFixture.TestingDateTimeOffset.AddMinutes(10));
-        postedReply.Post(MockAuthenticationExtensions.TestSub, TestFixture.TestingDateTimeOffset.AddMinutes(15));
+
+        var channel = Channel.Create(testChannelId, MockAuthenticationExtensions.TestSub, "Test Channel",
+            testUploadsPlaylistId, DateTimeOffset.UtcNow);
 
         using (var scope = fixture.ApiServices.CreateScope())
         {
             var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
             databaseContext.Users.Add(user);
             databaseContext.Channels.Add(channel);
-            databaseContext.Videos.AddRange(video1);
-            databaseContext.Replies.AddRange(suggestedReply, pulledReply, postedReply);
+            databaseContext.Videos.AddRange(video1, video2);
+            databaseContext.Replies.AddRange(reply1, reply2);
             await databaseContext.SaveChangesAsync();
         }
 
+        var request = new SearchSuggestedRepliesRequest { VideoId = "video1" };
+        var json = JsonSerializer.Serialize(request, _serializerOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
         // Act
-        var response = await fixture.HttpClient.GetAsync("/api/replies");
+        var response = await fixture.HttpClient.PostAsync("/api/replies/suggested/search", content);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var content = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<JsonElement[]>(content, _serializerOptions);
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<PagedResult<ReplyListItemDto>>(responseContent, _serializerOptions);
 
         Assert.NotNull(result);
-        Assert.Single(result); // Only Suggested replies are returned for approval
+        Assert.Single(result.Items);
+        Assert.Equal("comment1", result.Items[0].CommentId);
+        Assert.Equal("video1", result.Items[0].VideoId);
+    }
 
-        var comment1 = result.FirstOrDefault(r => r.GetProperty("commentId").GetString() == "comment1");
-        Assert.NotEqual(JsonValueKind.Undefined, comment1.ValueKind);
-        Assert.Equal((int)ReplyStatus.Suggested, comment1.GetProperty("status").GetInt32());
+    [Fact]
+    public async Task SearchSuggestedReplies_FilterByOriginalComment_ReturnsMatchingReplies()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
 
-        // comment2 (Pulled status) should not be returned for approval
-        Assert.DoesNotContain(result, r => r.GetProperty("commentId").GetString() == "comment2");
-        Assert.DoesNotContain(result, r =>
-            r.GetProperty("commentId").GetString() == "comment3"); // Posted replies should not be returned
+        const string testChannelId = "testChannelID123";
+        const string testUploadsPlaylistId = "PLTestUploads123";
+        fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
+            .Returns(testChannelId);
+
+        var reply1 = Reply.Create("comment1", "video1", "Video 1", "How to cook pasta", TestFixture.TestingDateTimeOffset,
+            TestFixture.TestingDateTimeOffset.AddDays(-1));
+        reply1.SuggestText("Reply 1", TestFixture.TestingDateTimeOffset.AddMinutes(5));
+
+        var reply2 = Reply.Create("comment2", "video1", "Video 1", "What ingredients needed", TestFixture.TestingDateTimeOffset.AddMinutes(1),
+            TestFixture.TestingDateTimeOffset.AddDays(-1));
+        reply2.SuggestText("Reply 2", TestFixture.TestingDateTimeOffset.AddMinutes(6));
+
+        var reply3 = Reply.Create("comment3", "video1", "Video 1", "Great tutorial", TestFixture.TestingDateTimeOffset.AddMinutes(2),
+            TestFixture.TestingDateTimeOffset.AddDays(-1));
+        reply3.SuggestText("Reply 3", TestFixture.TestingDateTimeOffset.AddMinutes(7));
+
+        await SetupTestDataAsync(
+            testChannelId,
+            testUploadsPlaylistId,
+            reply1, reply2, reply3);
+
+        var request = new SearchSuggestedRepliesRequest { OriginalComment = "cook" };
+        var json = JsonSerializer.Serialize(request, _serializerOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        // Act
+        var response = await fixture.HttpClient.PostAsync("/api/replies/suggested/search", content);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<PagedResult<ReplyListItemDto>>(responseContent, _serializerOptions);
+
+        Assert.NotNull(result);
+        Assert.Single(result.Items);
+        Assert.Equal("comment1", result.Items[0].CommentId);
+        Assert.Contains("cook", result.Items[0].CommentText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SearchSuggestedReplies_Pagination_ReturnsCorrectPageAndToken()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        const string testChannelId = "testChannelID123";
+        const string testUploadsPlaylistId = "PLTestUploads123";
+        fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
+            .Returns(testChannelId);
+
+        var replies = new List<Reply>();
+        for (var i = 1; i <= 5; i++)
+        {
+            var reply = Reply.Create(
+                $"comment{i}",
+                "video1",
+                "Test Video",
+                $"Comment {i}",
+                TestFixture.TestingDateTimeOffset.AddMinutes(i),
+                TestFixture.TestingDateTimeOffset.AddDays(-1));
+            reply.SuggestText($"Reply {i}", TestFixture.TestingDateTimeOffset.AddMinutes(i + 5));
+            replies.Add(reply);
+        }
+
+        await SetupTestDataAsync(
+            testChannelId,
+            testUploadsPlaylistId,
+            replies.ToArray());
+
+        var request = new SearchSuggestedRepliesRequest { PageSize = 2 };
+        var json = JsonSerializer.Serialize(request, _serializerOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        // Act - First page
+        var response = await fixture.HttpClient.PostAsync("/api/replies/suggested/search", content);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<PagedResult<ReplyListItemDto>>(responseContent, _serializerOptions);
+
+        Assert.NotNull(result);
+        Assert.Equal(2, result.Items.Count);
+        Assert.NotNull(result.NextPageToken);
+        Assert.Equal(replies[4].CommentId, result.Items[0].CommentId);
+        Assert.Equal(replies[3].CommentId, result.Items[1].CommentId);
+
+        // Act - Second page
+        var request2 = new SearchSuggestedRepliesRequest { PageSize = 2, PageToken = result.NextPageToken };
+        var json2 = JsonSerializer.Serialize(request2, _serializerOptions);
+        var content2 = new StringContent(json2, Encoding.UTF8, "application/json");
+
+        var response2 = await fixture.HttpClient.PostAsync("/api/replies/suggested/search", content2);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response2.StatusCode);
+
+        var responseContent2 = await response2.Content.ReadAsStringAsync();
+        var result2 = JsonSerializer.Deserialize<PagedResult<ReplyListItemDto>>(responseContent2, _serializerOptions);
+
+        Assert.NotNull(result2);
+        Assert.Equal(2, result2.Items.Count);
+        Assert.NotNull(result2.NextPageToken);
+        Assert.Equal(replies[2].CommentId, result2.Items[0].CommentId);
+        Assert.Equal(replies[1].CommentId, result2.Items[1].CommentId);
+
+        // Act - Last page
+        var request3 = new SearchSuggestedRepliesRequest { PageSize = 2, PageToken = result2.NextPageToken };
+        var json3 = JsonSerializer.Serialize(request3, _serializerOptions);
+        var content3 = new StringContent(json3, Encoding.UTF8, "application/json");
+
+        var response3 = await fixture.HttpClient.PostAsync("/api/replies/suggested/search", content3);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response3.StatusCode);
+
+        var responseContent3 = await response3.Content.ReadAsStringAsync();
+        var result3 = JsonSerializer.Deserialize<PagedResult<ReplyListItemDto>>(responseContent3, _serializerOptions);
+
+        Assert.NotNull(result3);
+        Assert.Single(result3.Items);
+        Assert.Null(result3.NextPageToken); // No more pages
+        Assert.Equal(replies[0].CommentId, result3.Items[0].CommentId);
+    }
+
+    [Fact]
+    public async Task SearchSuggestedReplies_InvalidPageSize_ReturnsBadRequest()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        const string testChannelId = "testChannelID123";
+        const string testUploadsPlaylistId = "PLTestUploads123";
+        fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
+            .Returns(testChannelId);
+
+        await SetupTestDataAsync(testChannelId, testUploadsPlaylistId);
+
+        var request = new SearchSuggestedRepliesRequest { PageSize = 500 }; // Invalid - max is 100
+        var json = JsonSerializer.Serialize(request, _serializerOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        // Act
+        var response = await fixture.HttpClient.PostAsync("/api/replies/suggested/search", content);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
@@ -148,7 +380,8 @@ public class RepliesTests(TestFixture fixture)
             "video1",
             "Test Video",
             "Comment to be deleted",
-            TestFixture.TestingDateTimeOffset);
+            TestFixture.TestingDateTimeOffset,
+            TestFixture.TestingDateTimeOffset.AddDays(-1));
 
         using (var scope = fixture.ApiServices.CreateScope())
         {
@@ -203,7 +436,8 @@ public class RepliesTests(TestFixture fixture)
             "video1",
             "Test Video",
             "First comment",
-            TestFixture.TestingDateTimeOffset);
+            TestFixture.TestingDateTimeOffset,
+            TestFixture.TestingDateTimeOffset.AddDays(-1));
         reply1.SuggestText("Suggested text 1", TestFixture.TestingDateTimeOffset.AddMinutes(5));
 
         var reply2 = Reply.Create(
@@ -211,7 +445,8 @@ public class RepliesTests(TestFixture fixture)
             "video1",
             "Test Video",
             "Second comment",
-            TestFixture.TestingDateTimeOffset);
+            TestFixture.TestingDateTimeOffset,
+            TestFixture.TestingDateTimeOffset.AddDays(-1));
         reply2.SuggestText("Suggested text 2", TestFixture.TestingDateTimeOffset.AddMinutes(5));
 
         using (var scope = fixture.ApiServices.CreateScope())
@@ -251,7 +486,7 @@ public class RepliesTests(TestFixture fixture)
 
             var replyPostedCost = new ActionCost
             {
-                ActionType = CreditActionType.ReplyPostedToYouTube.ToString(),
+                ActionType = nameof(CreditActionType.ReplyPostedToYouTube),
                 Cost = 0,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
@@ -262,8 +497,8 @@ public class RepliesTests(TestFixture fixture)
             await databaseContext.SaveChangesAsync();
         }
 
-        var decision1 = new DraftDecisionDto("comment1", "Approved text 1");
-        var decision2 = new DraftDecisionDto("comment2", "Approved text 2");
+        var decision1 = new DraftDecisionDto { CommentId = "comment1", ApprovedText = "Approved text 1" };
+        var decision2 = new DraftDecisionDto { CommentId = "comment2", ApprovedText = "Approved text 2" };
 
         var request = new BatchDecisionRequest([decision1, decision2]);
 
@@ -328,7 +563,7 @@ public class RepliesTests(TestFixture fixture)
         using var verifyScope = fixture.ApiServices.CreateScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<TubesterDb>();
         var events = await verifyDb.UserEvents
-            .Where(e => e.EventType == CreditActionType.ReplyPostedToYouTube.ToString())
+            .Where(e => e.EventType == nameof(CreditActionType.ReplyPostedToYouTube))
             .OrderBy(e => e.CommentId)
             .ToListAsync();
 
@@ -369,21 +604,24 @@ public class RepliesTests(TestFixture fixture)
             "video1",
             "Test Video",
             "First comment",
-            TestFixture.TestingDateTimeOffset);
+            TestFixture.TestingDateTimeOffset,
+            TestFixture.TestingDateTimeOffset.AddDays(-1));
 
         var reply2 = Reply.Create(
             "comment2",
             "video1",
             "Test Video",
             "Second comment",
-            TestFixture.TestingDateTimeOffset);
+            TestFixture.TestingDateTimeOffset,
+            TestFixture.TestingDateTimeOffset.AddDays(-1));
 
         var postedReply = Reply.Create(
             "comment3",
             "video1",
             "Test Video",
             "Posted comment",
-            TestFixture.TestingDateTimeOffset);
+            TestFixture.TestingDateTimeOffset,
+            TestFixture.TestingDateTimeOffset.AddDays(-1));
         postedReply.SuggestText("Some text", TestFixture.TestingDateTimeOffset.AddMinutes(5));
         postedReply.ApproveText(MockAuthenticationExtensions.TestSub, "Final text", TestFixture.TestingDateTimeOffset.AddMinutes(10));
         postedReply.Post(MockAuthenticationExtensions.TestSub, TestFixture.TestingDateTimeOffset.AddMinutes(15));
@@ -448,14 +686,13 @@ public class RepliesTests(TestFixture fixture)
 
         // Assert
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        ;
 
         var responseContent = await response.Content.ReadAsStringAsync();
         Assert.Contains("CommentIds cannot be empty", responseContent);
     }
 
     [Fact]
-    public async Task GetReplies_DraftReply_IncludesThumbnailUrl()
+    public async Task SearchSuggestedReplies_IncludesThumbnailUrl()
     {
         // Arrange
         await fixture.ResetDbAsync();
@@ -465,20 +702,9 @@ public class RepliesTests(TestFixture fixture)
         fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
             .Returns(testChannelId);
 
-        var user = User.Create(
-            MockAuthenticationExtensions.TestSub,
-            MockAuthenticationExtensions.TestEmail,
-            MockAuthenticationExtensions.TestName,
-            MockAuthenticationExtensions.TestPicture,
-            TestFixture.TestingDateTimeOffset);
-
-        var channel = Channel.Create(testChannelId, MockAuthenticationExtensions.TestSub, "Thumbnail Test Channel",
-            testUploadsPlaylistId, DateTimeOffset.UtcNow);
-
-        const string videoId = "testVideo123";
         var video = Video.Create(
             testUploadsPlaylistId,
-            videoId,
+            "testVideo123",
             "Thumbnail Test Video",
             "Testing thumbnail URL",
             TestFixture.TestingDateTimeOffset,
@@ -496,11 +722,22 @@ public class RepliesTests(TestFixture fixture)
 
         var reply = Reply.Create(
             "thumbnail-comment-1",
-            videoId,
+            "testVideo123",
             "Thumbnail Test Video",
             "Test comment for thumbnail",
-            TestFixture.TestingDateTimeOffset);
+            TestFixture.TestingDateTimeOffset,
+            TestFixture.TestingDateTimeOffset.AddDays(-1));
         reply.SuggestText("Suggested reply with thumbnail", TestFixture.TestingDateTimeOffset.AddMinutes(5));
+
+        var user = User.Create(
+            MockAuthenticationExtensions.TestSub,
+            MockAuthenticationExtensions.TestEmail,
+            MockAuthenticationExtensions.TestName,
+            MockAuthenticationExtensions.TestPicture,
+            TestFixture.TestingDateTimeOffset);
+
+        var channel = Channel.Create(testChannelId, MockAuthenticationExtensions.TestSub, "Thumbnail Test Channel",
+            testUploadsPlaylistId, DateTimeOffset.UtcNow);
 
         using (var scope = fixture.ApiServices.CreateScope())
         {
@@ -512,36 +749,40 @@ public class RepliesTests(TestFixture fixture)
             await databaseContext.SaveChangesAsync();
         }
 
+        var request = new SearchSuggestedRepliesRequest();
+        var json = JsonSerializer.Serialize(request, _serializerOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
         // Act
-        var response = await fixture.HttpClient.GetAsync("/api/replies");
+        var response = await fixture.HttpClient.PostAsync("/api/replies/suggested/search", content);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var content = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<JsonElement[]>(content, _serializerOptions);
+        var contentResponse = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<PagedResult<ReplyListItemDto>>(contentResponse, _serializerOptions);
 
         Assert.NotNull(result);
-        Assert.Single(result);
+        Assert.Single(result.Items);
 
-        var replyResult = result.First();
-        Assert.True(replyResult.TryGetProperty("thumbnailUrl", out var thumbnailUrlElement));
-        var thumbnailUrl = thumbnailUrlElement.GetString();
-        Assert.NotNull(thumbnailUrl);
-        Assert.Equal($"https://i.ytimg.com/vi/{videoId}/sddefault.jpg", thumbnailUrl);
+        var replyResult = result.Items[0];
+        Assert.Equal("thumbnail-comment-1", replyResult.CommentId);
+        Assert.Equal($"https://i.ytimg.com/vi/testVideo123/sddefault.jpg", replyResult.ThumbnailUrl);
     }
 
-    [Fact]
-    public async Task GetReplies_MultipleDraftReplies_EachHasCorrectThumbnailUrl()
+    public sealed record SearchSuggestedRepliesRequest
     {
-        // Arrange
-        await fixture.ResetDbAsync();
+        public string? VideoId { get; init; }
+        public string? OriginalComment { get; init; }
+        public int? PageSize { get; init; }
+        public string? PageToken { get; init; }
+    }
 
-        const string testChannelId = "multi-thumbnail-channel";
-        const string testUploadsPlaylistId = "PLMultiThumbnailUploads";
-        fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
-            .Returns(testChannelId);
-
+    private async Task<(Channel channel, Video video, User user)> SetupTestDataAsync(
+        string testChannelId,
+        string testUploadsPlaylistId,
+        params Reply[] replies)
+    {
         var user = User.Create(
             MockAuthenticationExtensions.TestSub,
             MockAuthenticationExtensions.TestEmail,
@@ -549,93 +790,38 @@ public class RepliesTests(TestFixture fixture)
             MockAuthenticationExtensions.TestPicture,
             TestFixture.TestingDateTimeOffset);
 
-        var channel = Channel.Create(testChannelId, MockAuthenticationExtensions.TestSub, "Multi Thumbnail Test Channel",
+        var channel = Channel.Create(testChannelId, MockAuthenticationExtensions.TestSub, "testChannelName123",
             testUploadsPlaylistId, DateTimeOffset.UtcNow);
 
-        var video1 = Video.Create(
+        var video = Video.Create(
             testUploadsPlaylistId,
-            "videoAlpha",
-            "Video Alpha",
-            "First video",
+            "video1",
+            "Test Video 1",
+            "Learn how to cook",
             TestFixture.TestingDateTimeOffset,
-            TimeSpan.FromMinutes(3),
+            TimeSpan.FromMinutes(10),
             VideoVisibility.Public,
-            ["test"],
+            new[] { "cooking", "tutorial" },
             "22",
             "en",
             "en",
             null,
             null,
             TestFixture.TestingDateTimeOffset,
-            "etag-alpha"
+            "etag1"
         );
 
-        var video2 = Video.Create(
-            testUploadsPlaylistId,
-            "videoBeta",
-            "Video Beta",
-            "Second video",
-            TestFixture.TestingDateTimeOffset,
-            TimeSpan.FromMinutes(4),
-            VideoVisibility.Public,
-            ["test"],
-            "22",
-            "en",
-            "en",
-            null,
-            null,
-            TestFixture.TestingDateTimeOffset,
-            "etag-beta"
-        );
-
-        var reply1 = Reply.Create(
-            "multi-comment-1",
-            "videoAlpha",
-            "Video Alpha",
-            "Comment on alpha",
-            TestFixture.TestingDateTimeOffset);
-        reply1.SuggestText("Reply on alpha", TestFixture.TestingDateTimeOffset.AddMinutes(5));
-
-        var reply2 = Reply.Create(
-            "multi-comment-2",
-            "videoBeta",
-            "Video Beta",
-            "Comment on beta",
-            TestFixture.TestingDateTimeOffset);
-        reply2.SuggestText("Reply on beta", TestFixture.TestingDateTimeOffset.AddMinutes(10));
-
-        using (var scope = fixture.ApiServices.CreateScope())
+        using var scope = fixture.ApiServices.CreateScope();
+        var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
+        databaseContext.Users.Add(user);
+        databaseContext.Channels.Add(channel);
+        databaseContext.Videos.Add(video);
+        if (replies.Length > 0)
         {
-            var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
-            databaseContext.Users.Add(user);
-            databaseContext.Channels.Add(channel);
-            databaseContext.Videos.AddRange(video1, video2);
-            databaseContext.Replies.AddRange(reply1, reply2);
-            await databaseContext.SaveChangesAsync();
+            databaseContext.Replies.AddRange(replies);
         }
+        await databaseContext.SaveChangesAsync();
 
-        // Act
-        var response = await fixture.HttpClient.GetAsync("/api/replies");
-
-        // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var content = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<JsonElement[]>(content, _serializerOptions);
-
-        Assert.NotNull(result);
-        Assert.Equal(2, result.Length);
-
-        var reply1Result = result.FirstOrDefault(r => r.GetProperty("commentId").GetString() == "multi-comment-1");
-        var reply2Result = result.FirstOrDefault(r => r.GetProperty("commentId").GetString() == "multi-comment-2");
-
-        Assert.NotEqual(JsonValueKind.Undefined, reply1Result.ValueKind);
-        Assert.NotEqual(JsonValueKind.Undefined, reply2Result.ValueKind);
-
-        var thumbnail1 = reply1Result.GetProperty("thumbnailUrl").GetString();
-        var thumbnail2 = reply2Result.GetProperty("thumbnailUrl").GetString();
-
-        Assert.Equal("https://i.ytimg.com/vi/videoAlpha/sddefault.jpg", thumbnail1);
-        Assert.Equal("https://i.ytimg.com/vi/videoBeta/sddefault.jpg", thumbnail2);
+        return (channel, video, user);
     }
 }

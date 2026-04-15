@@ -4,6 +4,7 @@ using ArgumentException = System.ArgumentException;
 namespace Tubester.Domain;
 
 public enum ReplyStatus { Pulled = 0, Suggested = 1, Approved = 2, Posted = 3, Ignored = 4, Drafting = 5 }
+
 public class Reply : Entity
 {
     public string CommentId { get; private set; }
@@ -13,6 +14,7 @@ public class Reply : Entity
     public ReplyStatus Status { get; private set; }
     public string? SuggestedText { get; private set; }
     public string? FinalText { get; private set; }
+    public DateTimeOffset OriginalCommentAt { get; private set; }
     public DateTimeOffset PulledAt { get; private set; }
     public DateTimeOffset? SuggestedAt { get; private set; }
     public DateTimeOffset? ApprovedAt { get; private set; }
@@ -82,13 +84,16 @@ public class Reply : Entity
         Status = ReplyStatus.Ignored;
     }
 
-    public static Reply Create(string commentId, string videoId, string videoTitle, string commentText, DateTimeOffset pulledAt)
-        => new(commentId, videoId, videoTitle, commentText, ReplyStatus.Pulled, pulledAt);
+    public static Reply Create(string commentId, string videoId, string videoTitle, string commentText, DateTimeOffset pulledAt,
+        DateTimeOffset originalCommentAt)
+        => new(commentId, videoId, videoTitle, commentText, ReplyStatus.Pulled, pulledAt, originalCommentAt);
 
-    public static Reply CreateDrafting(string commentId, string videoId, string videoTitle, string commentText, DateTimeOffset pulledAt)
-        => new(commentId, videoId, videoTitle, commentText, ReplyStatus.Drafting, pulledAt);
+    public static Reply CreateDrafting(string commentId, string videoId, string videoTitle, string commentText, DateTimeOffset pulledAt,
+        DateTimeOffset originalCommentAt)
+        => new(commentId, videoId, videoTitle, commentText, ReplyStatus.Drafting, pulledAt, originalCommentAt);
 
-    private Reply(string commentId, string videoId, string videoTitle, string commentText, ReplyStatus status, DateTimeOffset pulledAt)
+    private Reply(string commentId, string videoId, string videoTitle, string commentText, ReplyStatus status, DateTimeOffset pulledAt,
+        DateTimeOffset originalCommentAt)
     {
         CommentId = commentId;
         VideoId = videoId;
@@ -96,6 +101,7 @@ public class Reply : Entity
         CommentText = commentText;
         PulledAt = pulledAt;
         Status = status;
+        OriginalCommentAt = originalCommentAt;
     }
 
     private Reply()

@@ -15,7 +15,7 @@ public abstract class Entity
         _domainEvents.AddRange(source._domainEvents);
         source._domainEvents.Clear();
     }
-    
+
     protected static void RequireUtc(DateTimeOffset timestamp)
     {
         if (timestamp.Offset != TimeSpan.Zero)

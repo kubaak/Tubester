@@ -348,7 +348,7 @@ public class VideosTests(TestFixture fixture)
 
             var aiTemplateSubmittedCost = new ActionCost
             {
-                ActionType = CreditActionType.AiTemplateSubmitted.ToString(),
+                ActionType = nameof(CreditActionType.AiTemplateSubmitted),
                 Cost = 0,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
@@ -391,7 +391,7 @@ public class VideosTests(TestFixture fixture)
             newDescription,
             newTags
         );
-        
+
         fixture.ApiFactory.MockYouTubeIntegration
             .Setup(youTubeIntegration => youTubeIntegration.UpdateVideoAsync(
                 originalVideoId,
@@ -449,7 +449,7 @@ public class VideosTests(TestFixture fixture)
         {
             var dbContext = verifyScope.ServiceProvider.GetRequiredService<TubesterDb>();
             var events = await dbContext.UserEvents
-                .Where(e => e.EventType == CreditActionType.AiTemplateSubmitted.ToString())
+                .Where(e => e.EventType == nameof(CreditActionType.AiTemplateSubmitted))
                 .ToListAsync();
 
             Assert.Single(events);
@@ -514,7 +514,7 @@ public class VideosTests(TestFixture fixture)
 
             var copyTemplateCost = new ActionCost
             {
-                ActionType = CreditActionType.CopyTemplateExecuted.ToString(),
+                ActionType = nameof(CreditActionType.CopyTemplateExecuted),
                 Cost = 1,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
@@ -550,7 +550,7 @@ public class VideosTests(TestFixture fixture)
         {
             var dbContext = verifyScope.ServiceProvider.GetRequiredService<TubesterDb>();
             var events = await dbContext.UserEvents
-                .Where(e => e.EventType == CreditActionType.CopyTemplateExecuted.ToString())
+                .Where(e => e.EventType == nameof(CreditActionType.CopyTemplateExecuted))
                 .ToListAsync();
 
             Assert.Single(events);
@@ -696,7 +696,7 @@ public class VideosTests(TestFixture fixture)
 
             var aiTemplateEnqueuedCost = new ActionCost
             {
-                ActionType = CreditActionType.AiTemplateEnqueued.ToString(),
+                ActionType = nameof(CreditActionType.AiTemplateEnqueued),
                 Cost = 1,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
@@ -760,7 +760,7 @@ public class VideosTests(TestFixture fixture)
         {
             var dbContext = verifyScope.ServiceProvider.GetRequiredService<TubesterDb>();
             var events = await dbContext.UserEvents
-                .Where(e => e.EventType == CreditActionType.AiTemplateEnqueued.ToString())
+                .Where(e => e.EventType == nameof(CreditActionType.AiTemplateEnqueued))
                 .ToListAsync();
 
             Assert.Single(events);

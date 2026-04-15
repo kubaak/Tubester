@@ -64,7 +64,7 @@ public class OpenApiJsonContractTests(WebApplicationFactory<Program> factory)
 
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine + Environment.NewLine, failures));
     }
-    
+
     private static void CheckRequestBody(
         ControllerActionDescriptor action,
         JsonElement operation,
@@ -154,13 +154,19 @@ public class OpenApiJsonContractTests(WebApplicationFactory<Program> factory)
         foreach (var parameter in action.MethodInfo.GetParameters())
         {
             if (parameter.GetCustomAttribute<FromBodyAttribute>() != null)
+            {
                 return true;
+            }
 
             if (parameter.ParameterType == typeof(CancellationToken))
+            {
                 continue;
+            }
 
             if (IsSimpleType(parameter.ParameterType))
+            {
                 continue;
+            }
 
             // Under [ApiController], complex types are inferred from body unless marked otherwise.
             if (parameter.GetCustomAttribute<FromQueryAttribute>() != null ||
@@ -196,7 +202,9 @@ public class OpenApiJsonContractTests(WebApplicationFactory<Program> factory)
     private static string ToOpenApiPath(string? relativePath)
     {
         if (string.IsNullOrWhiteSpace(relativePath))
+        {
             throw new InvalidOperationException("ApiDescription.RelativePath was null or empty.");
+        }
 
         var pathWithoutQuery = relativePath.Split('?', 2)[0];
         return "/" + pathWithoutQuery.Trim('/');

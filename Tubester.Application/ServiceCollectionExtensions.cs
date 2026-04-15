@@ -15,4 +15,14 @@ public static class ServiceCollectionExtensions
             .ValidateOnStart();
         return services;
     }
+
+    public static IServiceCollection AddReplyListingOptions(this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services.Configure<ReplyListingOptions>(configuration.GetSection("ReplyListing"));
+        services.AddOptions<ReplyListingOptions>()
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        return services;
+    }
 }

@@ -32,7 +32,8 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
         //todo indexes
         b.Entity<Reply>().HasKey(reply => reply.CommentId);
         b.Entity<Reply>().HasIndex(reply => reply.VideoId);
-        b.Entity<Reply>().Property(reply => reply.PulledAt);
+        b.Entity<Reply>().HasIndex(reply => new { reply.OriginalCommentAt, reply.CommentId });
+        b.Entity<Reply>().Property(reply => reply.OriginalCommentAt);
         b.Entity<Reply>().Property(reply => reply.PostedAt);
 
         b.Entity<User>().HasKey(user => user.Id);

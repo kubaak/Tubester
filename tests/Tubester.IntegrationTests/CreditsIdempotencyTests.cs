@@ -85,7 +85,7 @@ public sealed class CreditsIdempotencyTests(TestFixture fixture)
 
             var aiTemplateEnqueuedCost = new ActionCost
             {
-                ActionType = CreditActionType.AiTemplateEnqueued.ToString(),
+                ActionType = nameof(CreditActionType.AiTemplateEnqueued),
                 Cost = 2,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
@@ -211,7 +211,7 @@ public sealed class CreditsIdempotencyTests(TestFixture fixture)
 
             var aiTemplateEnqueuedCost = new ActionCost
             {
-                ActionType = CreditActionType.AiTemplateEnqueued.ToString(),
+                ActionType = nameof(CreditActionType.AiTemplateEnqueued),
                 Cost = 2,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
