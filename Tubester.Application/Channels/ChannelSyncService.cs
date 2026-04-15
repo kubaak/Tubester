@@ -19,7 +19,6 @@ public sealed class ChannelSyncService(
     IChannelRepository channelRepository,
     IChannelSettingsRepository channelSettingsRepository,
     ICurrentChannelContext channelContext,
-    ICommentScanService commentScanService,
     ICreditsStore creditsStore,
     ILogger<ChannelSyncService> logger,
     IDateTimeOffsetProvider dateTimeOffsetProvider) : IChannelSyncService
@@ -105,16 +104,6 @@ public sealed class ChannelSyncService(
         {
             settings = ChannelSettings.CreateDefault(channelId, nowUtc);
             await channelSettingsRepository.UpsertAsync(settings, cancellationToken);
-        }
-
-        if (settings.IsCommentAssistantEnabled)
-        {
-            await commentScanService.ScanCommentsAsync(cancellationToken);
-        }
-        else
-        {
-            logger.LogInformation(
-                "Skipping comment scan for channel {ChannelId}: comment assistant disabled", channelId);
         }
 
         return await SyncInternalAsync(channel, nowUtc, cancellationToken);
