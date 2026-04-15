@@ -6,28 +6,6 @@ namespace Tubester.Persistence.Replies;
 
 public class ReplyRepository(TubesterDb db) : IReplyRepository
 {
-    public async Task<IEnumerable<Reply>> GetRepliesForApprovalAsync(string channelId,
-        CancellationToken cancellationToken)
-    {
-        return await db.Replies
-            .AsNoTracking()
-            .Where(r => r.Status == ReplyStatus.Suggested)
-            .Join(
-                db.Videos,
-                r => r.VideoId,
-                v => v.VideoId,
-                (r, v) => new { r, v }
-            )
-            .Join(
-                db.Channels.Where(c => c.ChannelId == channelId),
-                rv => rv.v.UploadsPlaylistId,
-                c => c.UploadsPlaylistId,
-                (rv, c) => rv.r
-            )
-            .OrderByDescending(r => r.PostedAt)
-            .ToListAsync(cancellationToken);
-    }
-
     public async Task<Reply?> GetReplyAsync(string commentId, CancellationToken cancellationToken)
     {
         return await db.Replies.AsNoTracking().FirstOrDefaultAsync(d => d.CommentId == commentId, cancellationToken);
@@ -38,8 +16,9 @@ public class ReplyRepository(TubesterDb db) : IReplyRepository
         var rowsAffected = await db.Database.ExecuteSqlInterpolatedAsync(
             $"""
 
-             INSERT INTO "Replies" ("CommentId", "VideoId", "VideoTitle", "CommentText", "Status", "PulledAt")
-             VALUES ({reply.CommentId}, {reply.VideoId}, {reply.VideoTitle}, {reply.CommentText}, {(int)ReplyStatus.Drafting}, {reply.PulledAt})
+             INSERT INTO "Replies" ("CommentId", "VideoId", "VideoTitle", "CommentText", "Status", "PulledAt", "OriginalCommentAt")
+             VALUES ({reply.CommentId}, {reply.VideoId}, {reply.VideoTitle}, {reply.CommentText}, {(int)ReplyStatus.Drafting}, 
+             {reply.PulledAt}, {reply.OriginalCommentAt})
              ON CONFLICT ("CommentId") DO NOTHING
 
              """, cancellationToken);
@@ -99,5 +78,81 @@ public class ReplyRepository(TubesterDb db) : IReplyRepository
             .Where(r => list.Contains(r.CommentId))
             .ExecuteUpdateAsync(s => s.SetProperty(r => r.Status, _ => ReplyStatus.Ignored), ct);
         return list;
+    }
+
+    public async Task<List<Reply>> GetRepliesPageAsync(
+        string channelId,
+        IReadOnlyCollection<ReplyStatus>? statuses,
+        IReadOnlyCollection<string>? videoIds,
+        string? originalComment,
+        DateTimeOffset? afterOriginalCommentAtUtc,
+        string? afterCommentId,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        if (take <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(take), "Take must be greater than 0.");
+        }
+
+        var hasAfterOriginalCommentAtUtc = afterOriginalCommentAtUtc.HasValue;
+        var hasAfterCommentId = !string.IsNullOrWhiteSpace(afterCommentId);
+
+        if (hasAfterOriginalCommentAtUtc != hasAfterCommentId)
+        {
+            throw new ArgumentException(
+                "Cursor must contain both afterOriginalCommentAtUtc and afterCommentId, or neither.");
+        }
+
+        var query = db.Replies
+            .AsNoTracking()
+            .Join(
+                db.Videos,
+                r => r.VideoId,
+                v => v.VideoId,
+                (r, v) => new { Reply = r, Video = v })
+            .Join(
+                db.Channels.Where(c => c.ChannelId == channelId),
+                rv => rv.Video.UploadsPlaylistId,
+                c => c.UploadsPlaylistId,
+                (rv, _) => rv.Reply);
+
+        if (statuses is { Count: > 0 })
+        {
+            query = query.Where(r => statuses.Contains(r.Status));
+        }
+
+        if (videoIds is { Count: > 0 })
+        {
+            query = query.Where(r => videoIds.Contains(r.VideoId));
+        }
+
+        if (!string.IsNullOrWhiteSpace(originalComment))
+        {
+            var pattern = $"%{EscapeLikePattern(originalComment.Trim())}%";
+            query = query.Where(r => EF.Functions.ILike(r.CommentText, pattern, @"\"));
+        }
+
+        if (hasAfterOriginalCommentAtUtc)
+        {
+            var cursorOriginalCommentAtUtc = afterOriginalCommentAtUtc!.Value;
+            var cursorCommentId = afterCommentId!;
+
+            query = query.Where(r =>
+                r.OriginalCommentAt < cursorOriginalCommentAtUtc ||
+                (r.OriginalCommentAt == cursorOriginalCommentAtUtc && r.CommentId.CompareTo(cursorCommentId) < 0));
+        }
+
+        return await query
+            .OrderByDescending(r => r.OriginalCommentAt)
+            .ThenByDescending(r => r.CommentId)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+
+        static string EscapeLikePattern(string value) =>
+            value
+                .Replace(@"\", @"\\")
+                .Replace("%", @"\%")
+                .Replace("_", @"\_");
     }
 }

@@ -83,7 +83,7 @@ public sealed class VideosController(
         {
             return BadRequest("Missing OperationId header.");
         }
-        
+
         if (string.IsNullOrWhiteSpace(request.TargetVideoId))
         {
             return BadRequest(new { error = "TargetVideoId is required and cannot be empty." });
@@ -195,7 +195,7 @@ public sealed class VideosController(
         {
             return BadRequest("Missing OperationId header.");
         }
-        
+
         if (string.IsNullOrWhiteSpace(request.VideoId))
         {
             return BadRequest(new { error = "VideoId is required and cannot be empty." });

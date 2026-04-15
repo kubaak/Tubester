@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Tubester.Application;
+using Tubester.Application.Contracts;
 using Tubester.Application.Contracts.Replies;
 using Tubester.Domain;
 
@@ -17,10 +18,42 @@ namespace Tubester.Api;
 [Authorize]
 public class RepliesController(IReplyService service) : ApiControllerBase
 {
-    [HttpGet]
-    public async Task<ActionResult<IEnumerable<Reply>>> GetDrafts(CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Searches suggested replies for the replies page.
+    /// </summary>
+    /// <param name="request">
+    /// Search criteria for suggested replies, including optional video ID filter,
+    /// original comment text filter, page size, and pagination token.
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A paginated list of suggested replies and a next-page token if more results are available.</returns>
+    [HttpPost("suggested/search")]
+    [ProducesResponseType(typeof(PagedResult<ReplyListItemDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorDto), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<PagedResult<ReplyListItemDto>>> SearchSuggestedReplies(
+        [FromBody] SearchSuggestedRepliesRequest request,
+        CancellationToken ct)
     {
-        return Ok(await service.GetRepliesForApprovalAsync(cancellationToken));
+        try
+        {
+            var result = await service.GetRepliesAsync(
+                [ReplyStatus.Suggested],
+                request.VideoId is null ? null : [request.VideoId],
+                request.OriginalComment,
+                request.PageSize,
+                request.PageToken,
+                ct);
+
+            return Ok(result);
+        }
+        catch (Application.Exceptions.InvalidPageSizeException ex)
+        {
+            return BadRequest(new ApiErrorDto(ex.Message));
+        }
+        catch (Application.Exceptions.InvalidPageTokenException ex)
+        {
+            return BadRequest(new ApiErrorDto(ex.Message));
+        }
     }
 
     [HttpDelete("{id}")]
@@ -58,7 +91,7 @@ public class RepliesController(IReplyService service) : ApiControllerBase
         {
             return BadRequest("Missing OperationId header.");
         }
-        
+
         if (request.Decisions.Length == 0)
         {
             return BadRequest("Missing decisions.");
@@ -89,4 +122,16 @@ public class RepliesController(IReplyService service) : ApiControllerBase
         var result = await service.IgnoreBatchAsync(commentIds, ct);
         return Ok(result);
     }
+
+    /// <summary>
+    /// Search Suggested Replies Request
+    /// </summary>
+    public sealed class SearchSuggestedRepliesRequest
+    {
+        public string? VideoId { get; init; }
+        public string? OriginalComment { get; init; }
+        public int? PageSize { get; init; }
+        public string? PageToken { get; init; }
+    }
+    public sealed record ApiErrorDto(string Error);
 }

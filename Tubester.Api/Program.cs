@@ -74,6 +74,7 @@ builder.Services.AddScoped<ICommentScanService, CommentScanService>();
 builder.Services.AddSingleton<IDateTimeOffsetProvider, DateTimeOffsetProvider>();
 
 builder.Services.AddVideoListingOptions(builder.Configuration);
+builder.Services.AddReplyListingOptions(builder.Configuration);
 builder.Services.AddCookieWithGoogle(builder.Configuration);
 
 builder.Services.AddDatabase(builder.Configuration);

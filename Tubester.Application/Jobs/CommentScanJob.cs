@@ -105,10 +105,10 @@ public sealed class CommentScanJob(
                     if (settings.MaxCommentAgeDays > 0 && thread.PublishedAt.HasValue)
                     {
                         var commentAge = nowUtc - thread.PublishedAt.Value;
-                        if (commentAge.TotalDays < settings.MaxCommentAgeDays)
+                        if (commentAge.TotalDays > settings.MaxCommentAgeDays)
                         {
                             logger.LogDebug(
-                                "Skipping comment {CommentId} for channel {ChannelId}: comment not eligible because too new",
+                                "Skipping comment {CommentId} for channel {ChannelId}: comment not eligible because too old",
                                 thread.ParentCommentId, channelId);
                             continue;
                         }
@@ -121,7 +121,8 @@ public sealed class CommentScanJob(
                         thread.VideoId,
                         video.Title ?? string.Empty,
                         thread.Text,
-                        dateTimeOffsetProvider.GetUtcNowDateTimeOffset());
+                        dateTimeOffsetProvider.GetUtcNowDateTimeOffset(),
+                        thread.PublishedAt ?? DateTimeOffset.MinValue);
 
                     var claimed = await replyRepository.TryClaimForDraftingAsync(draftingReply, cancellationToken);
                     if (!claimed)
@@ -144,7 +145,7 @@ public sealed class CommentScanJob(
 
                         var spendSucceeded = await creditsService.TrySpendAsync(
                             userId,
-                            CreditActionType.AiReplyGenerated.ToString(),
+                            nameof(CreditActionType.AiReplyGenerated),
                             idempotencyKey,
                             thread.ParentCommentId,
                             new { videoId = thread.VideoId, commentId = thread.ParentCommentId },
@@ -175,7 +176,7 @@ public sealed class CommentScanJob(
 
                             await creditsService.RefundAsync(
                                 userId,
-                                CreditActionType.AiReplyGenerated.ToString(),
+                                nameof(CreditActionType.AiReplyGenerated),
                                 idempotencyKey,
                                 refundIdempotencyKey,
                                 cancellationToken);

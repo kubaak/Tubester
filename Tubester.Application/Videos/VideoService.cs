@@ -52,7 +52,7 @@ public class VideoService(
         string? afterVideoId = null;
         if (!string.IsNullOrWhiteSpace(pageToken))
         {
-            if (!VideosPageToken.TryParse(pageToken, out var publishedAt, out var videoId, out var tokenBinding))
+            if (!PageToken.TryParse(pageToken, out var publishedAt, out var videoId, out var tokenBinding))
             {
                 videoLogger.LogWarning("Invalid page token received");
                 throw new InvalidPageTokenException();
@@ -85,7 +85,7 @@ public class VideoService(
         if (hasMore && itemsToReturn.Count > 0)
         {
             var lastItem = itemsToReturn[^1];
-            nextPageToken = VideosPageToken.Serialize(lastItem.PublishedAt, lastItem.VideoId, binding);
+            nextPageToken = PageToken.Serialize(lastItem.PublishedAt, lastItem.VideoId, binding);
         }
 
         var items = itemsToReturn.Select(video => new VideoListItemDto
@@ -142,7 +142,7 @@ public class VideoService(
         }
 
         var channelId = channelContext.GetRequiredChannelId();
-        
+
         // Load source and target videos from DB
         var sourceVideo =
             await videoRepository.GetVideoByIdAsync(channelId, request.SourceVideoId, cancellationToken)
@@ -264,7 +264,7 @@ public class VideoService(
 
         var aiTemplateSubmittedSpendSucceeded = await creditsService.TrySpendAsync(
             userId,
-            CreditActionType.AiTemplateSubmitted.ToString(),
+            nameof(CreditActionType.AiTemplateSubmitted),
             aiTemplateSubmittedIdempotencyKey,
             request.VideoId,
             new
@@ -426,18 +426,6 @@ public class VideoService(
         return result.ToArray();
     }
 
-    private static (double lat, double lng)? ConvertToLocationTuple(GeoLocation? location)
-    {
-        return location is not null
-            ? (location.Latitude, location.Longitude)
-            : null;
-    }
-
-    private static GeoLocation? ConvertFromLocationTuple((double lat, double lng)? location)
-    {
-        return location.HasValue ? new GeoLocation(location.Value.lat, location.Value.lng) : null;
-    }
-
     public async Task<VideoDetailsDto?> ResyncVideoAsync(
         string videoId,
         CancellationToken cancellationToken)
@@ -502,9 +490,9 @@ public class VideoService(
         foreach (var playlist in channelPlaylists)
         {
             var playlistVideoIds = youTubeIntegration.GetPlaylistVideoIdsAsync(
-                playlist.PlaylistId, 
+                playlist.PlaylistId,
                 cancellationToken);
-            
+
             await foreach (var pid in playlistVideoIds)
             {
                 if (string.Equals(pid, videoId, StringComparison.Ordinal))

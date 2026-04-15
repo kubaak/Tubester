@@ -1,6 +1,7 @@
 namespace Tubester.Application.Contracts.Replies;
 
-public sealed record DraftDecisionDto(
-    string CommentId,
-    string ApprovedText
-);
+public sealed record DraftDecisionDto
+{
+    public required string CommentId { get; init; }
+    public required string ApprovedText { get; init; }
+}

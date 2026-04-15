@@ -88,7 +88,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
             var aiTemplateEnqueuedCost = new ActionCost
             {
-                ActionType = CreditActionType.AiTemplateEnqueued.ToString(),
+                ActionType = nameof(CreditActionType.AiTemplateEnqueued),
                 Cost = 2,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
@@ -144,7 +144,7 @@ public sealed class CreditsTests(TestFixture fixture)
             Assert.Equal("PeriodGrant", grantEntry.ActionType);
 
             var spendEntry = Assert.Single(ledgerEntries, entry => entry.Delta < 0);
-            Assert.Equal(CreditActionType.AiTemplateEnqueued.ToString(), spendEntry.ActionType);
+            Assert.Equal(nameof(CreditActionType.AiTemplateEnqueued), spendEntry.ActionType);
             Assert.Equal(-2, spendEntry.Delta);
             Assert.Equal(targetVideo.VideoId, spendEntry.ReferenceId);
         }
@@ -213,7 +213,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
             var aiTemplateEnqueuedCost = new ActionCost
             {
-                ActionType = CreditActionType.AiTemplateEnqueued.ToString(),
+                ActionType = nameof(CreditActionType.AiTemplateEnqueued),
                 Cost = 2,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
@@ -332,7 +332,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
             var aiTemplateEnqueuedCost = new ActionCost
             {
-                ActionType = CreditActionType.AiTemplateEnqueued.ToString(),
+                ActionType = nameof(CreditActionType.AiTemplateEnqueued),
                 Cost = 1,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
@@ -362,7 +362,7 @@ public sealed class CreditsTests(TestFixture fixture)
         requestMessage.Headers.Add("OperationId", OperationId);
 
         var response = await fixture.HttpClient.SendAsync(requestMessage);
-        
+
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         using (var verificationScope = fixture.ApiServices.CreateScope())
@@ -386,7 +386,7 @@ public sealed class CreditsTests(TestFixture fixture)
             Assert.Contains(ledgerEntries, entry => entry.ActionType == "PeriodGrant" && entry.Delta == 4);
 
             var spendEntry = Assert.Single(ledgerEntries, entry => entry.Delta < 0);
-            Assert.Equal(CreditActionType.AiTemplateEnqueued.ToString(), spendEntry.ActionType);
+            Assert.Equal(nameof(CreditActionType.AiTemplateEnqueued), spendEntry.ActionType);
             Assert.Equal(-1, spendEntry.Delta);
             Assert.Equal(targetVideo.VideoId, spendEntry.ReferenceId);
         }
@@ -479,7 +479,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
             var aiTemplateSubmittedCost = new ActionCost
             {
-                ActionType = CreditActionType.AiTemplateSubmitted.ToString(),
+                ActionType = nameof(CreditActionType.AiTemplateSubmitted),
                 Cost = 2,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
@@ -546,7 +546,7 @@ public sealed class CreditsTests(TestFixture fixture)
             Assert.Contains(ledgerEntries, entry => entry.ActionType == "PeriodGrant" && entry.Delta == 5);
 
             var spendEntry = Assert.Single(ledgerEntries, entry => entry.Delta < 0);
-            Assert.Equal(CreditActionType.AiTemplateSubmitted.ToString(), spendEntry.ActionType);
+            Assert.Equal(nameof(CreditActionType.AiTemplateSubmitted), spendEntry.ActionType);
             Assert.Equal(-2, spendEntry.Delta);
             Assert.Equal(targetVideo.VideoId, spendEntry.ReferenceId);
         }
@@ -615,7 +615,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
             var aiTemplateSubmittedCost = new ActionCost
             {
-                ActionType = CreditActionType.AiTemplateSubmitted.ToString(),
+                ActionType = nameof(CreditActionType.AiTemplateSubmitted),
                 Cost = 5,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
@@ -681,7 +681,9 @@ public sealed class CreditsTests(TestFixture fixture)
             "credits-video-1",
             "Test Video",
             "Test comment",
-            TestFixture.TestingDateTimeOffset);
+            TestFixture.TestingDateTimeOffset,
+            TestFixture.TestingDateTimeOffset.AddDays(-1)
+            );
         reply.SuggestText("Suggested text", TestFixture.TestingDateTimeOffset.AddMinutes(5));
 
         using (var serviceScope = fixture.ApiServices.CreateScope())
@@ -725,7 +727,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
             var replyPostedCost = new ActionCost
             {
-                ActionType = CreditActionType.ReplyPostedToYouTube.ToString(),
+                ActionType = nameof(CreditActionType.ReplyPostedToYouTube),
                 Cost = 1,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
@@ -745,7 +747,12 @@ public sealed class CreditsTests(TestFixture fixture)
                 It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
-        var batchRequest = new BatchDecisionRequest([new DraftDecisionDto(reply.CommentId, approvedText)]);
+        var batchRequest = new BatchDecisionRequest([new DraftDecisionDto
+            {
+                CommentId = reply.CommentId,
+                ApprovedText = approvedText
+            }
+        ]);
         var serializedRequest = JsonSerializer.Serialize(batchRequest, _serializerOptions);
         var requestContent = new StringContent(serializedRequest, Encoding.UTF8, "application/json");
 
@@ -780,7 +787,7 @@ public sealed class CreditsTests(TestFixture fixture)
             Assert.Contains(ledgerEntries, entry => entry.ActionType == "PeriodGrant" && entry.Delta == 3);
 
             var spendEntry = Assert.Single(ledgerEntries, entry => entry.Delta < 0);
-            Assert.Equal(CreditActionType.ReplyPostedToYouTube.ToString(), spendEntry.ActionType);
+            Assert.Equal(nameof(CreditActionType.ReplyPostedToYouTube), spendEntry.ActionType);
             Assert.Equal(-1, spendEntry.Delta);
             Assert.Equal(reply.CommentId, spendEntry.ReferenceId);
         }
@@ -799,7 +806,8 @@ public sealed class CreditsTests(TestFixture fixture)
             "credits-insufficient-video-1",
             "Test Video",
             "Test comment",
-            TestFixture.TestingDateTimeOffset);
+            TestFixture.TestingDateTimeOffset,
+            TestFixture.TestingDateTimeOffset.AddDays(-1));
         reply.SuggestText("Suggested text", TestFixture.TestingDateTimeOffset.AddMinutes(5));
 
         using (var serviceScope = fixture.ApiServices.CreateScope())
@@ -843,7 +851,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
             var replyPostedCost = new ActionCost
             {
-                ActionType = CreditActionType.ReplyPostedToYouTube.ToString(),
+                ActionType = nameof(CreditActionType.ReplyPostedToYouTube),
                 Cost = 5,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
@@ -854,7 +862,11 @@ public sealed class CreditsTests(TestFixture fixture)
             await databaseContext.SaveChangesAsync(CancellationToken.None);
         }
 
-        var batchRequest = new BatchDecisionRequest([new DraftDecisionDto(reply.CommentId, "Approved text")]);
+        var batchRequest = new BatchDecisionRequest([new DraftDecisionDto
+            {
+            CommentId = reply.CommentId,
+            ApprovedText = "Approved text"
+            }]);
         var serializedRequest = JsonSerializer.Serialize(batchRequest, _serializerOptions);
         var requestContent = new StringContent(serializedRequest, Encoding.UTF8, "application/json");
 
@@ -981,7 +993,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
             var aiTemplateEnqueuedCost = new ActionCost
             {
-                ActionType = CreditActionType.AiTemplateEnqueued.ToString(),
+                ActionType = nameof(CreditActionType.AiTemplateEnqueued),
                 Cost = 5,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
@@ -1044,7 +1056,7 @@ public sealed class CreditsTests(TestFixture fixture)
             Assert.Equal(10, grantEntry.Delta);
 
             var spendEntry = Assert.Single(ledgerEntries, entry => entry.Delta < 0);
-            Assert.Equal(CreditActionType.AiTemplateEnqueued.ToString(), spendEntry.ActionType);
+            Assert.Equal(nameof(CreditActionType.AiTemplateEnqueued), spendEntry.ActionType);
             Assert.Equal(-5, spendEntry.Delta);
         }
     }
@@ -1127,7 +1139,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
             var aiTemplateEnqueuedCost = new ActionCost
             {
-                ActionType = CreditActionType.AiTemplateEnqueued.ToString(),
+                ActionType = nameof(CreditActionType.AiTemplateEnqueued),
                 Cost = 2,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
@@ -1181,7 +1193,7 @@ public sealed class CreditsTests(TestFixture fixture)
             Assert.Single(ledgerEntries);
 
             var spendEntry = ledgerEntries[0];
-            Assert.Equal(CreditActionType.AiTemplateEnqueued.ToString(), spendEntry.ActionType);
+            Assert.Equal(nameof(CreditActionType.AiTemplateEnqueued), spendEntry.ActionType);
             Assert.Equal(-2, spendEntry.Delta);
         }
     }
@@ -1266,7 +1278,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
             var aiReplyGeneratedCost = new ActionCost
             {
-                ActionType = CreditActionType.AiReplyGenerated.ToString(),
+                ActionType = nameof(CreditActionType.AiReplyGenerated),
                 Cost = 1,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
@@ -1282,7 +1294,7 @@ public sealed class CreditsTests(TestFixture fixture)
             videoId,
             "author-channel-id",
             "Great video! Can you explain more?",
-            TestFixture.TestingDateTimeOffset.AddDays(-15));
+            TestFixture.TestingDateTimeOffset.AddDays(-9));
 
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration
             .Setup(integration => integration.GetUnansweredTopLevelCommentsAsync(
@@ -1336,7 +1348,7 @@ public sealed class CreditsTests(TestFixture fixture)
             Assert.Contains(ledgerEntries, entry => entry.ActionType == "PeriodGrant" && entry.Delta == 5);
 
             var spendEntry = Assert.Single(ledgerEntries, entry => entry.Delta < 0);
-            Assert.Equal(CreditActionType.AiReplyGenerated.ToString(), spendEntry.ActionType);
+            Assert.Equal(nameof(CreditActionType.AiReplyGenerated), spendEntry.ActionType);
             Assert.Equal(-1, spendEntry.Delta);
             Assert.Equal(commentId, spendEntry.ReferenceId);
 
@@ -1429,7 +1441,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
             var aiReplyGeneratedCost = new ActionCost
             {
-                ActionType = CreditActionType.AiReplyGenerated.ToString(),
+                ActionType = nameof(CreditActionType.AiReplyGenerated),
                 Cost = 2,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
@@ -1445,7 +1457,7 @@ public sealed class CreditsTests(TestFixture fixture)
             videoId,
             "author-channel-id",
             "Great video! Can you explain more?",
-            TestFixture.TestingDateTimeOffset.AddDays(-15));
+            TestFixture.TestingDateTimeOffset.AddDays(-9));
 
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration
             .Setup(integration => integration.GetUnansweredTopLevelCommentsAsync(
@@ -1502,11 +1514,11 @@ public sealed class CreditsTests(TestFixture fixture)
             Assert.Equal(5, grantEntry.Delta);
 
             var spendEntry = Assert.Single(ledgerEntries, entry =>
-                entry.ActionType == CreditActionType.AiReplyGenerated.ToString() && entry.Delta < 0);
+                entry.ActionType == nameof(CreditActionType.AiReplyGenerated) && entry.Delta < 0);
             Assert.Equal(-2, spendEntry.Delta);
 
             var refundEntry = Assert.Single(ledgerEntries, entry =>
-                entry.ActionType == CreditActionType.AiReplyGenerated.ToString() && entry.Delta > 0);
+                entry.ActionType == nameof(CreditActionType.AiReplyGenerated) && entry.Delta > 0);
             Assert.Equal(2, refundEntry.Delta);
         }
     }
@@ -1591,7 +1603,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
             var aiReplyGeneratedCost = new ActionCost
             {
-                ActionType = CreditActionType.AiReplyGenerated.ToString(),
+                ActionType = nameof(CreditActionType.AiReplyGenerated),
                 Cost = 5,
                 IsEnabled = true,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
@@ -1607,7 +1619,7 @@ public sealed class CreditsTests(TestFixture fixture)
             videoId,
             "author-channel-id",
             "Great video! Can you explain more?",
-            TestFixture.TestingDateTimeOffset.AddDays(-15));
+            TestFixture.TestingDateTimeOffset.AddDays(-9));
 
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration
             .Setup(integration => integration.GetUnansweredTopLevelCommentsAsync(

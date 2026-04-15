@@ -45,7 +45,7 @@ public class AiTemplateOrchestrationService(
 
             var aiTemplateEnqueueSpendSucceeded = await creditsService.TrySpendAsync(
                 userId,
-                CreditActionType.AiTemplateEnqueued.ToString(),
+                nameof(CreditActionType.AiTemplateEnqueued),
                 aiTemplateEnqueueIdempotencyKey,
                 request.TargetVideoId,
                 new
