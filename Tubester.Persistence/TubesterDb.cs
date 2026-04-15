@@ -57,7 +57,8 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
             .HasOne<User>()
             .WithMany()
             .HasForeignKey(channel => channel.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Cascade)
+            .IsRequired();
         b.Entity<Video>()
             .HasOne<Channel>()
             .WithMany()

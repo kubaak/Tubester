@@ -1,9 +1,9 @@
 namespace Tubester.Domain;
 
-public sealed class Channel : Entity
+    public sealed class Channel : Entity
 {
     public string ChannelId { get; private set; } = null!;
-    public string? UserId { get; private set; }
+    public string UserId { get; private set; } = null!;
     public string Name { get; private set; } = null!;
     public string UploadsPlaylistId { get; private set; } = null!;
     public string? ETag { get; private set; }
@@ -95,7 +95,7 @@ public sealed class Channel : Entity
         DateTimeOffset? lastUploadsCutoff, string? eTag)
     {
         ChannelId = RequireId(channelId);
-        UserId = string.IsNullOrWhiteSpace(userId) ? null : RequireId(userId);
+        UserId = RequireId(userId);
         Name = RequireNonEmpty(name, nameof(name));
         UploadsPlaylistId = RequireId(uploadsPlaylistId);
         ETag = eTag;
