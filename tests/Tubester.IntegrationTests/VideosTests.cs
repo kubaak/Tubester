@@ -635,6 +635,266 @@ public class VideosTests(TestFixture fixture)
     }
 
     [Fact]
+    public async Task CopyTemplate_WhenCopyTitleFalse_KeepsTargetTitle()
+    {
+        // Arrange
+        const string channelId = "Channel-CopyTitleTest";
+        const string uploadPlaylistId = "ULCopyTitleTest";
+        const string userId = MockAuthenticationExtensions.TestSub;
+        await fixture.ResetDbAsync();
+
+        fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
+            .Returns(channelId);
+
+        var sourceVideo = Video.Create(
+            uploadPlaylistId,
+            $"source{fixture.Auto.Create<string>()}"[..11],
+            "Source Title",
+            "Source Description",
+            TestFixture.TestingDateTimeOffset.AddDays(-1),
+            TimeSpan.FromMinutes(5),
+            VideoVisibility.Public,
+            ["source", "template"],
+            "22",
+            "en",
+            "en",
+            null,
+            null,
+            TestFixture.TestingDateTimeOffset,
+            "etag-source",
+            true
+        );
+
+        var targetVideo = Video.Create(
+            uploadPlaylistId,
+            $"target{fixture.Auto.Create<string>()}"[..11],
+            "Target Title To Keep",
+            "Target Description To Keep",
+            TestFixture.TestingDateTimeOffset.AddDays(-2),
+            TimeSpan.FromMinutes(3),
+            VideoVisibility.Private,
+            ["target"],
+            "23",
+            "fr",
+            "fr",
+            null,
+            null,
+            TestFixture.TestingDateTimeOffset,
+            "etag-target",
+            false
+        );
+
+        using (var scope = fixture.ApiServices.CreateScope())
+        {
+            var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
+            var user = User.Create(
+                userId,
+                MockAuthenticationExtensions.TestEmail,
+                MockAuthenticationExtensions.TestName,
+                MockAuthenticationExtensions.TestPicture,
+                TestFixture.TestingDateTimeOffset);
+            await databaseContext.Users.AddAsync(user, CancellationToken.None);
+            await databaseContext.Channels.AddAsync(Channel.Create(channelId, userId, "Copy Title Test Channel",
+                uploadPlaylistId, TestFixture.TestingDateTimeOffset), CancellationToken.None);
+            databaseContext.Videos.AddRange(sourceVideo, targetVideo);
+
+            var plan = new Plan
+            {
+                Code = "CopyTitleTestPlan",
+                Name = "Copy Title Test Plan",
+                MonthlyCredits = 10,
+                IsActive = true,
+                CreatedAtUtc = TestFixture.TestingDateTimeOffset,
+                UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+            };
+
+            await databaseContext.Plans.AddAsync(plan, CancellationToken.None);
+            await databaseContext.SaveChangesAsync(CancellationToken.None);
+            var userSubscription = new Subscription
+            {
+                UserId = userId,
+                PlanId = plan.Id,
+                PeriodStartUtc = TestFixture.TestingDateTimeOffset,
+                PeriodEndUtc = TestFixture.TestingDateTimeOffset.AddMonths(1),
+                Status = SubscriptionStatus.Active
+            };
+
+            await databaseContext.Subscriptions.AddAsync(userSubscription, CancellationToken.None);
+
+            var copyTemplateCost = new ActionCost
+            {
+                ActionType = nameof(CreditActionType.CopyTemplateExecuted),
+                Cost = 1,
+                IsEnabled = true,
+                UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
+                Notes = "Integration test cost for CopyTemplateExecuted."
+            };
+
+            await databaseContext.ActionCosts.AddAsync(copyTemplateCost, CancellationToken.None);
+            await databaseContext.SaveChangesAsync(CancellationToken.None);
+        }
+
+        // CopyTitle = false, CopyDescription = false, CopyTags = true
+        var request = new CopyVideoTemplateRequest(
+            sourceVideo.VideoId,
+            targetVideo.VideoId,
+            CopyTags: true,
+            CopyTitle: false,
+            CopyDescription: false
+        );
+
+        var json = JsonSerializer.Serialize(request, _serializerOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        // Act
+        var response = await fixture.HttpClient.PostAsync("/api/videos/copy-template", content);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<CopyVideoTemplateResult>(responseContent, _serializerOptions);
+
+        Assert.NotNull(result);
+        Assert.Equal("Target Title To Keep", result.FinalTitle);
+        Assert.False(result.TitleCopied);
+
+        // Verify tags were copied from source
+        Assert.Contains("source", result.AppliedTags);
+        Assert.Contains("template", result.AppliedTags);
+    }
+
+    [Fact]
+    public async Task CopyTemplate_WhenCopyDescriptionFalse_KeepsTargetDescription()
+    {
+        // Arrange
+        const string channelId = "Channel-CopyDescTest";
+        const string uploadPlaylistId = "ULCopyDescTest";
+        const string userId = MockAuthenticationExtensions.TestSub;
+        await fixture.ResetDbAsync();
+
+        fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
+            .Returns(channelId);
+
+        var sourceVideo = Video.Create(
+            uploadPlaylistId,
+            $"source{fixture.Auto.Create<string>()}"[..11],
+            "Source Title",
+            "This is the source description that should NOT be copied",
+            TestFixture.TestingDateTimeOffset.AddDays(-1),
+            TimeSpan.FromMinutes(5),
+            VideoVisibility.Public,
+            ["source"],
+            "22",
+            "en",
+            "en",
+            null,
+            null,
+            TestFixture.TestingDateTimeOffset,
+            "etag-source",
+            true
+        );
+
+        var targetVideo = Video.Create(
+            uploadPlaylistId,
+            $"target{fixture.Auto.Create<string>()}"[..11],
+            "Target Title",
+            "This is the target description that should be KEPT",
+            TestFixture.TestingDateTimeOffset.AddDays(-2),
+            TimeSpan.FromMinutes(3),
+            VideoVisibility.Private,
+            ["target"],
+            "23",
+            "fr",
+            "fr",
+            null,
+            null,
+            TestFixture.TestingDateTimeOffset,
+            "etag-target",
+            false
+        );
+
+        using (var scope = fixture.ApiServices.CreateScope())
+        {
+            var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
+            var user = User.Create(
+                userId,
+                MockAuthenticationExtensions.TestEmail,
+                MockAuthenticationExtensions.TestName,
+                MockAuthenticationExtensions.TestPicture,
+                TestFixture.TestingDateTimeOffset);
+            await databaseContext.Users.AddAsync(user, CancellationToken.None);
+            await databaseContext.Channels.AddAsync(Channel.Create(channelId, userId, "Copy Desc Test Channel",
+                uploadPlaylistId, TestFixture.TestingDateTimeOffset), CancellationToken.None);
+            databaseContext.Videos.AddRange(sourceVideo, targetVideo);
+
+            var plan = new Plan
+            {
+                Code = "CopyDescTestPlan",
+                Name = "Copy Desc Test Plan",
+                MonthlyCredits = 10,
+                IsActive = true,
+                CreatedAtUtc = TestFixture.TestingDateTimeOffset,
+                UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+            };
+
+            await databaseContext.Plans.AddAsync(plan, CancellationToken.None);
+            await databaseContext.SaveChangesAsync(CancellationToken.None);
+            var userSubscription = new Subscription
+            {
+                UserId = userId,
+                PlanId = plan.Id,
+                PeriodStartUtc = TestFixture.TestingDateTimeOffset,
+                PeriodEndUtc = TestFixture.TestingDateTimeOffset.AddMonths(1),
+                Status = SubscriptionStatus.Active
+            };
+
+            await databaseContext.Subscriptions.AddAsync(userSubscription, CancellationToken.None);
+
+            var copyTemplateCost = new ActionCost
+            {
+                ActionType = nameof(CreditActionType.CopyTemplateExecuted),
+                Cost = 1,
+                IsEnabled = true,
+                UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
+                Notes = "Integration test cost for CopyTemplateExecuted."
+            };
+
+            await databaseContext.ActionCosts.AddAsync(copyTemplateCost, CancellationToken.None);
+            await databaseContext.SaveChangesAsync(CancellationToken.None);
+        }
+
+        // CopyTitle = true (to show we can copy title separately), CopyDescription = false
+        var request = new CopyVideoTemplateRequest(
+            sourceVideo.VideoId,
+            targetVideo.VideoId,
+            CopyTags: false,
+            CopyTitle: true,
+            CopyDescription: false
+        );
+
+        var json = JsonSerializer.Serialize(request, _serializerOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        // Act
+        var response = await fixture.HttpClient.PostAsync("/api/videos/copy-template", content);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<CopyVideoTemplateResult>(responseContent, _serializerOptions);
+
+        Assert.NotNull(result);
+        // Title was copied from source
+        Assert.Equal("Source Title", result.FinalTitle);
+        Assert.True(result.TitleCopied);
+        // Description was NOT copied - kept target's description
+        Assert.Equal("This is the target description that should be KEPT", result.FinalDescription);
+        Assert.False(result.DescriptionCopied);
+    }
+
+    [Fact]
     public async Task AiTemplate_ValidRequest_EnqueuesAiTemplateJob_AndLogsAnalytics()
     {
         // Arrange
