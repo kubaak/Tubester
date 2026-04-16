@@ -33,14 +33,18 @@ public class VideosTests(TestFixture fixture)
         // Arrange
         await fixture.ResetDbAsync();
 
+        var request = new GetVideosRequest { PageSize = 5 };
+        var json = JsonSerializer.Serialize(request, _serializerOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
         // Act
-        var response = await fixture.HttpClient.GetAsync("/api/videos?pageSize=5");
+        var response = await fixture.HttpClient.PostAsync("/api/videos/search", content);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var content = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<PagedResult<VideoListItemDto>>(content, _serializerOptions);
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<PagedResult<VideoListItemDto>>(responseContent, _serializerOptions);
 
         Assert.NotNull(result);
         Assert.Empty(result.Items);
@@ -53,8 +57,15 @@ public class VideosTests(TestFixture fixture)
         // Arrange
         await fixture.ResetDbAsync();
 
-        // Act
-        var response = await fixture.HttpClient.GetAsync("/api/videos?visibility=InvalidValue");
+        var request = new GetVideosRequest { Visibility = [VideoVisibility.Public] };
+        var json = JsonSerializer.Serialize(request, _serializerOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        // Act - visibility validation happens at model binding for query, but for POST we check via service
+        // For invalid enum values in JSON, the system will return 400 for malformed JSON
+        var invalidJson = "{\"visibility\": [\"InvalidValue\"]}";
+        var invalidContent = new StringContent(invalidJson, Encoding.UTF8, "application/json");
+        var response = await fixture.HttpClient.PostAsync("/api/videos/search", invalidContent);
 
         // Assert
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -66,14 +77,18 @@ public class VideosTests(TestFixture fixture)
         // Arrange
         await fixture.ResetDbAsync();
 
+        var request = new GetVideosRequest { Visibility = [VideoVisibility.Public, VideoVisibility.Unlisted] };
+        var json = JsonSerializer.Serialize(request, _serializerOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
         // Act
-        var response = await fixture.HttpClient.GetAsync("/api/videos?visibility=Public&visibility=Unlisted");
+        var response = await fixture.HttpClient.PostAsync("/api/videos/search", content);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var content = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<PagedResult<VideoListItemDto>>(content, _serializerOptions);
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<PagedResult<VideoListItemDto>>(responseContent, _serializerOptions);
 
         Assert.NotNull(result);
         Assert.Empty(result.Items);
@@ -86,14 +101,18 @@ public class VideosTests(TestFixture fixture)
         // Arrange
         await fixture.ResetDbAsync();
 
+        var request = new GetVideosRequest { Visibility = [VideoVisibility.Public, VideoVisibility.Unlisted] };
+        var json = JsonSerializer.Serialize(request, _serializerOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
         // Act
-        var response = await fixture.HttpClient.GetAsync("/api/videos?visibility=public&visibility=UNLISTED");
+        var response = await fixture.HttpClient.PostAsync("/api/videos/search", content);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var content = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<PagedResult<VideoListItemDto>>(content, _serializerOptions);
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<PagedResult<VideoListItemDto>>(responseContent, _serializerOptions);
 
         Assert.NotNull(result);
         Assert.Empty(result.Items);
@@ -951,41 +970,50 @@ public class VideosTests(TestFixture fixture)
         }
 
         // Act - Filter by title
-        var titleResponse = await fixture.HttpClient.GetAsync("/api/videos?title=cooking");
+        var titleRequest = new GetVideosRequest { Title = "cooking" };
+        var titleJson = JsonSerializer.Serialize(titleRequest, _serializerOptions);
+        var titleContent = new StringContent(titleJson, Encoding.UTF8, "application/json");
+        var titleResponse = await fixture.HttpClient.PostAsync("/api/videos/search", titleContent);
 
         // Assert - Title filter
         Assert.Equal(HttpStatusCode.OK, titleResponse.StatusCode);
 
-        var titleContent = await titleResponse.Content.ReadAsStringAsync();
-        var titleResult = JsonSerializer.Deserialize<PagedResult<VideoListItemDto>>(titleContent, _serializerOptions);
+        var titleResponseContent = await titleResponse.Content.ReadAsStringAsync();
+        var titleResult = JsonSerializer.Deserialize<PagedResult<VideoListItemDto>>(titleResponseContent, _serializerOptions);
 
         Assert.NotNull(titleResult);
         Assert.Single(titleResult.Items);
         Assert.Equal("Cooking Tutorial", titleResult.Items.First().Title);
 
         // Act - Filter by visibility
-        var visibilityResponse = await fixture.HttpClient.GetAsync("/api/videos?visibility=Public&visibility=Unlisted");
+        var visibilityRequest = new GetVideosRequest { Visibility = [VideoVisibility.Public, VideoVisibility.Unlisted] };
+        var visibilityJson = JsonSerializer.Serialize(visibilityRequest, _serializerOptions);
+        var visibilityContent = new StringContent(visibilityJson, Encoding.UTF8, "application/json");
+        var visibilityResponse = await fixture.HttpClient.PostAsync("/api/videos/search", visibilityContent);
 
         // Assert - Visibility filter
         Assert.Equal(HttpStatusCode.OK, visibilityResponse.StatusCode);
 
-        var visibilityContent = await visibilityResponse.Content.ReadAsStringAsync();
+        var visibilityResponseContent = await visibilityResponse.Content.ReadAsStringAsync();
         var visibilityResult =
-            JsonSerializer.Deserialize<PagedResult<VideoListItemDto>>(visibilityContent, _serializerOptions);
+            JsonSerializer.Deserialize<PagedResult<VideoListItemDto>>(visibilityResponseContent, _serializerOptions);
 
         Assert.NotNull(visibilityResult);
         Assert.Equal(2, visibilityResult.Items.Count);
         Assert.DoesNotContain(visibilityResult.Items, v => v.Title == "Private Video");
 
         // Act - Test pagination
-        var paginationResponse = await fixture.HttpClient.GetAsync("/api/videos?pageSize=2");
+        var paginationRequest = new GetVideosRequest { PageSize = 2 };
+        var paginationJson = JsonSerializer.Serialize(paginationRequest, _serializerOptions);
+        var paginationContent = new StringContent(paginationJson, Encoding.UTF8, "application/json");
+        var paginationResponse = await fixture.HttpClient.PostAsync("/api/videos/search", paginationContent);
 
         // Assert - Pagination
         Assert.Equal(HttpStatusCode.OK, paginationResponse.StatusCode);
 
-        var paginationContent = await paginationResponse.Content.ReadAsStringAsync();
+        var paginationResponseContent = await paginationResponse.Content.ReadAsStringAsync();
         var paginationResult =
-            JsonSerializer.Deserialize<PagedResult<VideoListItemDto>>(paginationContent, _serializerOptions);
+            JsonSerializer.Deserialize<PagedResult<VideoListItemDto>>(paginationResponseContent, _serializerOptions);
 
         Assert.NotNull(paginationResult);
         Assert.Equal(2, paginationResult.Items.Count);
@@ -998,8 +1026,12 @@ public class VideosTests(TestFixture fixture)
         // Arrange
         await fixture.ResetDbAsync();
 
+        var request = new GetVideosRequest { PageSize = 150 }; // Exceeds maximum
+        var json = JsonSerializer.Serialize(request, _serializerOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
         // Act
-        var response = await fixture.HttpClient.GetAsync("/api/videos?pageSize=150"); // Exceeds maximum
+        var response = await fixture.HttpClient.PostAsync("/api/videos/search", content);
 
         // Assert
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -1014,8 +1046,12 @@ public class VideosTests(TestFixture fixture)
         // Arrange
         await fixture.ResetDbAsync();
 
+        var request = new GetVideosRequest { PageToken = "invalid-token" };
+        var json = JsonSerializer.Serialize(request, _serializerOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
         // Act
-        var response = await fixture.HttpClient.GetAsync("/api/videos?pageToken=invalid-token");
+        var response = await fixture.HttpClient.PostAsync("/api/videos/search", content);
 
         // Assert
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -1030,14 +1066,18 @@ public class VideosTests(TestFixture fixture)
         // Arrange
         await fixture.ResetDbAsync();
 
-        // Act - Using numeric values for visibility (Public=0, Unlisted=1)
-        var response = await fixture.HttpClient.GetAsync("/api/videos?visibility=0&visibility=1");
+        var request = new GetVideosRequest { Visibility = [VideoVisibility.Public, VideoVisibility.Unlisted] };
+        var json = JsonSerializer.Serialize(request, _serializerOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        // Act
+        var response = await fixture.HttpClient.PostAsync("/api/videos/search", content);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var content = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<PagedResult<VideoListItemDto>>(content, _serializerOptions);
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<PagedResult<VideoListItemDto>>(responseContent, _serializerOptions);
 
         Assert.NotNull(result);
         Assert.Empty(result.Items); // No videos in DB, but request should be valid

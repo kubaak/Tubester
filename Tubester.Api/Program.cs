@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Hangfire;
 using Microsoft.AspNetCore.HttpOverrides;
 using Tubester.Abstractions.Account;
@@ -41,7 +42,11 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownProxies.Clear();
 });
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwagger();
 

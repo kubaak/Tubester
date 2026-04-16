@@ -114,29 +114,19 @@ public sealed class VideosController(
     /// <summary>
     /// Gets a paginated list of videos with optional title and visibility filters.
     /// </summary>
-    /// <param name="title">Case-insensitive substring filter for video titles.</param>
-    /// <param name="visibility">
-    /// Optional visibility filter. Multiple values allowed 
-    /// (<c>?visibility=Public&amp;visibility=Unlisted</c>). 
-    /// Accepts enum names or numeric values (Public=0, Unlisted=1, Private=2, Scheduled=3).
-    /// </param>
-    /// <param name="pageSize">Items per page (1–100, default 30).</param>
-    /// <param name="pageToken">Cursor token for pagination, or <c>null</c> for first page.</param>
+    /// <param name="request">Filter parameters for video listing.</param>
     /// <param name="ct"></param>
     /// <returns>Paginated list of videos and next-page token if available.</returns>
-    [HttpGet]
+    [HttpPost("search")]
     [ProducesResponseType(typeof(PagedResult<VideoListItemDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<PagedResult<VideoListItemDto>>> GetVideos(
-        [FromQuery] string? title,
-        [FromQuery(Name = "visibility")] VideoVisibility[]? visibility,
-        [FromQuery] int? pageSize,
-        [FromQuery] string? pageToken,
+        [FromBody] GetVideosRequest request,
         CancellationToken ct)
     {
         try
         {
-            var result = await videoService.GetVideosAsync(title, visibility, pageSize, pageToken, ct);
+            var result = await videoService.GetVideosAsync(request, ct);
             return Ok(result);
         }
         catch (InvalidPageSizeException ex)
