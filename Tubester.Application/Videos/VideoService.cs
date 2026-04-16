@@ -27,9 +27,13 @@ public class VideoService(
     ICreditsService creditsService,
     IDateTimeOffsetProvider dateTimeOffsetProvider) : IVideoService
 {
-    public async Task<PagedResult<VideoListItemDto>> GetVideosAsync(string? title, VideoVisibility[]? visibility,
-        int? pageSize, string? pageToken, CancellationToken ct)
+    public async Task<PagedResult<VideoListItemDto>> GetVideosAsync(GetVideosRequest request, CancellationToken ct)
     {
+        var title = request.Title;
+        var visibility = request.Visibility;
+        var pageSize = request.PageSize;
+        var pageToken = request.PageToken;
+
         var normalizedTitle = string.IsNullOrWhiteSpace(title) ? null : title.Trim();
         if (string.IsNullOrEmpty(normalizedTitle))
         {
@@ -153,8 +157,8 @@ public class VideoService(
             ?? throw new ArgumentException($"Target video {request.TargetVideoId} not found in cache.");
 
         // Build effective metadata starting from source
-        var newTitle = sourceVideo.Title ?? string.Empty;
-        var newDescription = sourceVideo.Description ?? string.Empty;
+        var newTitle = request.CopyTitle ? (sourceVideo.Title ?? string.Empty) : targetVideo.Title;
+        var newDescription = request.CopyDescription ? (sourceVideo.Description ?? string.Empty) : targetVideo.Description;
         var newTags = request.CopyTags ? SanitizeTags(sourceVideo.Tags) : targetVideo.Tags;
         var categoryId = request.CopyCategory ? sourceVideo.CategoryId : targetVideo.CategoryId;
         var defaultLanguage =
@@ -191,6 +195,8 @@ public class VideoService(
             {
                 sourceVideoId = request.SourceVideoId,
                 copyTags = request.CopyTags,
+                copyTitle = request.CopyTitle,
+                copyDescription = request.CopyDescription,
                 copyPlaylists = request.CopyPlaylists,
                 copyCategory = request.CopyCategory,
                 copyDefaultLanguages = request.CopyDefaultLanguages
@@ -206,6 +212,8 @@ public class VideoService(
                 newDescription,
                 newTags,
                 [],
+                request.CopyTitle,
+                request.CopyDescription,
                 request.CopyCategory,
                 request.CopyDefaultLanguages
             );
@@ -226,6 +234,8 @@ public class VideoService(
             newDescription,
             newTags,
             playlistIds.ToArray(),
+            request.CopyTitle,
+            request.CopyDescription,
             request.CopyCategory,
             request.CopyDefaultLanguages
         );
