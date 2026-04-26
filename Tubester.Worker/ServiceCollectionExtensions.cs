@@ -43,6 +43,7 @@ public static class ServiceCollectionExtensions
         // External integrations
         services.AddBackgroundYoutubeServices(config);
         services.AddAiClient(config);
+        services.AddPlaylistSuggestionOptions(config);
 
         // Repositories
         services.AddScoped<IChannelRepository, ChannelRepository>();
@@ -63,9 +64,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICreditsService, CreditsService>();
 
         // App services & jobs
-        services.AddScoped<IAiVideoTemplatingService, AiVideoTemplatingService>();
+        services.AddScoped<IAiVideoImprovingService, AiVideoImprovingService>();
         services.AddScoped<CommentScanJob>();
         services.AddScoped<AiTemplateJob>();
+        services.AddScoped<AiPlaylistSuggestionJob>();
         services.AddScoped<AiTemplateFinalizeJob>();
         services.AddScoped<CreditPeriodMaintenanceJob>();
 
@@ -92,7 +94,7 @@ public static class ServiceCollectionExtensions
         });
 
 
-        services.AddHangfireServer(o => o.Queues = ["scanning", "ai-templating", "default"]);
+        services.AddHangfireServer(o => o.Queues = ["scanning", "ai-templating", "ai-playlist-suggestion", "default"]);
 
         return services;
     }

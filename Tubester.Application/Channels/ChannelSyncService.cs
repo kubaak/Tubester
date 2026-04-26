@@ -6,6 +6,7 @@ using Tubester.Abstractions.Videos;
 using Tubester.Application.Common;
 using Tubester.Domain;
 using Tubester.Integration;
+using static Tubester.Application.Common.PlaylistVisibilityMapper;
 
 namespace Tubester.Application.Channels;
 
@@ -246,7 +247,7 @@ public sealed class ChannelSyncService(
         {
             if (!string.IsNullOrWhiteSpace(dto.Id))
             {
-                remotePlaylists.Add(Playlist.Create(dto.Id, channelId, dto.Title, now, dto.ETag));
+                remotePlaylists.Add(Playlist.Create(dto.Id, channelId, dto.Title, dto.Description, MapVisibility(dto.Visibility, logger), now, dto.ETag));
             }
         }
 

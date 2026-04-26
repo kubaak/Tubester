@@ -1,6 +1,5 @@
 using Tubester.Application.Contracts;
 using Tubester.Application.Contracts.Videos;
-using Tubester.Domain;
 
 namespace Tubester.Application.Videos;
 

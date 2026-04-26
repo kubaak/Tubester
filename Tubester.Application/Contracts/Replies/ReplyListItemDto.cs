@@ -1,5 +1,3 @@
-using Tubester.Domain;
-
 namespace Tubester.Application.Contracts.Replies;
 
 /// <summary>

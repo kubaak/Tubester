@@ -25,4 +25,14 @@ public static class ServiceCollectionExtensions
             .ValidateOnStart();
         return services;
     }
+
+    public static IServiceCollection AddPlaylistSuggestionOptions(this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services.Configure<PlaylistSuggestionOptions>(configuration.GetSection("AI"));
+        services.AddOptions<PlaylistSuggestionOptions>()
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        return services;
+    }
 }

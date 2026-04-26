@@ -5,5 +5,6 @@ public sealed record AiVideoTemplateRequest(
     string PromptEnrichment,
     bool GenerateTitle = true,
     bool GenerateDescription = true,
-    bool GenerateTags = true
+    bool GenerateTags = true,
+    bool SuggestPlaylists = false
 );

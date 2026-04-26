@@ -73,13 +73,14 @@ builder.Services.AddScoped<IVideoService, VideoService>();
 builder.Services.AddScoped<IChannelSyncService, ChannelSyncService>();
 builder.Services.AddScoped<IChannelSettingsService, ChannelSettingsService>();
 builder.Services.AddScoped<IAccountSettingsService, AccountSettingsService>();
-builder.Services.AddScoped<IAiVideoTemplatingService, AiVideoTemplatingService>();
+builder.Services.AddScoped<IAiVideoImprovingService, AiVideoImprovingService>();
 builder.Services.AddScoped<IAiTemplateOrchestrationService, AiTemplateOrchestrationService>();
 builder.Services.AddScoped<ICommentScanService, CommentScanService>();
 builder.Services.AddSingleton<IDateTimeOffsetProvider, DateTimeOffsetProvider>();
 
 builder.Services.AddVideoListingOptions(builder.Configuration);
 builder.Services.AddReplyListingOptions(builder.Configuration);
+builder.Services.AddPlaylistSuggestionOptions(builder.Configuration);
 builder.Services.AddCookieWithGoogle(builder.Configuration);
 
 builder.Services.AddDatabase(builder.Configuration);

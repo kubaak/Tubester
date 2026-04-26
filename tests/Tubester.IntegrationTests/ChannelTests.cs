@@ -94,8 +94,8 @@ public sealed class ChannelTests(TestFixture fixture)
 
         var mockPlaylistData = new List<PlaylistDto>
         {
-            new("playlist123", "Test Playlist 1", "etag-playlist123"),
-            new("playlist456", "Test Playlist 2", "etag-playlist456")
+            new("playlist123", "Test Playlist 1", "Description 1", "public", "etag-playlist123"),
+            new("playlist456", "Test Playlist 2", "Description 2", "private", "etag-playlist456")
         };
 
         var mockPlaylistVideoIds = new Dictionary<string, List<string>>
@@ -185,8 +185,12 @@ public sealed class ChannelTests(TestFixture fixture)
         Assert.Equal(2, createdPlaylists.Count);
         Assert.Equal("playlist123", createdPlaylists[0].PlaylistId);
         Assert.Equal("Test Playlist 1", createdPlaylists[0].Title);
+        Assert.Equal("Description 1", createdPlaylists[0].Description);
+        Assert.Equal(PlaylistVisibility.Public, createdPlaylists[0].Visibility);
         Assert.Equal("playlist456", createdPlaylists[1].PlaylistId);
         Assert.Equal("Test Playlist 2", createdPlaylists[1].Title);
+        Assert.Equal("Description 2", createdPlaylists[1].Description);
+        Assert.Equal(PlaylistVisibility.Private, createdPlaylists[1].Visibility);
 
         // Verify playlist memberships were created
         var memberships = await verificationDatabaseContext.VideoPlaylists
@@ -289,7 +293,7 @@ public sealed class ChannelTests(TestFixture fixture)
             )
         };
 
-        var mockPlaylistData = new List<PlaylistDto> { new("playlist789", "Test Playlist", "etag-video789-v1") };
+        var mockPlaylistData = new List<PlaylistDto> { new("playlist789", "Test Playlist", "Description", "public", "etag-video789-v1") };
 
         var mockPlaylistVideoIds = new Dictionary<string, List<string>> { ["playlist789"] = ["video789"] };
 

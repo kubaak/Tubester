@@ -244,7 +244,7 @@ public class VideosTests(TestFixture fixture)
                 TestFixture.TestingDateTimeOffset);
             var channel = Channel.Create(channelId, MockAuthenticationExtensions.TestSub, "Video Loc Channel",
                 uploadPlaylistId, TestFixture.TestingDateTimeOffset);
-            var playlist = Playlist.Create(playlistId, channelId, "My Playlist", TestFixture.TestingDateTimeOffset);
+            var playlist = Playlist.Create(playlistId, channelId, "My Playlist", "My Playlist Description", Tubester.Domain.PlaylistVisibility.Private, TestFixture.TestingDateTimeOffset);
 
             databaseContext.Users.Add(user);
             databaseContext.Channels.Add(channel);
@@ -1555,6 +1555,261 @@ public class VideosTests(TestFixture fixture)
 
         var responseContent = await response.Content.ReadAsStringAsync();
         Assert.Contains("Title is required", responseContent);
+    }
+
+    [Fact]
+    public async Task AiTemplate_WithSuggestPlaylists_CallsPlaylistSuggestion()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        const string channelId = "ai-playlist-channel";
+        const string uploadPlaylistId = "ULAiPlaylistTest";
+        const string userId = MockAuthenticationExtensions.TestSub;
+
+        fixture.ApiFactory.MockCurrentChannelContext
+            .Setup(channelContext => channelContext.GetRequiredChannelId())
+            .Returns(channelId);
+
+        var targetVideo = Video.Create(
+            uploadPlaylistId,
+            $"aiPlaylist{fixture.Auto.Create<string>()}"[..14],
+            "Cooking Tutorial",
+            "Learn to cook pasta",
+            TestFixture.TestingDateTimeOffset.AddDays(-2),
+            TimeSpan.FromMinutes(3),
+            VideoVisibility.Private,
+            ["cooking", "pasta"],
+            "23",
+            "en",
+            "en",
+            null,
+            null,
+            TestFixture.TestingDateTimeOffset,
+            "etag-ai-playlist",
+            false
+        );
+
+        using (var serviceScope = fixture.ApiServices.CreateScope())
+        {
+            var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
+            var user = User.Create(
+                userId,
+                MockAuthenticationExtensions.TestEmail,
+                MockAuthenticationExtensions.TestName,
+                MockAuthenticationExtensions.TestPicture,
+                TestFixture.TestingDateTimeOffset);
+
+            await databaseContext.Users.AddAsync(user, CancellationToken.None);
+            await databaseContext.Channels.AddAsync(Channel.Create(
+                channelId,
+                userId,
+                "AI Playlist Channel",
+                uploadPlaylistId,
+                TestFixture.TestingDateTimeOffset));
+
+            databaseContext.Videos.Add(targetVideo);
+
+            // Add public playlists
+            var publicPlaylist = Playlist.Create(
+                "PLPublicPlaylist",
+                channelId,
+                "Cooking Videos",
+                "Public cooking videos playlist",
+                PlaylistVisibility.Public,
+                TestFixture.TestingDateTimeOffset);
+
+            var privatePlaylist = Playlist.Create(
+                "PLPrivatePlaylist",
+                channelId,
+                "Private Videos",
+                "Private videos playlist",
+                PlaylistVisibility.Private,
+                TestFixture.TestingDateTimeOffset);
+
+            databaseContext.Playlists.AddRange(publicPlaylist, privatePlaylist);
+
+            var plan = new Plan
+            {
+                Code = "AiPlaylistTestPlan",
+                Name = "AI Playlist Test Plan",
+                MonthlyCredits = 10,
+                IsActive = true,
+                CreatedAtUtc = TestFixture.TestingDateTimeOffset,
+                UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+            };
+
+            await databaseContext.Plans.AddAsync(plan, CancellationToken.None);
+            await databaseContext.SaveChangesAsync(CancellationToken.None);
+
+            var userSubscription = new Subscription
+            {
+                UserId = userId,
+                PlanId = plan.Id,
+                PeriodStartUtc = TestFixture.TestingDateTimeOffset,
+                PeriodEndUtc = TestFixture.TestingDateTimeOffset.AddMonths(1),
+                Status = SubscriptionStatus.Active
+            };
+
+            await databaseContext.Subscriptions.AddAsync(userSubscription, CancellationToken.None);
+
+            var aiTemplateEnqueuedCost = new ActionCost
+            {
+                ActionType = nameof(CreditActionType.AiTemplateWithPlaylistEnqueued),
+                Cost = 1,
+                IsEnabled = true,
+                UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
+                Notes = "Integration test cost for AiTemplateEnqueued."
+            };
+
+            await databaseContext.ActionCosts.AddAsync(aiTemplateEnqueuedCost, CancellationToken.None);
+            await databaseContext.SaveChangesAsync(CancellationToken.None);
+        }
+
+        var request = new AiVideoTemplateRequest(
+            targetVideo.VideoId,
+            "Generate better metadata")
+        {
+            SuggestPlaylists = true
+        };
+
+        var serializedRequest = JsonSerializer.Serialize(request, _serializerOptions);
+        var requestContent = new StringContent(serializedRequest, Encoding.UTF8, "application/json");
+
+        // Act
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = requestContent
+        };
+        requestMessage.Headers.Add("OperationId", OperationId);
+        var response = await fixture.HttpClient.SendAsync(requestMessage);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var capturedJobs = fixture.CapturingJobClient.GetEnqueued<AiTemplateJob>();
+        Assert.Single(capturedJobs);
+
+        var enqueuedRequest = Assert.IsType<AiVideoTemplateRequest>(capturedJobs[0].Job.Args[1]);
+        Assert.True(enqueuedRequest.SuggestPlaylists);
+    }
+
+    [Fact]
+    public async Task AiTemplate_WithoutSuggestPlaylists_DoesNotCallPlaylistSuggestion()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        const string channelId = "ai-no-playlist-channel";
+        const string uploadPlaylistId = "ULAiNoPlaylistTest";
+        const string userId = MockAuthenticationExtensions.TestSub;
+
+        fixture.ApiFactory.MockCurrentChannelContext
+            .Setup(channelContext => channelContext.GetRequiredChannelId())
+            .Returns(channelId);
+
+        var targetVideo = Video.Create(
+            uploadPlaylistId,
+            $"aiNoPlaylist{fixture.Auto.Create<string>()}"[..13],
+            "Gaming Video",
+            "Best gaming moments",
+            TestFixture.TestingDateTimeOffset.AddDays(-2),
+            TimeSpan.FromMinutes(3),
+            VideoVisibility.Private,
+            ["gaming"],
+            "23",
+            "en",
+            "en",
+            null,
+            null,
+            TestFixture.TestingDateTimeOffset,
+            "etag-ai-no-playlist",
+            false
+        );
+
+        using (var serviceScope = fixture.ApiServices.CreateScope())
+        {
+            var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
+            var user = User.Create(
+                userId,
+                MockAuthenticationExtensions.TestEmail,
+                MockAuthenticationExtensions.TestName,
+                MockAuthenticationExtensions.TestPicture,
+                TestFixture.TestingDateTimeOffset);
+
+            await databaseContext.Users.AddAsync(user, CancellationToken.None);
+            await databaseContext.Channels.AddAsync(Channel.Create(
+                channelId,
+                userId,
+                "AI No Playlist Channel",
+                uploadPlaylistId,
+                TestFixture.TestingDateTimeOffset));
+
+            databaseContext.Videos.Add(targetVideo);
+
+            var plan = new Plan
+            {
+                Code = "AiNoPlaylistTestPlan",
+                Name = "AI No Playlist Test Plan",
+                MonthlyCredits = 10,
+                IsActive = true,
+                CreatedAtUtc = TestFixture.TestingDateTimeOffset,
+                UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+            };
+
+            await databaseContext.Plans.AddAsync(plan, CancellationToken.None);
+            await databaseContext.SaveChangesAsync(CancellationToken.None);
+
+            var userSubscription = new Subscription
+            {
+                UserId = userId,
+                PlanId = plan.Id,
+                PeriodStartUtc = TestFixture.TestingDateTimeOffset,
+                PeriodEndUtc = TestFixture.TestingDateTimeOffset.AddMonths(1),
+                Status = SubscriptionStatus.Active
+            };
+
+            await databaseContext.Subscriptions.AddAsync(userSubscription, CancellationToken.None);
+
+            var aiTemplateEnqueuedCost = new ActionCost
+            {
+                ActionType = nameof(CreditActionType.AiTemplateEnqueued),
+                Cost = 1,
+                IsEnabled = true,
+                UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
+                Notes = "Integration test cost for AiTemplateEnqueued."
+            };
+
+            await databaseContext.ActionCosts.AddAsync(aiTemplateEnqueuedCost, CancellationToken.None);
+            await databaseContext.SaveChangesAsync(CancellationToken.None);
+        }
+
+        var request = new AiVideoTemplateRequest(
+            targetVideo.VideoId,
+            "Generate better metadata")
+        {
+            SuggestPlaylists = false
+        };
+
+        var serializedRequest = JsonSerializer.Serialize(request, _serializerOptions);
+        var requestContent = new StringContent(serializedRequest, Encoding.UTF8, "application/json");
+
+        // Act
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = requestContent
+        };
+        requestMessage.Headers.Add("OperationId", OperationId);
+        var response = await fixture.HttpClient.SendAsync(requestMessage);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var capturedJobs = fixture.CapturingJobClient.GetEnqueued<AiTemplateJob>();
+        Assert.Single(capturedJobs);
+
+        var enqueuedRequest = Assert.IsType<AiVideoTemplateRequest>(capturedJobs[0].Job.Args[1]);
+        Assert.False(enqueuedRequest.SuggestPlaylists);
     }
 
     private static async IAsyncEnumerable<T> CreateAsyncEnumerable<T>(IEnumerable<T> items)

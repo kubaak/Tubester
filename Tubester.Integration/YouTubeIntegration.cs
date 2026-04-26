@@ -508,7 +508,7 @@ public sealed class YouTubeIntegration(
         string? page = null;
         do
         {
-            var playlistRequest = youTubeService.Playlists.List("id,snippet");
+            var playlistRequest = youTubeService.Playlists.List("id,snippet,status");
             playlistRequest.ChannelId = channelId;
             playlistRequest.MaxResults = 50;
             playlistRequest.PageToken = page;
@@ -526,7 +526,8 @@ public sealed class YouTubeIntegration(
 
                 if (!string.IsNullOrWhiteSpace(playlist.Id))
                 {
-                    yield return new PlaylistDto(playlist.Id!, playlist.Snippet.Title, playlist.Snippet.ETag);
+                    var visibility = playlist.Status?.PrivacyStatus ?? "private";
+                    yield return new PlaylistDto(playlist.Id!, playlist.Snippet.Title, playlist.Snippet.Description, visibility, playlist.Snippet.ETag);
                 }
             }
 

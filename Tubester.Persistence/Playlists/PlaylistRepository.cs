@@ -14,6 +14,47 @@ public sealed class PlaylistRepository(TubesterDb databaseContext) : IPlaylistRe
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<List<PlaylistCandidateDto>> GetPublicByChannelAsync(string channelId, CancellationToken cancellationToken)
+    {
+        return await databaseContext.Playlists
+            .AsNoTracking()
+            .Where(p => p.ChannelId == channelId && p.Visibility == PlaylistVisibility.Public)
+            .Select(p => new PlaylistCandidateDto
+            {
+                PlaylistId = p.PlaylistId,
+                Name = p.Title ?? string.Empty,
+            })
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<List<string>> GetPlaylistNamesForLatestPublicVideoAsync(
+        string channelId,
+        CancellationToken cancellationToken)
+    {
+        var latestVideoIdQuery = databaseContext.Videos
+            .AsNoTracking()
+            .Join(
+                databaseContext.Channels.AsNoTracking(),
+                v => v.UploadsPlaylistId,
+                c => c.UploadsPlaylistId,
+                (v, c) => new { v, c })
+            .Where(x => x.c.ChannelId == channelId)
+            .Where(x => x.v.Visibility == VideoVisibility.Public)
+            .OrderByDescending(x => x.v.PublishedAt)
+            .Select(x => x.v.VideoId)
+            .Take(1);
+
+        return await databaseContext.VideoPlaylists
+            .AsNoTracking()
+            .Where(vp => latestVideoIdQuery.Contains(vp.VideoId))
+            .Join(
+                databaseContext.Playlists.AsNoTracking(),
+                vp => vp.PlaylistId,
+                p => p.PlaylistId,
+                (vp, p) => p.Title ?? string.Empty)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+    }
     public Task<List<string>> GetPlaylistIdsByVideoAsync(string videoId, CancellationToken cancellationToken)
     {
         return databaseContext.VideoPlaylists
@@ -70,7 +111,7 @@ public sealed class PlaylistRepository(TubesterDb databaseContext) : IPlaylistRe
             }
             else
             {
-                existingPlaylist.UpdateTitle(playlist.Title, currentTime, playlist.ETag);
+                existingPlaylist.UpdateTitle(playlist.Title, playlist.Description, playlist.Visibility, currentTime, playlist.ETag);
                 existingPlaylist.TransferEventsFrom(playlist);
                 updatedCount++;
             }
