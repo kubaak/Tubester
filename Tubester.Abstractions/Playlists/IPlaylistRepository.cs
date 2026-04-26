@@ -5,6 +5,12 @@ namespace Tubester.Abstractions.Playlists;
 public interface IPlaylistRepository
 {
     Task<List<Playlist>> GetByChannelAsync(string channelId, CancellationToken cancellationToken);
+    Task<List<PlaylistCandidateDto>> GetPublicByChannelAsync(string channelId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets the names of all playlists that the latest public video in the channel belongs to.
+    /// </summary>
+    Task<List<string>> GetPlaylistNamesForLatestPublicVideoAsync(string channelId, CancellationToken cancellationToken);
 
     Task<List<string>> GetPlaylistIdsByVideoAsync(string videoId, CancellationToken cancellationToken);
 

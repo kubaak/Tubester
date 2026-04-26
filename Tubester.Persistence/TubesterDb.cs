@@ -120,6 +120,8 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
         b.Entity<Video>().Property(video => video.CachedAt);
         b.Entity<Video>().Property(video => video.UpdatedAt);
         b.Entity<Video>().Property(video => video.PublishedAt);
+        b.Entity<Video>().Property(video => video.Visibility).HasConversion<string>().HasMaxLength(10).IsRequired();
+
         b.Entity<Video>()
             .OwnsOne(video => video.Location, ownedNavigationBuilder =>
             {
@@ -131,6 +133,7 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
         b.Entity<Playlist>().HasKey(playlist => playlist.PlaylistId);
         b.Entity<Playlist>().HasIndex(playlist => playlist.ChannelId);
         b.Entity<Playlist>().Property(playlist => playlist.ETag).HasMaxLength(128);
+        b.Entity<Playlist>().Property(playlist => playlist.Visibility).HasConversion<string>().HasMaxLength(10).IsRequired();
         b.Entity<Playlist>().Property(playlist => playlist.UpdatedAt);
         b.Entity<Playlist>().Property(playlist => playlist.LastMembershipSyncAt);
 

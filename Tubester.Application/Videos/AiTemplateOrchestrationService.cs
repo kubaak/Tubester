@@ -40,19 +40,32 @@ public class AiTemplateOrchestrationService(
 
         try
         {
+            string keyBase;
+            string creditAction;
+            if (request.SuggestPlaylists)
+            {
+                keyBase = "ai-template-playlist-enqueue";
+                creditAction = nameof(CreditActionType.AiTemplateWithPlaylistEnqueued);
+            }
+            else
+            {
+                keyBase = "ai-template-enqueue";
+                creditAction = nameof(CreditActionType.AiTemplateEnqueued);
+            }
             var aiTemplateEnqueueIdempotencyKey =
-                $"ai-template-enqueue:{userId}:{request.TargetVideoId}:{operationId}";
+                $"{keyBase}:{userId}:{request.TargetVideoId}:{operationId}";
 
             var aiTemplateEnqueueSpendSucceeded = await creditsService.TrySpendAsync(
                 userId,
-                nameof(CreditActionType.AiTemplateEnqueued),
+                creditAction,
                 aiTemplateEnqueueIdempotencyKey,
                 request.TargetVideoId,
                 new
                 {
                     generateTitle = request.GenerateTitle,
                     generateDescription = request.GenerateDescription,
-                    generateTags = request.GenerateTags
+                    generateTags = request.GenerateTags,
+                    suggestPlaylists = request.SuggestPlaylists
                 },
                 cancellationToken);
 
@@ -82,6 +95,12 @@ public class AiTemplateOrchestrationService(
                 jobId,
                 job => job.Run(channelId, request.TargetVideoId, JobCancellationToken.Null),
                 JobContinuationOptions.OnAnyFinishedState);
+
+            if (request.SuggestPlaylists)
+            {
+                backgroundJobClient.Enqueue<AiPlaylistSuggestionJob>(
+                    job => job.Run(channelId, request.TargetVideoId, request.PromptEnrichment, JobCancellationToken.Null));
+            }
 
             return jobId;
         }

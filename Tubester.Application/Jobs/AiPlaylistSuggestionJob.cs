@@ -1,21 +1,22 @@
 using Hangfire;
-using Tubester.Application.Contracts.Videos;
 using Tubester.Application.Videos;
 
 namespace Tubester.Application.Jobs;
 
-public sealed class AiTemplateJob(IAiVideoImprovingService aiVideoImprovingService)
+public sealed class AiPlaylistSuggestionJob(
+    IAiVideoImprovingService aiVideoImprovingService)
 {
-    [Queue("ai-templating")]
+    [Queue("ai-playlist-suggestion")]
     [AutomaticRetry(Attempts = 3, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
     public async Task Run(
         string channelId,
-        AiVideoTemplateRequest request,
+        string targetVideoId,
+        string promptEnrichment,
         IJobCancellationToken jobCancellationToken)
     {
         jobCancellationToken.ThrowIfCancellationRequested();
 
-        await aiVideoImprovingService.GenerateAiTemplateAsync(channelId, request,
+        await aiVideoImprovingService.SuggestPlaylistIdsAsync(channelId, targetVideoId, promptEnrichment,
             jobCancellationToken.ShutdownToken);
     }
 }

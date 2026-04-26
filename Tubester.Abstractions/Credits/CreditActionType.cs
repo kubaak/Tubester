@@ -28,5 +28,10 @@ public enum CreditActionType
     /// <summary>
     /// Posting a reply to YouTube.
     /// </summary>
-    ReplyPostedToYouTube
+    ReplyPostedToYouTube,
+
+    /// <summary>
+    /// Enqueuing an AI template generation job. With suggesting playlists for a video (background job).
+    /// </summary>
+    AiTemplateWithPlaylistEnqueued
 }

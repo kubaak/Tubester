@@ -5,7 +5,6 @@ using Tubester.Application.Contracts;
 using Tubester.Application.Contracts.Videos;
 using Tubester.Application.Exceptions;
 using Tubester.Application.Videos;
-using Tubester.Domain;
 
 namespace Tubester.Api;
 
@@ -67,6 +66,7 @@ public sealed class VideosController(
     /// <summary>
     /// Improve video metadata using AI
     /// </summary>
+    /// <param name="operationId"></param>
     /// <param name="request"></param>
     /// <param name="ct"></param>
     /// <returns></returns>
@@ -74,11 +74,10 @@ public sealed class VideosController(
     [ProducesResponseType(typeof(AiTemplateEnqueueResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> AiTemplate(
+        [FromHeader(Name = "OperationId")] string operationId,
         [FromBody] AiVideoTemplateRequest request,
         CancellationToken ct = default)
     {
-        var operationId = Request.Headers["OperationId"].FirstOrDefault();
-
         if (string.IsNullOrWhiteSpace(operationId))
         {
             return BadRequest("Missing OperationId header.");
