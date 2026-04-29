@@ -44,6 +44,7 @@ public static class ServiceCollectionExtensions
         services.AddBackgroundYoutubeServices(config);
         services.AddAiClient(config);
         services.AddPlaylistSuggestionOptions(config);
+        services.AddApplicationConfigurationServices();
 
         // Repositories
         services.AddScoped<IChannelRepository, ChannelRepository>();

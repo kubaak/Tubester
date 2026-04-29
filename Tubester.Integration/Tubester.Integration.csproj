@@ -9,6 +9,7 @@
     <ItemGroup>
         <PackageReference Include="Google.Apis.Auth" Version="1.73.0"/>
         <PackageReference Include="Google.Apis.YouTube.v3" Version="1.73.0.4099" />
+        <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.5" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.5" />
         <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.5" />
         <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.4.0" />

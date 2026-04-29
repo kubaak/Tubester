@@ -26,6 +26,7 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
     public DbSet<ActionCost> ActionCosts => Set<ActionCost>();
     public DbSet<ChannelSettings> ChannelSettings => Set<ChannelSettings>();
     public DbSet<AccountSettings> AccountSettings => Set<AccountSettings>();
+    public DbSet<ApplicationConfiguration> ApplicationConfigurations => Set<ApplicationConfiguration>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -295,6 +296,32 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
                 .IsRequired();
 
             entity.HasIndex(cost => cost.IsEnabled);
+        });
+
+        b.Entity<ApplicationConfiguration>(entity =>
+        {
+            entity.HasKey(config => config.Key);
+
+            entity.Property(config => config.Key)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(config => config.Value)
+                .IsRequired();
+
+            entity.Property(config => config.ValueType)
+                .IsRequired()
+                .HasConversion<string>()
+                .HasMaxLength(20);
+
+            entity.Property(config => config.Description)
+                .HasMaxLength(500);
+
+            entity.Property(config => config.IsSystem)
+                .IsRequired();
+
+            entity.Property(config => config.UpdatedAtUtc)
+                .IsRequired();
         });
 
         //Domain events are not meant to be persisted

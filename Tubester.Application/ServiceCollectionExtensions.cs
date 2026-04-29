@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Tubester.Abstractions.ApplicationConfiguration;
 using Tubester.Application.Options;
+using Tubester.Integration;
 
 namespace Tubester.Application;
 
@@ -33,6 +35,17 @@ public static class ServiceCollectionExtensions
         services.AddOptions<PlaylistSuggestionOptions>()
             .ValidateDataAnnotations()
             .ValidateOnStart();
+        return services;
+    }
+    
+    public static IServiceCollection AddApplicationConfigurationServices(this IServiceCollection services)
+    {
+        services.AddMemoryCache();
+        services.AddScoped<IApplicationConfigurationService, ApplicationConfigurationService>();
+        services.AddScoped<IFeatureFlagService, FeatureFlagService>();
+        services.AddScoped<IAiRuntimeOptionsService, AiRuntimeOptionsService>();
+        services.AddScoped<IAiClientFactory, AiClientFactory>();
+
         return services;
     }
 }

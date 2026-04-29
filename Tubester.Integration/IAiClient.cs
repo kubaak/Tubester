@@ -2,8 +2,16 @@
 
 namespace Tubester.Integration;
 
+/// <summary>
+/// Interface for AI client implementations.
+/// </summary>
 public interface IAiClient
 {
+    /// <summary>
+    /// The provider name for this AI client (e.g., "Ollama", "OpenAi").
+    /// </summary>
+    string Provider { get; }
+
     Task<SuggestedMetadata> SuggestMetadataAsync(
         string context, bool generateTitle, bool generateDescription, bool generateTags,
         CancellationToken cancellationToken);

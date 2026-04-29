@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Hangfire;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
 using Tubester.Abstractions.Account;
 using Tubester.Abstractions.Analytics;
@@ -54,6 +55,7 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentChannelContext, CurrentChannelContext>();
 builder.Services.AddScoped<ICurrentUserContext, CurrentUserContext>();
 builder.Services.AddAiClient(builder.Configuration);
+builder.Services.AddApplicationConfigurationServices();
 builder.Services.AddOnlineYoutubeServices(builder.Configuration);
 builder.Services.AddScoped<ICurrentUserTokenAccessor, CurrentUserTokenAccessor>();
 builder.Services.AddScoped<IReplyRepository, ReplyRepository>();
@@ -89,6 +91,15 @@ builder.Services.AddHangFireStorage(builder.Configuration);
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
+// Admin email authorization
+var adminEmails = builder.Configuration.GetSection("AdminEmails").Get<string[]>() ?? [];
+builder.Services.AddScoped<IAuthorizationHandler>(p => 
+    new AdminEmailAuthorizationHandler(
+        p.GetRequiredService<ICurrentUserContext>()));
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy("AdminEmail", policy =>
+        policy.Requirements.Add(new AdminEmailRequirement(adminEmails)));
+
 var app = builder.Build();
 
 app.UseForwardedHeaders();
@@ -98,12 +109,9 @@ app.UseSwagger();
 app.UseSwaggerUI();
 app.UseAuthentication();
 app.UseAuthorization();
-var hangfireAdminEmails = app.Configuration
-    .GetSection("Hangfire:AdminEmails")
-    .Get<string[]>() ?? [];
 var dashboardOptions = new DashboardOptions
 {
-    Authorization = [new EmailHangfireAuthorizationFilter(hangfireAdminEmails)]
+    Authorization = [new EmailHangfireAuthorizationFilter(adminEmails)]
 };
 
 app.UseHangfireDashboard("/hangfire", dashboardOptions);

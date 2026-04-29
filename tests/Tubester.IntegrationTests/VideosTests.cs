@@ -244,7 +244,7 @@ public class VideosTests(TestFixture fixture)
                 TestFixture.TestingDateTimeOffset);
             var channel = Channel.Create(channelId, MockAuthenticationExtensions.TestSub, "Video Loc Channel",
                 uploadPlaylistId, TestFixture.TestingDateTimeOffset);
-            var playlist = Playlist.Create(playlistId, channelId, "My Playlist", "My Playlist Description", Tubester.Domain.PlaylistVisibility.Private, TestFixture.TestingDateTimeOffset);
+            var playlist = Playlist.Create(playlistId, channelId, "My Playlist", "My Playlist Description", PlaylistVisibility.Private, TestFixture.TestingDateTimeOffset);
 
             databaseContext.Users.Add(user);
             databaseContext.Channels.Add(channel);

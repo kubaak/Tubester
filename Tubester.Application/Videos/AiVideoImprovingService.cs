@@ -11,7 +11,7 @@ namespace Tubester.Application.Videos;
 
 public sealed class AiVideoImprovingService(
     ILogger<AiVideoImprovingService> logger,
-    IAiClient aiClient,
+    IAiClientFactory aiClientFactory,
     IVideoRepository videoRepository,
     IDateTimeOffsetProvider dateTimeOffsetProvider,
     IPlaylistRepository playlistRepository,
@@ -48,7 +48,7 @@ public sealed class AiVideoImprovingService(
                 targetVideo.Title?.Length ?? 0,
                 targetVideo.Description?.Length ?? 0,
                 targetVideo.Tags.Length);
-
+            var aiClient = await aiClientFactory.GetClientAsync(cancellationToken);
             var suggestedMetadata =
                 await aiClient.SuggestMetadataAsync(
                     request.PromptEnrichment,
@@ -159,7 +159,7 @@ public sealed class AiVideoImprovingService(
                 {
                     PromptEnrichment = promptEnrichment, LatestPlaylistTitlesUsed = latestVideoPlaylistNames
                 };
-
+                var aiClient = await aiClientFactory.GetClientAsync(cancellationToken);
                 var batchSuggestedIds = await aiClient.SuggestPlaylistIdsAsync(
                     context,
                     batch,
