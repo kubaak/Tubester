@@ -2,6 +2,7 @@ using AutoFixture;
 using AutoFixture.AutoMoq;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Tubester.Domain;
 using Tubester.Persistence;
 using Xunit;
 
@@ -27,6 +28,38 @@ public sealed class TestFixture : IAsyncLifetime
         // Ensure database is created once
         await ApiFactory.EnsureDatabaseCreatedAsync();
         await WorkerFactory.EnsureDatabaseCreatedAsync();
+
+        await EnsureApplicationConfigurationAsync();
+    }
+
+    public async Task EnsureApplicationConfigurationAsync()
+    {
+        using var scope = ApiServices.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
+        var configurations = await dbContext.ApplicationConfigurations.ToDictionaryAsync(x => x.Key);
+        var doSave = false;
+        if (!configurations.ContainsKey("Ai.Provider"))
+        {
+            await dbContext.ApplicationConfigurations.AddAsync(ApplicationConfiguration.Create(
+                "Ai.Provider", "Ollama", ConfigurationValueType.String, "Current AI provider used by Tubester",
+                true, TestingDateTimeOffset
+            ));
+            doSave = true;
+        }
+
+        if (!configurations.ContainsKey("Ai.Provider"))
+        {
+            await dbContext.ApplicationConfigurations.AddAsync(ApplicationConfiguration.Create(
+                "Ai.Model", "qwen3:8b", ConfigurationValueType.String, "Default AI model used by Tubester",
+                true, TestingDateTimeOffset
+            ));
+            doSave = true;
+        }
+
+        if (doSave)
+        {
+            await dbContext.SaveChangesAsync();
+        }
     }
 
     public async Task ResetDbAsync()

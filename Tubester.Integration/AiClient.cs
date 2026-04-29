@@ -3,13 +3,21 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Tubester.Abstractions.ApplicationConfiguration;
 using Tubester.Abstractions.Playlists;
 
 namespace Tubester.Integration;
 
-public sealed class AiClient(HttpClient httpClient, IOptions<AiOptions> aiOptions, ILogger<AiClient> logger) : IAiClient
+public sealed class AiClient(
+    HttpClient httpClient, 
+    IOptions<AiOptions> aiOptions, 
+    ILogger<AiClient> logger)
+    : IAiClient
 {
     private readonly AiOptions _ai = aiOptions.Value;
+
+    /// <inheritdoc />
+    public string Provider => AiProviders.Ollama;
 
     public async Task<SuggestedMetadata> SuggestMetadataAsync(
         string context,

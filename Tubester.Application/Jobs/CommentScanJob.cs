@@ -15,7 +15,7 @@ namespace Tubester.Application.Jobs;
 public sealed class CommentScanJob(
     ILogger<CommentScanJob> logger,
     IBackgroundYoutubeIntegration youTubeIntegration,
-    IAiClient aiClient,
+    IAiClientFactory aiClientFactory,
     IVideoRepository videoRepository,
     IReplyRepository replyRepository,
     IChannelRepository channelRepository,
@@ -162,6 +162,7 @@ public sealed class CommentScanJob(
                         string? suggestion;
                         try
                         {
+                            var aiClient = await aiClientFactory.GetClientAsync(cancellationToken);
                             suggestion = await aiClient.SuggestReplyAsync(
                                 video.Title ?? string.Empty,
                                 video.Tags,

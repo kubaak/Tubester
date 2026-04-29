@@ -12,7 +12,7 @@ namespace Tubester.Api;
 [Route("api/auth")]
 [Tags("Authentication")]
 [Authorize]
-public sealed class AuthController : ApiControllerBase
+public sealed class AuthController(IConfiguration configuration) : ApiControllerBase
 {
     /// <summary>
     /// 
@@ -87,16 +87,19 @@ public sealed class AuthController : ApiControllerBase
             : channelPicture;
 
         var hasWriteAccess = User.HasClaim("yt_write_granted", "true");
+        
+        var isAdmin = configuration["AdminEmails:0"]!.Contains(email);
 
-        return Ok(new
+        return Ok(new AuthMeResponse
         {
-            name,
-            email,
-            sub = subject,
-            channelId,
-            channelTitle,
-            picture,
-            hasWriteAccess
+            Name = name,
+            Email = email,
+            Sub = subject,
+            ChannelId = channelId,
+            ChannelTitle = channelTitle,
+            Picture = picture,
+            HasWriteAccess = hasWriteAccess,
+            IsAdmin = isAdmin
         });
     }
 
@@ -133,5 +136,9 @@ public sealed class AuthController : ApiControllerBase
         /// 
         /// </summary>
         public bool HasWriteAccess { get; init; }
+        /// <summary>
+        /// 
+        /// </summary>
+        public bool IsAdmin { get; init; }
     }
 }

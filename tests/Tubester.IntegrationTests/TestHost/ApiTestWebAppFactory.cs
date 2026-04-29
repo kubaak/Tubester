@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
+using Tubester.Abstractions.ApplicationConfiguration;
 using Tubester.Abstractions.Channels;
 using Tubester.Application;
 using Tubester.Integration;
@@ -29,6 +30,7 @@ public class ApiTestWebAppFactory : WebApplicationFactory<Program>
     {
         CapturingJobClient = capturingJobClient;
         MockAiClient = new Mock<IAiClient>(MockBehavior.Strict);
+        MockAiClient.Setup(x => x.Provider).Returns(AiProviders.Ollama);
         MockYouTubeIntegration = new Mock<IYouTubeIntegration>(MockBehavior.Strict);
         MockCurrentChannelContext = new Mock<ICurrentChannelContext>(MockBehavior.Strict);
         MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId()).Returns("testChannelId");

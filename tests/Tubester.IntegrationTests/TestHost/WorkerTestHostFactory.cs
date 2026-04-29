@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Tubester.Abstractions.ApplicationConfiguration;
 using Tubester.Application;
 using Tubester.Integration;
 using Tubester.Persistence;
@@ -25,12 +26,12 @@ public sealed class WorkerTestHostFactory : IDisposable
     public WorkerTestHostFactory(CapturingBackgroundJobClient capturingJobClient, DateTimeOffset testingUtcNow)
     {
         MockAiClient = new Mock<IAiClient>(MockBehavior.Strict);
+        MockAiClient.Setup(x => x.Provider).Returns(AiProviders.Ollama);
         MockYouTubeIntegration = new Mock<IYouTubeIntegration>(MockBehavior.Strict);
         MockBackgroundYoutubeIntegration = new Mock<IBackgroundYoutubeIntegration>(MockBehavior.Strict);
         MockDateTimeOffsetProvider = new Mock<IDateTimeOffsetProvider>(MockBehavior.Strict);
         MockDateTimeOffsetProvider.Setup(x => x.GetUtcNowDateTimeOffset()).Returns(testingUtcNow);
-
-
+        
         var hostBuilder = Host.CreateDefaultBuilder([]);
 
         hostBuilder.UseEnvironment("Test");

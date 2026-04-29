@@ -1203,7 +1203,7 @@ public sealed class CreditsTests(TestFixture fixture)
     {
         await fixture.ResetDbAsync();
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Reset();
-        fixture.WorkerFactory.MockAiClient.Reset();
+        fixture.WorkerFactory.MockAiClient.Invocations.Clear();
 
         const string channelId = "credits-ai-reply-channel";
         const string uploadsPlaylistId = "ULCreditsAiReply";
@@ -1315,7 +1315,7 @@ public sealed class CreditsTests(TestFixture fixture)
         using (var setupScope = fixture.WorkerServices.CreateScope())
         {
             var databaseContext = setupScope.ServiceProvider.GetRequiredService<TubesterDb>();
-            var channelSettings = Domain.ChannelSettings.CreateDefault(channelId, TestFixture.TestingDateTimeOffset);
+            var channelSettings = ChannelSettings.CreateDefault(channelId, TestFixture.TestingDateTimeOffset);
             channelSettings.Apply(true, true, 10, 10, "English", null, TestFixture.TestingDateTimeOffset);
             databaseContext.ChannelSettings.Add(channelSettings);
             await databaseContext.SaveChangesAsync(CancellationToken.None);
@@ -1366,7 +1366,7 @@ public sealed class CreditsTests(TestFixture fixture)
     {
         await fixture.ResetDbAsync();
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Reset();
-        fixture.WorkerFactory.MockAiClient.Reset();
+        fixture.WorkerFactory.MockAiClient.Invocations.Clear();
 
         const string channelId = "credits-ai-reply-refund-channel";
         const string uploadsPlaylistId = "ULCreditsAiReplyRefund";
@@ -1478,7 +1478,7 @@ public sealed class CreditsTests(TestFixture fixture)
         using (var setupScope = fixture.WorkerServices.CreateScope())
         {
             var databaseContext = setupScope.ServiceProvider.GetRequiredService<TubesterDb>();
-            var channelSettings = Domain.ChannelSettings.CreateDefault(channelId, TestFixture.TestingDateTimeOffset);
+            var channelSettings = ChannelSettings.CreateDefault(channelId, TestFixture.TestingDateTimeOffset);
             channelSettings.Apply(true, true, 10, 10, "English", null, TestFixture.TestingDateTimeOffset);
             databaseContext.ChannelSettings.Add(channelSettings);
             await databaseContext.SaveChangesAsync(CancellationToken.None);
@@ -1528,7 +1528,7 @@ public sealed class CreditsTests(TestFixture fixture)
     {
         await fixture.ResetDbAsync();
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Reset();
-        fixture.WorkerFactory.MockAiClient.Reset();
+        fixture.WorkerFactory.MockAiClient.Invocations.Clear();
 
         const string channelId = "credits-ai-reply-insufficient-channel";
         const string uploadsPlaylistId = "ULCreditsAiReplyInsufficient";
@@ -1641,7 +1641,7 @@ public sealed class CreditsTests(TestFixture fixture)
         using (var setupScope = fixture.WorkerServices.CreateScope())
         {
             var databaseContext = setupScope.ServiceProvider.GetRequiredService<TubesterDb>();
-            var channelSettings = Domain.ChannelSettings.CreateDefault(channelId, TestFixture.TestingDateTimeOffset);
+            var channelSettings = ChannelSettings.CreateDefault(channelId, TestFixture.TestingDateTimeOffset);
             channelSettings.Apply(true, true, 10, 10, "English", null, TestFixture.TestingDateTimeOffset);
             databaseContext.ChannelSettings.Add(channelSettings);
             await databaseContext.SaveChangesAsync(CancellationToken.None);

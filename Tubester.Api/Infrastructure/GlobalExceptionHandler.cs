@@ -88,8 +88,8 @@ public sealed class GlobalExceptionHandler(
                 => (StatusCodes.Status409Conflict, "Unique constraint violated",
                     "A resource with the same unique value already exists."),
 
-            BadHttpRequestException bhre
-                => (StatusCodes.Status400BadRequest, "Bad request", bhre.Message),
+            BadRequestException br
+                => (StatusCodes.Status400BadRequest, "Bad request", br.Message),
 
             _ => (StatusCodes.Status500InternalServerError, "Internal Server Error", "An unexpected error occurred.")
         };
