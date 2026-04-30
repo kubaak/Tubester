@@ -70,4 +70,15 @@ public interface ICreditsStore
     Task<SubscriptionSummaryDto?> GetSubscriptionSummaryAsync(
         string userId,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Grants credits to a user's wallet directly (admin operation).
+    /// This adds credits without resetting the wallet balance (unlike period grants).
+    /// </summary>
+    Task<GrantResult> GrantCreditsAsync(
+        string userId,
+        int amount,
+        string idempotencyKey,
+        DateTimeOffset occurredAtUtc,
+        CancellationToken cancellationToken);
 }

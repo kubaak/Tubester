@@ -31,7 +31,7 @@ public sealed class WorkerTestHostFactory : IDisposable
         MockBackgroundYoutubeIntegration = new Mock<IBackgroundYoutubeIntegration>(MockBehavior.Strict);
         MockDateTimeOffsetProvider = new Mock<IDateTimeOffsetProvider>(MockBehavior.Strict);
         MockDateTimeOffsetProvider.Setup(x => x.GetUtcNowDateTimeOffset()).Returns(testingUtcNow);
-        
+
         var hostBuilder = Host.CreateDefaultBuilder([]);
 
         hostBuilder.UseEnvironment("Test");

@@ -197,6 +197,14 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
                 .IsUnique();
         });
 
+        b.Entity<Reply>().HasIndex(reply => reply.VideoId);
+
+        b.Entity<Reply>()
+            .HasOne<Video>()
+            .WithMany()
+            .HasForeignKey(reply => reply.VideoId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         b.Entity<Subscription>(entity =>
         {
             entity.ToTable("Subscriptions");
@@ -215,6 +223,11 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
             entity.Property(subscription => subscription.Status)
                 .IsRequired()
                 .HasConversion<string>();
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(subscription => subscription.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(subscription => subscription.Plan)
                 .WithMany()
@@ -278,6 +291,11 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
 
             entity.HasIndex(entry => new { entry.ActionType, entry.OccurredAtUtc })
                 .HasDatabaseName("IX_LedgerEntries_ActionType_OccurredAtUtc_Desc");
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(entry => entry.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<ActionCost>(entity =>

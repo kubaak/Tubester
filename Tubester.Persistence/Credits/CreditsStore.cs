@@ -2,11 +2,14 @@ using System.Data;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 using Tubester.Abstractions.Credits;
 
 namespace Tubester.Persistence.Credits;
 
-public sealed class CreditsStore(TubesterDb databaseContext) : ICreditsStore
+public sealed class CreditsStore(
+    TubesterDb databaseContext,
+    ILogger<CreditsStore> logger) : ICreditsStore
 {
     private static readonly JsonSerializerOptions _jsonSerializerOptions = new()
     {
@@ -42,32 +45,27 @@ public sealed class CreditsStore(TubesterDb databaseContext) : ICreditsStore
         return result;
     }
 
-    public async Task<WalletDto?> GetWalletAsync(string userId, CancellationToken cancellationToken)
+    public async Task<WalletDto?> GetWalletAsync(
+        string userId,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(userId))
         {
             throw new ArgumentException("User id is required.", nameof(userId));
         }
 
-        var walletEntity = await databaseContext.Wallets
+        return await databaseContext.Wallets
             .AsNoTracking()
-            .FirstOrDefaultAsync(entity => entity.UserId == userId, cancellationToken);
-
-        if (walletEntity is null)
-        {
-            return null;
-        }
-
-        var wallet = new WalletDto
-        {
-            UserId = walletEntity.UserId,
-            Balance = walletEntity.Balance,
-            PeriodStartUtc = walletEntity.PeriodStartUtc,
-            PeriodEndUtc = walletEntity.PeriodEndUtc,
-            UpdatedAtUtc = walletEntity.UpdatedAtUtc
-        };
-
-        return wallet;
+            .Where(wallet => wallet.UserId == userId)
+            .Select(wallet => new WalletDto
+            {
+                UserId = wallet.UserId,
+                Balance = wallet.Balance,
+                PeriodStartUtc = wallet.PeriodStartUtc,
+                PeriodEndUtc = wallet.PeriodEndUtc,
+                UpdatedAtUtc = wallet.UpdatedAtUtc
+            })
+            .SingleOrDefaultAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<string>> GetUserIdsWithExpiredWalletsAsync(
@@ -175,6 +173,7 @@ public sealed class CreditsStore(TubesterDb databaseContext) : ICreditsStore
         if (inserted == 0)
         {
             await tx.CommitAsync(ct);
+            logger.LogDebug("Spend duplicate detected for user {UserId}, action {ActionType}", userId, actionType);
 
             var bal = await databaseContext.Wallets
                 .AsNoTracking()
@@ -226,6 +225,9 @@ public sealed class CreditsStore(TubesterDb databaseContext) : ICreditsStore
         if (newBalance is not null)
         {
             await tx.CommitAsync(ct);
+            logger.LogInformation(
+                "Credits spent successfully for user {UserId}, action {ActionType}, cost {Cost}, new balance {NewBalance}",
+                userId, actionType, cost, newBalance);
             return new SpendResult
             {
                 Succeeded = true,
@@ -247,6 +249,9 @@ public sealed class CreditsStore(TubesterDb databaseContext) : ICreditsStore
 
         if (walletState is null)
         {
+            logger.LogWarning(
+                "Spend failed for user {UserId}, action {ActionType}: no wallet found",
+                userId, actionType);
             return new SpendResult
             {
                 Succeeded = false,
@@ -258,6 +263,9 @@ public sealed class CreditsStore(TubesterDb databaseContext) : ICreditsStore
 
         if (walletState.PeriodEndUtc <= occurredAtUtc)
         {
+            logger.LogWarning(
+                "Spend failed for user {UserId}, action {ActionType}: wallet expired (period ended {PeriodEndUtc})",
+                userId, actionType, walletState.PeriodEndUtc);
             return new SpendResult
             {
                 Succeeded = false,
@@ -267,6 +275,9 @@ public sealed class CreditsStore(TubesterDb databaseContext) : ICreditsStore
             };
         }
 
+        logger.LogWarning(
+            "Spend failed for user {UserId}, action {ActionType}: insufficient balance (current balance {Balance}, cost {Cost})",
+            userId, actionType, walletState.Balance, cost);
         return new SpendResult
         {
             Succeeded = false,
@@ -332,6 +343,9 @@ public sealed class CreditsStore(TubesterDb databaseContext) : ICreditsStore
         {
             // Duplicate grant attempt
             await tx.CommitAsync(ct);
+            logger.LogDebug(
+                "Period grant duplicate detected for user {UserId}, idempotency key {IdempotencyKey}",
+                userId, idempotencyKey);
 
             var existingBalance = await databaseContext.Wallets
                 .AsNoTracking()
@@ -359,6 +373,10 @@ public sealed class CreditsStore(TubesterDb databaseContext) : ICreditsStore
              """, ct);
 
         await tx.CommitAsync(ct);
+
+        logger.LogInformation(
+            "Period credits granted for user {UserId}, amount {PeriodCredits}, period {PeriodStartUtc} to {PeriodEndUtc}",
+            userId, periodCredits, periodStartUtc, periodEndUtc);
 
         return new GrantResult { Granted = true, NewBalance = periodCredits };
     }
@@ -478,25 +496,10 @@ public sealed class CreditsStore(TubesterDb databaseContext) : ICreditsStore
         DateTimeOffset occurredAtUtc,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(userId))
-        {
-            throw new ArgumentException("User id is required.", nameof(userId));
-        }
-
-        if (string.IsNullOrWhiteSpace(actionType))
-        {
-            throw new ArgumentException("Action type is required.", nameof(actionType));
-        }
-
-        if (string.IsNullOrWhiteSpace(originalIdempotencyKey))
-        {
-            throw new ArgumentException("Original idempotency key is required.", nameof(originalIdempotencyKey));
-        }
-
-        if (string.IsNullOrWhiteSpace(refundIdempotencyKey))
-        {
-            throw new ArgumentException("Refund idempotency key is required.", nameof(refundIdempotencyKey));
-        }
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(actionType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(originalIdempotencyKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(refundIdempotencyKey);
 
         if (occurredAtUtc.Offset != TimeSpan.Zero)
         {
@@ -537,8 +540,15 @@ public sealed class CreditsStore(TubesterDb databaseContext) : ICreditsStore
         if (inserted == 0)
         {
             await transaction.CommitAsync(ct);
+            logger.LogDebug(
+                "Refund duplicate detected for user {UserId}, action {ActionType}, original idempotency key {OriginalIdempotencyKey}",
+                userId, actionType, originalIdempotencyKey);
             return;
         }
+
+        logger.LogInformation(
+            "Refund completed for user {UserId}, action {ActionType}, amount {RefundAmount}",
+            userId, actionType, refundAmount);
 
         await using var command = databaseContext.Database.GetDbConnection().CreateCommand();
         command.Transaction = databaseContext.Database.CurrentTransaction!.GetDbTransaction();
@@ -577,5 +587,151 @@ public sealed class CreditsStore(TubesterDb databaseContext) : ICreditsStore
         }
 
         await transaction.CommitAsync(ct);
+    }
+
+    public async Task<GrantResult> GrantCreditsAsync(
+        string userId,
+        int amount,
+        string idempotencyKey,
+        DateTimeOffset occurredAtUtc,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(amount);
+        
+        if (occurredAtUtc.Offset != TimeSpan.Zero)
+        {
+            occurredAtUtc = occurredAtUtc.ToUniversalTime();
+        }
+
+        await using var tx = await databaseContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+
+        var metadataJson =
+            JsonSerializer.Serialize(new { type = "admin_grant", amount }, _jsonSerializerOptions);
+        
+        // 1) Idempotency gate
+        var inserted = await databaseContext.Database.ExecuteSqlInterpolatedAsync($"""
+
+             INSERT INTO "LedgerEntries"
+                 ("UserId", "OccurredAtUtc", "ActionType", "Delta", "IdempotencyKey", "ReferenceId", "MetadataJson")
+             VALUES
+                 ({userId}, {occurredAtUtc}, {"AdminGrant"}, {amount}, {idempotencyKey}, {null}, {metadataJson}::jsonb)
+             ON CONFLICT ("UserId","IdempotencyKey") DO NOTHING;
+
+             """, ct);
+        
+        if (inserted == 0)
+        {
+            var walletDto = await databaseContext.Wallets
+                .AsNoTracking()
+                .Where(w => w.UserId == userId)
+                .Select(w => new { w.Balance, w.PeriodStartUtc, w.PeriodEndUtc })
+                .SingleOrDefaultAsync(ct);
+
+            await tx.RollbackAsync(ct);
+            
+            if (walletDto is null)
+            {
+                logger.LogError("Ledger entry already exists for idempotency key '{IdempotencyKey}', but wallet was not found", idempotencyKey);
+                throw new InvalidOperationException(
+                    $"Ledger entry already exists, but wallet was not found.");
+            }
+
+            return new GrantResult
+            {
+                Granted = true,
+                AlreadyProcessed = true,
+                Reason = "Duplicate grant attempt",
+                NewBalance = walletDto.Balance
+            };
+        }
+
+        // 2) Ensure wallet exists (create if necessary)
+        var newBalance = await UpsertWalletForAdminGrantAsync(
+            userId,
+            amount,
+            occurredAtUtc,
+            ct);
+
+        await tx.CommitAsync(ct);
+
+        logger.LogInformation(
+            "Admin credits granted for user {UserId}, amount {Amount}, new balance {NewBalance}",
+            userId, amount, newBalance);
+
+        return new GrantResult
+        {
+            Granted = true,
+            AlreadyProcessed = false,
+            NewBalance = newBalance
+        };
+    }
+
+    private async Task<int> UpsertWalletForAdminGrantAsync(
+        string userId,
+        int amount,
+        DateTimeOffset occurredAtUtc,
+        CancellationToken ct)
+    {
+        var periodEndUtc = occurredAtUtc.AddDays(30);
+
+        await using var cmd = databaseContext.Database.GetDbConnection().CreateCommand();
+        cmd.Transaction = databaseContext.Database.CurrentTransaction!.GetDbTransaction();
+
+        cmd.CommandText = """
+            INSERT INTO "Wallets"
+                ("UserId", "Balance", "PeriodStartUtc", "PeriodEndUtc", "UpdatedAtUtc")
+            VALUES
+                (@userId, @amount, @periodStartUtc, @periodEndUtc, @occurredAtUtc)
+            ON CONFLICT ("UserId") DO UPDATE
+            SET "Balance" = CASE
+                WHEN "Wallets"."PeriodEndUtc" <= @occurredAtUtc
+                THEN EXCLUDED."Balance"
+                ELSE "Wallets"."Balance" + EXCLUDED."Balance"
+            END,
+            "PeriodStartUtc" = CASE
+                WHEN "Wallets"."PeriodEndUtc" <= @occurredAtUtc
+                THEN EXCLUDED."PeriodStartUtc"
+                ELSE "Wallets"."PeriodStartUtc"
+            END,
+            "PeriodEndUtc" = CASE
+                WHEN "Wallets"."PeriodEndUtc" <= @occurredAtUtc
+                THEN EXCLUDED."PeriodEndUtc"
+                ELSE "Wallets"."PeriodEndUtc"
+            END,
+            "UpdatedAtUtc" = EXCLUDED."UpdatedAtUtc"
+            RETURNING "Balance";
+            """;
+
+        var pUser = cmd.CreateParameter();
+        pUser.ParameterName = "userId";
+        pUser.Value = userId;
+
+        var pAmount = cmd.CreateParameter();
+        pAmount.ParameterName = "amount";
+        pAmount.Value = amount;
+
+        var pPeriodStart = cmd.CreateParameter();
+        pPeriodStart.ParameterName = "periodStartUtc";
+        pPeriodStart.Value = occurredAtUtc;
+
+        var pPeriodEnd = cmd.CreateParameter();
+        pPeriodEnd.ParameterName = "periodEndUtc";
+        pPeriodEnd.Value = periodEndUtc;
+
+        var pAt = cmd.CreateParameter();
+        pAt.ParameterName = "occurredAtUtc";
+        pAt.Value = occurredAtUtc;
+
+        cmd.Parameters.Add(pUser);
+        cmd.Parameters.Add(pAmount);
+        cmd.Parameters.Add(pPeriodStart);
+        cmd.Parameters.Add(pPeriodEnd);
+        cmd.Parameters.Add(pAt);
+
+        var result = await cmd.ExecuteScalarAsync(ct) ?? throw new InvalidOperationException("Wallet admin grant upsert did not return a balance.");
+
+        return Convert.ToInt32(result);
     }
 }

@@ -1,3 +1,5 @@
+using Tubester.Abstractions.Credits;
+
 namespace Tubester.Application.Credits;
 
 public interface ICreditsService
@@ -22,4 +24,11 @@ public interface ICreditsService
     /// Returns the number of wallets that were updated.
     /// </summary>
     Task<int> GrantPeriodCreditsIfDueAsync(CancellationToken cancellationToken);
+    
+    Task<GrantResult> GrantAdminCreditsAsync(
+        string adminUserId,
+        string targetUserId,
+        int amount,
+        string operationId,
+        CancellationToken ct);
 }

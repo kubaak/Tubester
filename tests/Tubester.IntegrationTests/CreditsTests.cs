@@ -675,6 +675,8 @@ public sealed class CreditsTests(TestFixture fixture)
         fixture.ApiFactory.MockYouTubeIntegration.Reset();
 
         const string userId = MockAuthenticationExtensions.TestSub;
+        const string testChannelId = "credits-channel";
+        const string testUploadsPlaylistId = "PLCreditsChannel";
 
         var reply = Reply.Create(
             "credits-comment-1",
@@ -698,6 +700,29 @@ public sealed class CreditsTests(TestFixture fixture)
                 TestFixture.TestingDateTimeOffset);
 
             await databaseContext.Users.AddAsync(user, CancellationToken.None);
+
+            var channel = Channel.Create(testChannelId, userId, "Test Channel",
+                testUploadsPlaylistId, DateTimeOffset.UtcNow);
+            await databaseContext.Channels.AddAsync(channel, CancellationToken.None);
+
+            var video = Video.Create(
+                testUploadsPlaylistId,
+                "credits-video-1",
+                "Test Video",
+                "Description",
+                TestFixture.TestingDateTimeOffset,
+                TimeSpan.FromMinutes(10),
+                VideoVisibility.Public,
+                ["test"],
+                "22",
+                "en",
+                "en",
+                null,
+                null,
+                TestFixture.TestingDateTimeOffset,
+                "etag1"
+            );
+            await databaseContext.Videos.AddAsync(video, CancellationToken.None);
 
             var plan = new Plan
             {
@@ -800,6 +825,8 @@ public sealed class CreditsTests(TestFixture fixture)
         fixture.ApiFactory.MockYouTubeIntegration.Reset();
 
         const string userId = MockAuthenticationExtensions.TestSub;
+        const string testChannelId = "credits-insufficient-channel";
+        const string testUploadsPlaylistId = "PLCreditsInsufficient";
 
         var reply = Reply.Create(
             "credits-insufficient-comment-1",
@@ -822,6 +849,29 @@ public sealed class CreditsTests(TestFixture fixture)
                 TestFixture.TestingDateTimeOffset);
 
             await databaseContext.Users.AddAsync(user, CancellationToken.None);
+
+            var channel = Channel.Create(testChannelId, userId, "Test Channel",
+                testUploadsPlaylistId, DateTimeOffset.UtcNow);
+            await databaseContext.Channels.AddAsync(channel, CancellationToken.None);
+
+            var video = Video.Create(
+                testUploadsPlaylistId,
+                "credits-insufficient-video-1",
+                "Test Video",
+                "Description",
+                TestFixture.TestingDateTimeOffset,
+                TimeSpan.FromMinutes(10),
+                VideoVisibility.Public,
+                ["test"],
+                "22",
+                "en",
+                "en",
+                null,
+                null,
+                TestFixture.TestingDateTimeOffset,
+                "etag1"
+            );
+            await databaseContext.Videos.AddAsync(video, CancellationToken.None);
 
             var plan = new Plan
             {

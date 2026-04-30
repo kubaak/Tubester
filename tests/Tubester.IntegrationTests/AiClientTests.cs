@@ -259,7 +259,7 @@ public class AiClientTests : IAsyncLifetime
             new() { PlaylistId = "PLTechReviews", Name = "Tech Reviews" },
             new() { PlaylistId = "PLTravelVlogs", Name = "Travel Vlogs" }
         };
-        
+
         var context = new PlaylistSuggestionContext
         {
             PromptEnrichment = "Italian Cooking",
@@ -290,7 +290,7 @@ public class AiClientTests : IAsyncLifetime
             new() { PlaylistId = "PLCoffeeRecipes", Name = "Coffee Recipes" },
             new() { PlaylistId = "PLGardeningTips", Name = "Gardening Tips" }
         };
-        
+
         var context = new PlaylistSuggestionContext
         {
             PromptEnrichment = "Gaming",
@@ -340,7 +340,7 @@ public class AiClientTests : IAsyncLifetime
             new() { PlaylistId = "PLPastaRecipes", Name = "Pasta Recipes" },
             new() { PlaylistId = "PLGaming", Name = "Gaming" },
         };
-        
+
         var context = new PlaylistSuggestionContext
         {
             PromptEnrichment = "Cartagena",
@@ -353,7 +353,7 @@ public class AiClientTests : IAsyncLifetime
         // Assert
         Assert.NotNull(suggestedIds);
         var suggestedList = suggestedIds.ToList();
-        
+
         Assert.NotEmpty(suggestedList);
         Assert.Contains(suggestedList, id => id == "PLTravelVlogs" || id == "PLColombia");
     }
