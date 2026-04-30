@@ -131,7 +131,7 @@ public sealed class AiVideoImprovingService(
             }
 
             var latestVideoPlaylistNames = await playlistRepository.GetPlaylistNamesForLatestPublicVideoAsync(channelId, cancellationToken);
-            
+
             var maxBatchSize = playlistSuggestionOptions.Value.MaxPlaylistsPerBatch;
 
             logger.LogDebug(
@@ -157,7 +157,8 @@ public sealed class AiVideoImprovingService(
 
                 var context = new PlaylistSuggestionContext
                 {
-                    PromptEnrichment = promptEnrichment, LatestPlaylistTitlesUsed = latestVideoPlaylistNames
+                    PromptEnrichment = promptEnrichment,
+                    LatestPlaylistTitlesUsed = latestVideoPlaylistNames
                 };
                 var aiClient = await aiClientFactory.GetClientAsync(cancellationToken);
                 var batchSuggestedIds = await aiClient.SuggestPlaylistIdsAsync(

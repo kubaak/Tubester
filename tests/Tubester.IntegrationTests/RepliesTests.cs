@@ -375,6 +375,39 @@ public class RepliesTests(TestFixture fixture)
         // Arrange
         await fixture.ResetDbAsync();
 
+        const string testChannelId = "testChannelID123";
+        const string testUploadsPlaylistId = "PLTestUploads123";
+        fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
+            .Returns(testChannelId);
+
+        var user = User.Create(
+            MockAuthenticationExtensions.TestSub,
+            MockAuthenticationExtensions.TestEmail,
+            MockAuthenticationExtensions.TestName,
+            MockAuthenticationExtensions.TestPicture,
+            TestFixture.TestingDateTimeOffset);
+
+        var channel = Channel.Create(testChannelId, MockAuthenticationExtensions.TestSub, "Test Channel",
+            testUploadsPlaylistId, DateTimeOffset.UtcNow);
+
+        var video = Video.Create(
+            testUploadsPlaylistId,
+            "video1",
+            "Test Video",
+            "Description",
+            TestFixture.TestingDateTimeOffset,
+            TimeSpan.FromMinutes(10),
+            VideoVisibility.Public,
+            ["test"],
+            "22",
+            "en",
+            "en",
+            null,
+            null,
+            TestFixture.TestingDateTimeOffset,
+            "etag1"
+        );
+
         var reply = Reply.Create(
             "comment-to-delete",
             "video1",
@@ -386,6 +419,9 @@ public class RepliesTests(TestFixture fixture)
         using (var scope = fixture.ApiServices.CreateScope())
         {
             var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
+            databaseContext.Users.Add(user);
+            databaseContext.Channels.Add(channel);
+            databaseContext.Videos.Add(video);
             databaseContext.Replies.Add(reply);
             await databaseContext.SaveChangesAsync();
         }
@@ -431,6 +467,37 @@ public class RepliesTests(TestFixture fixture)
         await fixture.ResetDbAsync();
         fixture.ApiFactory.MockYouTubeIntegration.Reset();
 
+        const string testChannelId = "batch-approve-channel";
+        const string testUploadsPlaylistId = "PLBatchApprove";
+
+        var user = User.Create(
+            MockAuthenticationExtensions.TestSub,
+            MockAuthenticationExtensions.TestEmail,
+            MockAuthenticationExtensions.TestName,
+            MockAuthenticationExtensions.TestPicture,
+            TestFixture.TestingDateTimeOffset);
+
+        var channel = Channel.Create(testChannelId, MockAuthenticationExtensions.TestSub, "Test Channel",
+            testUploadsPlaylistId, DateTimeOffset.UtcNow);
+
+        var video = Video.Create(
+            testUploadsPlaylistId,
+            "video1",
+            "Test Video",
+            "Description",
+            TestFixture.TestingDateTimeOffset,
+            TimeSpan.FromMinutes(10),
+            VideoVisibility.Public,
+            ["test"],
+            "22",
+            "en",
+            "en",
+            null,
+            null,
+            TestFixture.TestingDateTimeOffset,
+            "etag1"
+        );
+
         var reply1 = Reply.Create(
             "comment1",
             "video1",
@@ -452,6 +519,8 @@ public class RepliesTests(TestFixture fixture)
         using (var scope = fixture.ApiServices.CreateScope())
         {
             var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+            // Add Plan first and save to get the auto-generated ID
             var plan = new Plan
             {
                 Code = "FreePlan",
@@ -464,14 +533,12 @@ public class RepliesTests(TestFixture fixture)
 
             await databaseContext.Plans.AddAsync(plan, CancellationToken.None);
             await databaseContext.SaveChangesAsync(CancellationToken.None);
-            var user = User.Create(
-                MockAuthenticationExtensions.TestSub,
-                MockAuthenticationExtensions.TestEmail,
-                MockAuthenticationExtensions.TestName,
-                MockAuthenticationExtensions.TestPicture,
-                TestFixture.TestingDateTimeOffset);
 
+            // Now add other entities
             await databaseContext.Users.AddAsync(user, CancellationToken.None);
+            await databaseContext.Channels.AddAsync(channel, CancellationToken.None);
+            await databaseContext.Videos.AddAsync(video, CancellationToken.None);
+
             var userSubscription = new Subscription
             {
                 UserId = user.Id,
@@ -599,6 +666,37 @@ public class RepliesTests(TestFixture fixture)
         // Arrange
         await fixture.ResetDbAsync();
 
+        const string testChannelId = "batch-ignore-channel";
+        const string testUploadsPlaylistId = "PLBatchIgnore";
+
+        var user = User.Create(
+            MockAuthenticationExtensions.TestSub,
+            MockAuthenticationExtensions.TestEmail,
+            MockAuthenticationExtensions.TestName,
+            MockAuthenticationExtensions.TestPicture,
+            TestFixture.TestingDateTimeOffset);
+
+        var channel = Channel.Create(testChannelId, MockAuthenticationExtensions.TestSub, "Test Channel",
+            testUploadsPlaylistId, DateTimeOffset.UtcNow);
+
+        var video = Video.Create(
+            testUploadsPlaylistId,
+            "video1",
+            "Test Video",
+            "Description",
+            TestFixture.TestingDateTimeOffset,
+            TimeSpan.FromMinutes(10),
+            VideoVisibility.Public,
+            ["test"],
+            "22",
+            "en",
+            "en",
+            null,
+            null,
+            TestFixture.TestingDateTimeOffset,
+            "etag1"
+        );
+
         var reply1 = Reply.Create(
             "comment1",
             "video1",
@@ -629,6 +727,9 @@ public class RepliesTests(TestFixture fixture)
         using (var scope = fixture.ApiServices.CreateScope())
         {
             var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
+            databaseContext.Users.Add(user);
+            databaseContext.Channels.Add(channel);
+            databaseContext.Videos.Add(video);
             databaseContext.Replies.AddRange(reply1, reply2, postedReply);
             await databaseContext.SaveChangesAsync();
         }

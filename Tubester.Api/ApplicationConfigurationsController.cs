@@ -57,7 +57,7 @@ public sealed class ApplicationConfigurationsController(IApplicationConfiguratio
         CancellationToken cancellationToken)
     {
         var config = await configService.CreateAsync(request, cancellationToken);
-            
+
         return CreatedAtRoute(
             nameof(GetByKeyAsync),
             new { key = config.Key },

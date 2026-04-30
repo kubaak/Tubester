@@ -37,7 +37,7 @@ public static class ServiceCollectionExtensions
             .ValidateOnStart();
         return services;
     }
-    
+
     public static IServiceCollection AddApplicationConfigurationServices(this IServiceCollection services)
     {
         services.AddMemoryCache();

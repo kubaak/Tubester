@@ -87,7 +87,7 @@ public sealed class AuthController(IConfiguration configuration) : ApiController
             : channelPicture;
 
         var hasWriteAccess = User.HasClaim("yt_write_granted", "true");
-        
+
         var isAdmin = configuration["AdminEmails:0"]!.Contains(email);
 
         return Ok(new AuthMeResponse

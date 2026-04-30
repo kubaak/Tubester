@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using Tubester.Abstractions.Credits;
+using Tubester.Application.Common;
 
 namespace Tubester.Application.Credits;
 
@@ -131,6 +133,10 @@ public sealed class CreditsService(
 
         var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
 
+        logger.LogDebug(
+            "Processing refund for user {UserId}, action {ActionType}",
+            userId, actionType);
+
         await creditsStore.RefundAsync(
             userId,
             actionType,
@@ -150,6 +156,10 @@ public sealed class CreditsService(
         {
             return 0;
         }
+
+        logger.LogInformation(
+            "Processing period credit grants for {Count} users with expired wallets",
+            userIdsWithExpiredWallets.Count);
 
         var updatedWalletCount = 0;
 
@@ -182,6 +192,42 @@ public sealed class CreditsService(
         }
 
         return updatedWalletCount;
+    }
+    
+    public async Task<GrantResult> GrantAdminCreditsAsync(
+        string adminUserId, string targetUserId, int amount, string operationId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(adminUserId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetUserId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(operationId);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(amount);
+
+        var normalizedOperationId = operationId.Trim();
+
+        var idempotencyKey =
+            $"admin-grant:{adminUserId}:{targetUserId}:{normalizedOperationId}";
+
+        logger.LogInformation(
+            "Admin granting credits: admin {AdminUserId}, target {TargetUserId}, amount {Amount}",
+            adminUserId, targetUserId, amount);
+
+        try
+        {
+            return await creditsStore.GrantCreditsAsync(
+                targetUserId,
+                amount,
+                idempotencyKey,
+                dateTimeOffsetProvider.GetUtcNowDateTimeOffset(),
+                ct);
+        }
+        catch (PostgresException e)
+            when (e is { SqlState: PostgresErrorCodes.ForeignKeyViolation, ConstraintName: "FK_LedgerEntries_Users_UserId" })
+        {
+            logger.LogWarning(
+                "Admin credit grant failed: target user {TargetUserId} does not exist",
+                targetUserId);
+            throw new NotFoundException("User does not exist.", e);
+        }
     }
 
     private static string BuildGrantIdempotencyKey(string userId, DateTimeOffset periodStartUtc)

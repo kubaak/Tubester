@@ -9,8 +9,8 @@ using Tubester.Abstractions.Playlists;
 namespace Tubester.Integration;
 
 public sealed class AiClient(
-    HttpClient httpClient, 
-    IOptions<AiOptions> aiOptions, 
+    HttpClient httpClient,
+    IOptions<AiOptions> aiOptions,
     ILogger<AiClient> logger)
     : IAiClient
 {
@@ -99,7 +99,7 @@ public sealed class AiClient(
             throw new InvalidOperationException("AI returned invalid JSON content.", ex);
         }
     }
-    
+
     public async Task<IEnumerable<string>> SuggestPlaylistIdsAsync(
         PlaylistSuggestionContext context,
         IReadOnlyList<PlaylistCandidateDto> playlists,

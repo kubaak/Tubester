@@ -93,7 +93,7 @@ builder.Services.AddProblemDetails();
 
 // Admin email authorization
 var adminEmails = builder.Configuration.GetSection("AdminEmails").Get<string[]>() ?? [];
-builder.Services.AddScoped<IAuthorizationHandler>(p => 
+builder.Services.AddScoped<IAuthorizationHandler>(p =>
     new AdminEmailAuthorizationHandler(
         p.GetRequiredService<ICurrentUserContext>()));
 builder.Services.AddAuthorizationBuilder()
