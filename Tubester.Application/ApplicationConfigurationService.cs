@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Tubester.Abstractions;
 using Tubester.Abstractions.ApplicationConfiguration;
 using Tubester.Application.Common;
 using Tubester.Domain;

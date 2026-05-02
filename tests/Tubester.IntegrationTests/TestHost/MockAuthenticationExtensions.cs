@@ -16,7 +16,7 @@ public static class MockAuthenticationExtensions
     public const string TestEmail = "test@example.com";
     public const string TestName = "Test User";
     public const string TestPicture = "https://example.com/test-picture.jpg";
-    public const string TestSub = "test-user-id";
+    public const string TestSub = TestConstants.UserId;
 
     public static IServiceCollection AddMockAuthentication(this IServiceCollection services)
     {

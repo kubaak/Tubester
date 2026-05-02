@@ -10,9 +10,9 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
+using Tubester.Abstractions;
 using Tubester.Abstractions.ApplicationConfiguration;
 using Tubester.Abstractions.Channels;
-using Tubester.Application;
 using Tubester.Integration;
 using Tubester.Persistence;
 
@@ -33,7 +33,10 @@ public class ApiTestWebAppFactory : WebApplicationFactory<Program>
         MockAiClient.Setup(x => x.Provider).Returns(AiProviders.Ollama);
         MockYouTubeIntegration = new Mock<IYouTubeIntegration>(MockBehavior.Strict);
         MockCurrentChannelContext = new Mock<ICurrentChannelContext>(MockBehavior.Strict);
-        MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId()).Returns("testChannelId");
+        MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId()).Returns(TestConstants.ChannelId);
+        MockCurrentChannelContext.Setup(x => x.ChannelId).Returns(TestConstants.ChannelId);
+        MockCurrentChannelContext.Setup(x => x.UploadPlaylistId).Returns(TestConstants.UploadsPlaylistId);
+        MockCurrentChannelContext.Setup(x => x.GetRequiredUploadPlaylistId()).Returns(TestConstants.UploadsPlaylistId);
         MockDateTimeOffsetProvider = new Mock<IDateTimeOffsetProvider>(MockBehavior.Strict);
         MockDateTimeOffsetProvider.Setup(x => x.GetUtcNowDateTimeOffset()).Returns(testingUtcNow);
     }

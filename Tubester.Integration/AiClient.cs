@@ -1,5 +1,4 @@
 ﻿using System.Net.Http.Json;
-using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -142,7 +141,8 @@ public sealed class AiClient(
             options = new
             {
                 temperature,
-                num_ctx = numCtx
+                num_ctx = numCtx,
+                num_predict = 256
             }
         };
 
@@ -444,47 +444,38 @@ public sealed class AiClient(
         PlaylistSuggestionContext context,
         IReadOnlyList<PlaylistCandidateDto> playlists)
     {
-        var prompt = new StringBuilder();
+        var playlistLines = string.Join(
+            Environment.NewLine,
+            playlists.Select(p => $"- {p.PlaylistId} | {p.Name}"));
 
-        prompt.AppendLine("You choose which existing YouTube playlists are a good match for a video.");
-        prompt.AppendLine("Return JSON only.");
-        prompt.AppendLine();
-        prompt.AppendLine("Rules:");
-        prompt.AppendLine("- Choose only from the provided playlists");
-        prompt.AppendLine("- Return only playlistIds");
-        prompt.AppendLine("- Do not invent playlist ids");
-        prompt.AppendLine("- Select only strong matches");
-        prompt.AppendLine("- If none match, return an empty array");
-        prompt.AppendLine("- Return exactly one valid JSON object");
-        prompt.AppendLine("- Do not wrap the JSON in markdown or code fences");
-        prompt.AppendLine();
-        prompt.AppendLine("Video context:");
-        prompt.AppendLine(context.PromptEnrichment);
-        prompt.AppendLine();
+        var latestPlaylistTitlesUsedText = context.LatestPlaylistTitlesUsed.Count > 0
+            ? $"As a weak hint only, the latest video was assigned to these playlists: {string.Join(", ", context.LatestPlaylistTitlesUsed)}"
+            : "";
 
-        if (context.LatestPlaylistTitlesUsed.Count > 0)
-        {
-            prompt.AppendLine($"Latest video was assigned in these playlists: {string.Join(", ", context.LatestPlaylistTitlesUsed)}");
-            prompt.AppendLine();
-        }
+        return $$"""
+                 Return JSON only.
 
-        prompt.AppendLine("Available playlists:");
+                 Choose matching YouTube playlistIds for this video.
 
-        foreach (var playlist in playlists)
-        {
-            prompt.Append("- ");
-            prompt.Append(JsonSerializer.Serialize(new
-            {
-                playlistId = playlist.PlaylistId,
-                name = playlist.Name
-            }));
-            prompt.AppendLine();
-        }
+                 Video:
+                 {{context.PromptEnrichment}}
 
-        prompt.AppendLine();
-        prompt.AppendLine("""Return: {"playlistIds":["...","..."]}""");
+                 {{latestPlaylistTitlesUsedText}}
 
-        return prompt.ToString();
+                 Available playlists:
+                 {{playlistLines}}
+
+                 Rules:
+                 - Use only listed playlistIds
+                 - Select only strong matches
+                 - Return all strong matches, not just one
+                 - Return empty array if none match
+                 - Return exactly this JSON shape:
+                   {"playlistIds":["...","..."]}
+
+                 Return:
+                 {"playlistIds":[]}
+                 """;
     }
 
     private static IReadOnlyList<string> ParseSuggestedPlaylistIds(

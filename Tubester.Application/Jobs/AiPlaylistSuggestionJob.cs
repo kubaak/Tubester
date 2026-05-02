@@ -9,14 +9,17 @@ public sealed class AiPlaylistSuggestionJob(
     [Queue("ai-playlist-suggestion")]
     [AutomaticRetry(Attempts = 3, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
     public async Task Run(
-        string channelId,
-        string targetVideoId,
-        string promptEnrichment,
+        PlaylistSuggestionRequest request,
         IJobCancellationToken jobCancellationToken)
     {
         jobCancellationToken.ThrowIfCancellationRequested();
 
-        await aiVideoImprovingService.SuggestPlaylistIdsAsync(channelId, targetVideoId, promptEnrichment,
-            jobCancellationToken.ShutdownToken);
+        await aiVideoImprovingService.SuggestPlaylistIdsAsync(request, jobCancellationToken.ShutdownToken);
     }
 }
+
+public record PlaylistSuggestionRequest(
+    string ChannelId,
+    string UploadPlaylistId,
+    string TargetVideoId,
+    string PromptEnrichment);

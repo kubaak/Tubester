@@ -1,6 +1,6 @@
 namespace Tubester.Integration.Dtos;
 
-public sealed record PlaylistDto(
+public sealed record DetailedPlaylistDto(
     string Id,
     string? Title,
     string? Description,

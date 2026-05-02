@@ -6,9 +6,9 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.OpenApi;
+using Tubester.Abstractions;
 using Tubester.Abstractions.Analytics;
 using Tubester.Abstractions.Users;
-using Tubester.Application;
 using Tubester.Integration;
 
 namespace Tubester.Api.Extensions;
@@ -267,6 +267,7 @@ public static class ServiceCollectionExtensions
         AddOrReplaceClaim(claimsIdentity, "yt_channel_id", userChannel.Id);
         AddOrReplaceClaim(claimsIdentity, "yt_channel_title", userChannel.Title ?? string.Empty);
         AddOrReplaceClaim(claimsIdentity, "yt_channel_picture", userChannel.Picture ?? string.Empty);
+        AddOrReplaceClaim(claimsIdentity, "yt_upload_playlist_id", userChannel.UploadPlaylistId ?? string.Empty);
 
         return accessToken;
     }

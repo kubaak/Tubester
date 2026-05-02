@@ -4,26 +4,26 @@ namespace Tubester.Abstractions.Videos;
 
 public interface IVideoRepository
 {
-    Task<List<Video>> GetCommentableVideosAsync(string channelId, CancellationToken cancellationToken);
+    Task<List<Video>> GetCommentableVideosAsync(string uploadPlaylistId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Gets a video by its ID from the database.
     /// </summary>
-    /// <param name="channelId">Channel id to filter videos by.</param>
+    /// <param name="uploadPlaylistId">Upload playlist ID to filter videos by.</param>
     /// <param name="videoId">The video ID to search for.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The video if found, null otherwise.</returns>
-    Task<Video?> GetVideoByIdAsync(string channelId, string videoId, CancellationToken cancellationToken);
+    Task<Video?> GetVideoByIdAsync(string uploadPlaylistId, string videoId, CancellationToken cancellationToken);
 
     Task<(int inserted, int updated)> UpsertAsync(
-        string channelId,
+        string uploadPlaylistId,
         IEnumerable<Video> videos,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets a page of videos with optional title filtering and cursor-based pagination for a specific channel.
     /// </summary>
-    /// <param name="channelId">Channel id to filter videos by.</param>
+    /// <param name="uploadPlaylistId">Upload playlist ID to filter videos by.</param>
     /// <param name="title">Optional title filter (case-insensitive substring match).</param>
     /// <param name="visibilities">Optional set of visibilities to include.</param>
     /// <param name="afterPublishedAtUtc">Cursor: published date to search after (exclusive).</param>
@@ -32,7 +32,7 @@ public interface IVideoRepository
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of videos ordered by PublishedAt DESC, VideoId DESC.</returns>
     Task<List<Video>> GetVideosPageAsync(
-        string channelId,
+        string uploadPlaylistId,
         string? title,
         IReadOnlyCollection<VideoVisibility>? visibilities,
         DateTimeOffset? afterPublishedAtUtc,
@@ -43,20 +43,26 @@ public interface IVideoRepository
     /// <summary>
     /// Gets ETags for specified video IDs to support conditional requests.
     /// </summary>
-    /// <param name="channelId"></param>
+    /// <param name="uploadPlaylistId"></param>
     /// <param name="videoIds">Video IDs to get ETags for.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Dictionary mapping video ID to ETag.</returns>
     Task<Dictionary<string, string?>> GetVideoETagsAsync(
-        string channelId,
+        string uploadPlaylistId,
         IEnumerable<string> videoIds,
         CancellationToken cancellationToken);
 
-    Task MarkCommentsDisabledAsync(string channelId, string videoId, CancellationToken cancellationToken);
+    Task MarkCommentsDisabledAsync(string uploadPlaylistId, string videoId, CancellationToken cancellationToken);
 
-    Task<bool> TrySettingAiTemplateInProgressAsync(
-        string channelId,
+    Task<bool> TryAddAiOperationsInProgressAsync(
+        string uploadPlaylistId,
         string videoId,
-        bool isAiTemplateInProgress,
+        AiVideoOperationFlags operations,
+        CancellationToken cancellationToken);
+
+    Task<bool> TryClearAiOperationsInProgressAsync(
+        string uploadPlaylistId,
+        string videoId,
+        AiVideoOperationFlags operations,
         CancellationToken cancellationToken);
 }

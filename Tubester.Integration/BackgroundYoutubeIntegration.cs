@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using Google.Apis.Services;
 using Google.Apis.YouTube.v3;
 using Google.Apis.YouTube.v3.Data;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tubester.Integration.Configuration;
 using Tubester.Integration.Dtos;
@@ -10,12 +11,15 @@ using Tubester.Integration.Exceptions;
 
 namespace Tubester.Integration;
 
-public class BackgroundYoutubeIntegration : IBackgroundYoutubeIntegration
+public class BackgroundYoutubeIntegration() : IBackgroundYoutubeIntegration
 {
     private readonly YouTubeService _youTubeService;
+    private readonly ILogger<BackgroundYoutubeIntegration> _logger;
 
-    public BackgroundYoutubeIntegration(IOptions<YouTubeApiOptions> apiOptions)
+    public BackgroundYoutubeIntegration(IOptions<YouTubeApiOptions> apiOptions,
+        ILogger<BackgroundYoutubeIntegration> logger) : this()
     {
+        _logger = logger;
         var apiKey = apiOptions.Value.ApiKey;
         if (string.IsNullOrWhiteSpace(apiKey))
         {
@@ -56,13 +60,20 @@ public class BackgroundYoutubeIntegration : IBackgroundYoutubeIntegration
                 if (ex.HttpStatusCode == HttpStatusCode.Forbidden &&
                     ex.Message.Contains("has disabled comments", StringComparison.OrdinalIgnoreCase))
                 {
+                    _logger.LogWarning(ex, "Comments disabled for video {VideoId}", videoId);
                     throw new CommentsDisabledException(
                         videoId,
                         "The video has disabled comments and cannot be scanned.",
                         ex);
                 }
+                _logger.LogError(ex, "Error from Google API scanning comments for video {VideoId}", videoId);
 
                 // Anything else bubble up
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error scanning comments for video {VideoId}", videoId);
                 throw;
             }
 

@@ -1,10 +1,11 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Tubester.Abstractions.Channels;
+using Tubester.Abstractions;
 using Tubester.Abstractions.Playlists;
 using Tubester.Abstractions.Videos;
-using Tubester.Application.Contracts.Videos;
+using Tubester.Application.Jobs;
 using Tubester.Application.Options;
+using Tubester.Domain;
 using Tubester.Integration;
 
 namespace Tubester.Application.Videos;
@@ -15,15 +16,15 @@ public sealed class AiVideoImprovingService(
     IVideoRepository videoRepository,
     IDateTimeOffsetProvider dateTimeOffsetProvider,
     IPlaylistRepository playlistRepository,
-    IChannelRepository channelRepository,
     IOptions<PlaylistSuggestionOptions> playlistSuggestionOptions)
     : IAiVideoImprovingService
 {
     public async Task GenerateAiTemplateAsync(
-    string channelId,
-    AiVideoTemplateRequest request,
+    AiVideoDetailsRequest request,
     CancellationToken cancellationToken)
     {
+        var channelId = request.ChannelId;
+        var uploadPlaylistId = request.UploadPlaylistId;
         if (string.IsNullOrWhiteSpace(channelId))
         {
             throw new ArgumentException("Channel id is required.", nameof(channelId));
@@ -39,7 +40,7 @@ public sealed class AiVideoImprovingService(
 
         try
         {
-            var targetVideo = await videoRepository.GetVideoByIdAsync(channelId, request.TargetVideoId, cancellationToken)
+            var targetVideo = await videoRepository.GetVideoByIdAsync(uploadPlaylistId, request.TargetVideoId, cancellationToken)
                           ?? throw new ArgumentException($"Target video {request.TargetVideoId} not found in cache.");
 
             logger.LogDebug(
@@ -112,17 +113,19 @@ public sealed class AiVideoImprovingService(
             request.TargetVideoId);
     }
 
-    public async Task SuggestPlaylistIdsAsync(string channelId, string targetVideoId,
-        string promptEnrichment, CancellationToken cancellationToken)
+    public async Task SuggestPlaylistIdsAsync(PlaylistSuggestionRequest request, CancellationToken cancellationToken)
     {
+        var channelId = request.ChannelId;
+        var uploadPlaylistId = request.UploadPlaylistId;
+        var targetVideoId = request.TargetVideoId;
         try
         {
             logger.LogInformation("Starting playlist suggestion for video {TargetVideoId}", targetVideoId);
 
-            var targetVideo = await videoRepository.GetVideoByIdAsync(channelId, targetVideoId, cancellationToken)
+            var targetVideo = await videoRepository.GetVideoByIdAsync(uploadPlaylistId, targetVideoId, cancellationToken)
                               ?? throw new InvalidOperationException($"Target video {targetVideoId} not found in cache.");
 
-            var playlistCandidates = await playlistRepository.GetPublicByChannelAsync(channelId, cancellationToken);
+            var playlistCandidates = await playlistRepository.GetPublicByChannelAsync(uploadPlaylistId, cancellationToken);
 
             if (playlistCandidates.Count == 0)
             {
@@ -130,7 +133,7 @@ public sealed class AiVideoImprovingService(
                 return;
             }
 
-            var latestVideoPlaylistNames = await playlistRepository.GetPlaylistNamesForLatestPublicVideoAsync(channelId, cancellationToken);
+            var latestVideoPlaylistNames = await playlistRepository.GetPlaylistNamesForLatestPublicVideoAsync(uploadPlaylistId, cancellationToken);
 
             var maxBatchSize = playlistSuggestionOptions.Value.MaxPlaylistsPerBatch;
 
@@ -157,14 +160,16 @@ public sealed class AiVideoImprovingService(
 
                 var context = new PlaylistSuggestionContext
                 {
-                    PromptEnrichment = promptEnrichment,
+                    PromptEnrichment = request.PromptEnrichment,
                     LatestPlaylistTitlesUsed = latestVideoPlaylistNames
                 };
                 var aiClient = await aiClientFactory.GetClientAsync(cancellationToken);
-                var batchSuggestedIds = await aiClient.SuggestPlaylistIdsAsync(
+                var batchSuggestedIds = (await aiClient.SuggestPlaylistIdsAsync(
                     context,
                     batch,
-                    cancellationToken);
+                    cancellationToken)).ToList();
+
+                logger.LogDebug("Suggested playlist ids: {SuggestedPlaylistIds} in batch {BatchIndex}", string.Join(", ", batchSuggestedIds), batchIndex);
 
                 foreach (var playlistId in batchSuggestedIds)
                 {
@@ -192,6 +197,11 @@ public sealed class AiVideoImprovingService(
         {
             logger.LogError(ex, "Playlist suggestion failed for video {TargetVideoId}", targetVideoId);
             throw;
+        }
+        finally
+        {
+            await videoRepository.TryClearAiOperationsInProgressAsync(
+                channelId, targetVideoId, AiVideoOperationFlags.PlaylistSuggestion, cancellationToken);
         }
     }
 

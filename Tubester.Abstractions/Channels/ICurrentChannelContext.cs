@@ -13,4 +13,15 @@ public interface ICurrentChannelContext
     /// </summary>
     /// <exception cref="InvalidOperationException">Thrown when no channel id is available.</exception>
     string GetRequiredChannelId();
+
+    /// <summary>
+    /// Returns the YouTube uploads playlist id for the current session, or null if not available.
+    /// </summary>
+    string? UploadPlaylistId { get; }
+
+    /// <summary>
+    /// Returns the upload playlist id for the current session, or throws if not available.
+    /// </summary>
+    /// <returns></returns>
+    string GetRequiredUploadPlaylistId();
 }

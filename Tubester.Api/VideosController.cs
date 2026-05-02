@@ -64,7 +64,7 @@ public sealed class VideosController(
     }
 
     /// <summary>
-    /// Improve video metadata using AI
+    /// Enqueues AI metadata generation and/or playlist suggestion for a video.
     /// </summary>
     /// <param name="operationId"></param>
     /// <param name="request"></param>
@@ -72,7 +72,12 @@ public sealed class VideosController(
     /// <returns></returns>
     [HttpPost("ai-template")]
     [ProducesResponseType(typeof(AiTemplateEnqueueResult), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> AiTemplate(
         [FromHeader(Name = "OperationId")] string operationId,
         [FromBody] AiVideoTemplateRequest request,
@@ -80,7 +85,7 @@ public sealed class VideosController(
     {
         if (string.IsNullOrWhiteSpace(operationId))
         {
-            return BadRequest("Missing OperationId header.");
+            return BadRequest(new { error = "Missing OperationId header." });
         }
 
         if (string.IsNullOrWhiteSpace(request.TargetVideoId))
@@ -99,15 +104,8 @@ public sealed class VideosController(
             return Unauthorized();
         }
 
-        try
-        {
-            var result = await aiTemplateOrchestrationService.EnqueueAiTemplateAsync(userId, operationId, request, ct);
-            return Ok(new AiTemplateEnqueueResult(result));
-        }
-        catch (AiTemplatingNotStartedException e)
-        {
-            return BadRequest(new { error = e.Message });
-        }
+        var result = await aiTemplateOrchestrationService.EnqueueAiTemplateAsync(userId, operationId, request, ct);
+        return Ok(result);
     }
 
     /// <summary>
@@ -119,7 +117,7 @@ public sealed class VideosController(
     [HttpPost("search")]
     [ProducesResponseType(typeof(PagedResult<VideoListItemDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<PagedResult<VideoListItemDto>>> GetVideos(
+    public async Task<ActionResult<PagedResult<VideoListItemDto>>> Search(
         [FromBody] GetVideosRequest request,
         CancellationToken ct)
     {

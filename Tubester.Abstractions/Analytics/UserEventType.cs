@@ -38,5 +38,10 @@ public enum UserEventType
     /// <summary>
     /// A reply was approved by the user.
     /// </summary>
-    ReplyApproved = 6
+    ReplyApproved = 6,
+
+    /// <summary>
+    /// The user enqueued artificial intelligence powered playlist suggestion job.
+    /// </summary>
+    AiPlaylistSuggestionEnqueued = 7,
 }

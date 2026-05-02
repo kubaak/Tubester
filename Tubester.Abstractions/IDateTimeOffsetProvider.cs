@@ -1,4 +1,4 @@
-namespace Tubester.Application;
+namespace Tubester.Abstractions;
 
 public interface IDateTimeOffsetProvider
 {

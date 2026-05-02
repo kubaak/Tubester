@@ -1,3 +1,4 @@
+using Tubester.Abstractions;
 using Tubester.Abstractions.Channels;
 using Tubester.Domain;
 

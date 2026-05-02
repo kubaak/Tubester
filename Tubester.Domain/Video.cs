@@ -10,6 +10,16 @@ public enum VideoVisibility
     Scheduled = 3
 }
 
+[Flags]
+public enum AiVideoOperationFlags
+{
+    None = 0,
+    Title = 1,
+    Description = 2,
+    Tags = 4,
+    PlaylistSuggestion = 8
+}
+
 public sealed class Video : Entity
 {
     public string UploadsPlaylistId { get; private set; } = default!;
@@ -29,7 +39,16 @@ public sealed class Video : Entity
     public bool? CommentsAllowed { get; private set; }
     public DateTimeOffset CachedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
-    public bool IsAiTemplateInProgress { get; private set; }
+    
+    // Bitmask for AI operations in progress
+    public AiVideoOperationFlags AiOperationsInProgress { get; private set; }
+    
+    // Computed compatibility properties for API/DTO exposure
+    public bool IsAiTitleInProgress => AiOperationsInProgress.HasFlag(AiVideoOperationFlags.Title);
+    public bool IsAiDescriptionInProgress => AiOperationsInProgress.HasFlag(AiVideoOperationFlags.Description);
+    public bool IsAiTagsInProgress => AiOperationsInProgress.HasFlag(AiVideoOperationFlags.Tags);
+    public bool IsAiPlaylistSuggestionInProgress => AiOperationsInProgress.HasFlag(AiVideoOperationFlags.PlaylistSuggestion);
+
     public bool IsShort => Duration <= TimeSpan.FromSeconds(60);
 
     public string Url => $"https://www.youtube.com/watch?v={VideoId}";
@@ -72,8 +91,25 @@ public sealed class Video : Entity
             CommentsAllowed = commentsAllowed,
             CachedAt = nowUtc,
             UpdatedAt = nowUtc,
-            IsAiTemplateInProgress = false
+            AiOperationsInProgress = AiVideoOperationFlags.None
         };
+    }
+
+    public bool Synchronize(string? title,
+        string? description,
+        DateTimeOffset publishedAt,
+        TimeSpan duration,
+        VideoVisibility visibility,
+        IEnumerable<string>? tags,
+        string? categoryId,
+        string? defaultLanguage,
+        string? defaultAudioLanguage,
+        DateTimeOffset nowUtc,
+        string? etag,
+        bool? commentsAllowed = null)
+    {
+        CachedAt = nowUtc;
+        return ApplyDetails(title, description, publishedAt, duration, visibility, tags, categoryId, defaultLanguage, defaultAudioLanguage, nowUtc, etag, commentsAllowed);
     }
 
     public bool ApplyDetails(
@@ -186,8 +222,7 @@ public sealed class Video : Entity
             CommentsAllowed = commentsAllowed;
             dirty = true;
         }
-
-        CachedAt = nowUtc;
+        
         if (dirty)
         {
             UpdatedAt = nowUtc;
@@ -195,17 +230,7 @@ public sealed class Video : Entity
 
         return dirty;
     }
-
-    public void SetCommentsAllowed(bool commentsAllowed)
-    {
-        CommentsAllowed = commentsAllowed;
-    }
-
-    public void SetAiTemplateInProgress(bool isAiTemplateInProgress)
-    {
-        IsAiTemplateInProgress = isAiTemplateInProgress;
-    }
-
+    
     private Video()
     {
     }

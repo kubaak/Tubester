@@ -122,6 +122,8 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
         b.Entity<Video>().Property(video => video.UpdatedAt);
         b.Entity<Video>().Property(video => video.PublishedAt);
         b.Entity<Video>().Property(video => video.Visibility).HasConversion<string>().HasMaxLength(10).IsRequired();
+        // AI operations in progress as integer bitmask
+        b.Entity<Video>().Property(video => video.AiOperationsInProgress);
 
         b.Entity<Video>()
             .OwnsOne(video => video.Location, ownedNavigationBuilder =>

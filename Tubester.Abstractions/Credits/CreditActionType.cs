@@ -8,30 +8,35 @@ public enum CreditActionType
     /// <summary>
     /// Copying template metadata between videos.
     /// </summary>
-    CopyTemplateExecuted,
+    CopyTemplateExecuted = 0,
 
     /// <summary>
     /// Enqueuing an AI template generation job.
     /// </summary>
-    AiTemplateEnqueued,
+    AiTemplateEnqueued = 1,
 
     /// <summary>
     /// Submitting AI-generated template changes to YouTube.
     /// </summary>
-    AiTemplateSubmitted,
+    AiTemplateSubmitted = 2,
 
     /// <summary>
     /// Generating an AI reply for a comment (background job).
     /// </summary>
-    AiReplyGenerated,
+    AiReplyGenerated = 3,
 
     /// <summary>
     /// Posting a reply to YouTube.
     /// </summary>
-    ReplyPostedToYouTube,
+    ReplyPostedToYouTube = 4,
 
     /// <summary>
     /// Enqueuing an AI template generation job. With suggesting playlists for a video (background job).
     /// </summary>
-    AiTemplateWithPlaylistEnqueued
+    AiTemplateWithPlaylistEnqueued = 5,
+    
+    /// <summary>
+    /// Suggesting playlists for a video.
+    /// </summary>
+    AiPlaylistSuggestionEnqueued = 6,
 }

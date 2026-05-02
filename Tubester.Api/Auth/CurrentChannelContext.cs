@@ -29,4 +29,30 @@ public sealed class CurrentChannelContext(IHttpContextAccessor httpContextAccess
 
         return channelId;
     }
+
+    public string? UploadPlaylistId
+    {
+        get
+        {
+            var httpContext = httpContextAccessor.HttpContext;
+            var user = httpContext?.User;
+            if (user is null || !user.Identity?.IsAuthenticated == true)
+            {
+                return null;
+            }
+
+            return user.FindFirst("yt_upload_playlist_id")?.Value;
+        }
+    }
+    
+    public string GetRequiredUploadPlaylistId()
+    {
+        var uploadPlaylistId = UploadPlaylistId;
+        if (string.IsNullOrWhiteSpace(uploadPlaylistId))
+        {
+            throw new InvalidOperationException("Current uploadPlaylistId is not available.");
+        }
+
+        return uploadPlaylistId;
+    }
 }

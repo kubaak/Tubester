@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Hangfire;
 using Microsoft.Extensions.Logging;
+using Tubester.Abstractions;
 using Tubester.Abstractions.Channels;
 using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Replies;
@@ -71,7 +72,7 @@ public sealed class CommentScanJob(
         var drafted = 0;
         var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
 
-        foreach (var video in await videoRepository.GetCommentableVideosAsync(channelId, cancellationToken))
+        foreach (var video in await videoRepository.GetCommentableVideosAsync(channel.UploadsPlaylistId, cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (video.Visibility != VideoVisibility.Public)
@@ -203,7 +204,7 @@ public sealed class CommentScanJob(
                     "Comments are disabled for video {VideoId}, marking as CommentsAllowed = false",
                     ex.VideoId);
 
-                await videoRepository.MarkCommentsDisabledAsync(channelId, ex.VideoId, cancellationToken);
+                await videoRepository.MarkCommentsDisabledAsync(channel.UploadsPlaylistId, ex.VideoId, cancellationToken);
             }
         }
 

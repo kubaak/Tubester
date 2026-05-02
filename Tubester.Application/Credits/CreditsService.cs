@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using Tubester.Abstractions;
 using Tubester.Abstractions.Credits;
 using Tubester.Application.Common;
 
@@ -193,7 +194,7 @@ public sealed class CreditsService(
 
         return updatedWalletCount;
     }
-    
+
     public async Task<GrantResult> GrantAdminCreditsAsync(
         string adminUserId, string targetUserId, int amount, string operationId, CancellationToken ct)
     {
@@ -213,7 +214,7 @@ public sealed class CreditsService(
 
         try
         {
-            return await creditsStore.GrantCreditsAsync(
+            return await creditsStore.AdminGrantCreditsAsync(
                 targetUserId,
                 amount,
                 idempotencyKey,

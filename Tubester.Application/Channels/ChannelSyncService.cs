@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Tubester.Abstractions;
 using Tubester.Abstractions.Channels;
 using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Playlists;
@@ -207,7 +208,7 @@ public sealed class ChannelSyncService(
                 continue;
             }
 
-            var (inserted, changed) = await videoRepository.UpsertAsync(channelId, batch, cancellationToken);
+            var (inserted, changed) = await videoRepository.UpsertAsync(uploadsPlaylistId, batch, cancellationToken);
             totalVideosUpdated += changed;
             totalVideosInserted += inserted;
             batch.Clear();
@@ -215,7 +216,7 @@ public sealed class ChannelSyncService(
 
         if (batch.Count > 0)
         {
-            var (inserted, changed) = await videoRepository.UpsertAsync(channelId, batch, cancellationToken);
+            var (inserted, changed) = await videoRepository.UpsertAsync(uploadsPlaylistId, batch, cancellationToken);
             totalVideosUpdated += changed;
             totalVideosInserted += inserted;
         }
@@ -280,7 +281,7 @@ public sealed class ChannelSyncService(
             {
                 // Only add memberships for videos that are already known uploads for this channel.
                 // This prevents importing videos that belong to other channels but are present in the user's playlists.
-                var existing = await videoRepository.GetVideoETagsAsync(channelId, toAdd, cancellationToken);
+                var existing = await videoRepository.GetVideoETagsAsync(channel.UploadsPlaylistId, toAdd, cancellationToken);
                 var knownVideoIds = toAdd.Where(existing.ContainsKey).ToHashSet(StringComparer.Ordinal);
 
                 if (knownVideoIds.Count > 0)

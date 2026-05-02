@@ -26,7 +26,7 @@ public interface IReplyRepository
     /// <summary>
     /// Gets a page of replies with optional status filtering and cursor-based pagination for a specific channel.
     /// </summary>
-    /// <param name="channelId">Channel id to filter replies by.</param>
+    /// <param name="uploadPlaylistId">Upload playlist ID to filter replies by.</param>
     /// <param name="statuses">Optional set of statuses to include.</param>
     /// <param name="videoIds">Optional set of video IDs to include.</param>
     /// <param name="originalComment">Optional case-insensitive substring filter for original comment text.</param>
@@ -36,7 +36,7 @@ public interface IReplyRepository
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of replies ordered by OriginalCommentAt DESC, CommentId DESC.</returns>
     Task<List<Reply>> GetRepliesPageAsync(
-        string channelId,
+        string uploadPlaylistId,
         IReadOnlyCollection<ReplyStatus>? statuses,
         IReadOnlyCollection<string>? videoIds,
         string? originalComment,

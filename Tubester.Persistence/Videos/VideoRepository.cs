@@ -1,42 +1,31 @@
 using Microsoft.EntityFrameworkCore;
+using Tubester.Abstractions;
 using Tubester.Abstractions.Videos;
 using Tubester.Domain;
 
 namespace Tubester.Persistence.Videos;
 
-public sealed class VideoRepository(TubesterDb db) : IVideoRepository
+public sealed class VideoRepository(TubesterDb db, IDateTimeOffsetProvider dateTimeProvider) : IVideoRepository
 {
-    public async Task<List<Video>> GetCommentableVideosAsync(string channelId, CancellationToken cancellationToken)
+    public async Task<List<Video>> GetCommentableVideosAsync(string uploadPlaylistId, CancellationToken cancellationToken)
     {
         return await db.Videos
             .AsNoTracking()
-            .Where(video => video.CommentsAllowed ?? true)
-            .Join(
-                db.Channels.Where(channel => channel.ChannelId == channelId),
-                video => video.UploadsPlaylistId,
-                channel => channel.UploadsPlaylistId,
-                (video, channel) => video
-            )
+            .Where(video => video.UploadsPlaylistId == uploadPlaylistId && (video.CommentsAllowed ?? true))
             .OrderByDescending(video => video.PublishedAt)
             .ThenByDescending(video => video.UpdatedAt)
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<Video?> GetVideoByIdAsync(string channelId, string videoId, CancellationToken cancellationToken)
+    public async Task<Video?> GetVideoByIdAsync(string uploadPlaylistId, string videoId, CancellationToken cancellationToken)
     {
         return await db.Videos
             .AsNoTracking()
-            .Join(
-                db.Channels.Where(channel => channel.ChannelId == channelId),
-                video => video.UploadsPlaylistId,
-                channel => channel.UploadsPlaylistId,
-                (video, channel) => video
-            )
-            .FirstOrDefaultAsync(video => video.VideoId == videoId, cancellationToken);
+            .FirstOrDefaultAsync(video => video.UploadsPlaylistId == uploadPlaylistId && video.VideoId == videoId, cancellationToken);
     }
 
     public async Task<(int inserted, int updated)> UpsertAsync(
-        string channelId,
+        string uploadPlaylistId,
         IEnumerable<Video> videos,
         CancellationToken cancellationToken)
     {
@@ -49,16 +38,10 @@ public sealed class VideoRepository(TubesterDb db) : IVideoRepository
         var videoIds = videoList.Select(video => video.VideoId).ToHashSet();
 
         var existingVideosById = await db.Videos
-            .Join(
-                db.Channels.Where(channel => channel.ChannelId == channelId),
-                video => video.UploadsPlaylistId,
-                channel => channel.UploadsPlaylistId,
-                (video, channel) => video
-            )
-            .Where(video => videoIds.Contains(video.VideoId))
+            .Where(video => video.UploadsPlaylistId == uploadPlaylistId && videoIds.Contains(video.VideoId))
             .ToDictionaryAsync(video => video.VideoId, video => video, cancellationToken);
 
-        var currentTimeUtc = DateTimeOffset.UtcNow; //todo provider
+        var currentTimeUtc = dateTimeProvider.GetUtcNowDateTimeOffset();
         var inserted = 0;
         var updated = 0;
 
@@ -90,7 +73,7 @@ public sealed class VideoRepository(TubesterDb db) : IVideoRepository
     }
 
     public async Task<List<Video>> GetVideosPageAsync(
-        string channelId,
+        string uploadPlaylistId,
         string? title,
         IReadOnlyCollection<VideoVisibility>? visibilities,
         DateTimeOffset? afterPublishedAtUtc,
@@ -100,12 +83,7 @@ public sealed class VideoRepository(TubesterDb db) : IVideoRepository
     {
         var videosQuery = db.Videos
             .AsNoTracking()
-            .Join(
-                db.Channels.Where(channel => channel.ChannelId == channelId),
-                video => video.UploadsPlaylistId,
-                channel => channel.UploadsPlaylistId,
-                (video, channel) => video
-            );
+            .Where(video => video.UploadsPlaylistId == uploadPlaylistId);
 
         if (!string.IsNullOrWhiteSpace(title))
         {
@@ -133,7 +111,7 @@ public sealed class VideoRepository(TubesterDb db) : IVideoRepository
     }
 
     public async Task<Dictionary<string, string?>> GetVideoETagsAsync(
-        string channelId,
+        string uploadPlaylistId,
         IEnumerable<string> videoIds,
         CancellationToken cancellationToken)
     {
@@ -145,67 +123,71 @@ public sealed class VideoRepository(TubesterDb db) : IVideoRepository
 
         return await db.Videos
             .AsNoTracking()
-            .Join(
-                db.Channels.Where(channel => channel.ChannelId == channelId),
-                video => video.UploadsPlaylistId,
-                channel => channel.UploadsPlaylistId,
-                (video, channel) => video
-            )
-            .Where(video => videoIdsList.Contains(video.VideoId))
+            .Where(video => video.UploadsPlaylistId == uploadPlaylistId && videoIdsList.Contains(video.VideoId))
             .ToDictionaryAsync(video => video.VideoId, video => video.ETag, cancellationToken);
     }
 
     public async Task<bool> VideoExistsForChannelAsync(
-        string channelId,
+        string uploadPlaylistId,
         string videoId,
         CancellationToken cancellationToken)
     {
         return await db.Videos
             .AsNoTracking()
-            .Join(
-                db.Channels.Where(channel => channel.ChannelId == channelId),
-                video => video.UploadsPlaylistId,
-                channel => channel.UploadsPlaylistId,
-                (video, channel) => video
-            )
-            .AnyAsync(video => video.VideoId == videoId, cancellationToken);
+            .AnyAsync(video => video.UploadsPlaylistId == uploadPlaylistId && video.VideoId == videoId, cancellationToken);
     }
-
-    public async Task<bool> TrySettingAiTemplateInProgressAsync(
-        string channelId,
+    
+    public async Task<bool> TryAddAiOperationsInProgressAsync(
+        string uploadPlaylistId,
         string videoId,
-        bool isAiTemplateInProgress,
+        AiVideoOperationFlags operations,
         CancellationToken cancellationToken)
     {
-        var video = await db.Videos
-            .Join(
-                db.Channels.Where(channel => channel.ChannelId == channelId),
-                currentVideo => currentVideo.UploadsPlaylistId,
-                channel => channel.UploadsPlaylistId,
-                (currentVideo, channel) => currentVideo
-            )
-            .FirstOrDefaultAsync(currentVideo => currentVideo.VideoId == videoId, cancellationToken);
-
-        if (video is null)
+        if (operations == AiVideoOperationFlags.None)
         {
-            return false;
+            return true;
         }
 
-        video.SetAiTemplateInProgress(isAiTemplateInProgress);
-        await db.SaveChangesAsync(cancellationToken);
-        return video.IsAiTemplateInProgress;
+        var operationsValue = (int)operations;
+
+        var affectedRows = await db.Database.ExecuteSqlInterpolatedAsync($"""
+             UPDATE "Videos"
+             SET "AiOperationsInProgress" = "AiOperationsInProgress" | {operationsValue}
+             WHERE "UploadsPlaylistId" = {uploadPlaylistId}
+               AND "VideoId" = {videoId}
+               AND ("AiOperationsInProgress" & {operationsValue}) = 0;
+             """, cancellationToken);
+
+        return affectedRows == 1;
     }
 
-    public Task MarkCommentsDisabledAsync(string channelId, string videoId, CancellationToken cancellationToken)
+    public async Task<bool> TryClearAiOperationsInProgressAsync(
+        string uploadPlaylistId,
+        string videoId,
+        AiVideoOperationFlags operations,
+        CancellationToken cancellationToken)
+    {
+        if (operations == AiVideoOperationFlags.None)
+        {
+            return true;
+        }
+
+        var operationsValue = (int)operations;
+
+        var affectedRows = await db.Database.ExecuteSqlInterpolatedAsync($"""
+             UPDATE "Videos"
+             SET "AiOperationsInProgress" = "AiOperationsInProgress" & ~{operationsValue}
+             WHERE "UploadsPlaylistId" = {uploadPlaylistId}
+               AND "VideoId" = {videoId};
+             """, cancellationToken);
+
+        return affectedRows == 1;
+    }
+
+    public Task MarkCommentsDisabledAsync(string uploadPlaylistId, string videoId, CancellationToken cancellationToken)
     {
         return db.Videos
-            .Where(v => v.VideoId == videoId)
-            .Join(
-                db.Channels.Where(channel => channel.ChannelId == channelId),
-                currentVideo => currentVideo.UploadsPlaylistId,
-                channel => channel.UploadsPlaylistId,
-                (currentVideo, channel) => currentVideo
-            )
+            .Where(v => v.VideoId == videoId && v.UploadsPlaylistId == uploadPlaylistId)
             .ExecuteUpdateAsync(
                 setters => setters.SetProperty(v => v.CommentsAllowed, false),
                 cancellationToken);

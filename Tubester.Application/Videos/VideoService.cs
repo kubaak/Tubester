@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Tubester.Abstractions;
 using Tubester.Abstractions.Analytics;
 using Tubester.Abstractions.Channels;
 using Tubester.Abstractions.Credits;
@@ -72,12 +73,12 @@ public class VideoService(
             afterVideoId = videoId;
         }
 
-        var channelId = channelContext.GetRequiredChannelId();
+        var uploadPlaylistId = channelContext.GetRequiredUploadPlaylistId();
 
         // Fetch one extra item to determine if there's a next page
         var take = effectivePageSize + 1;
         var videos =
-            await videoRepository.GetVideosPageAsync(channelId, normalizedTitle, visibility, afterPublishedAtUtc,
+            await videoRepository.GetVideosPageAsync(uploadPlaylistId, normalizedTitle, visibility, afterPublishedAtUtc,
                 afterVideoId,
                 take, ct);
 
@@ -110,8 +111,8 @@ public class VideoService(
             return null;
         }
 
-        var channelId = channelContext.GetRequiredChannelId();
-        var video = await videoRepository.GetVideoByIdAsync(channelId, videoId, cancellationToken);
+        var uploadPlaylistId = channelContext.GetRequiredUploadPlaylistId();
+        var video = await videoRepository.GetVideoByIdAsync(uploadPlaylistId, videoId, cancellationToken);
 
         if (video is null)
         {
@@ -125,10 +126,11 @@ public class VideoService(
             Title = video.Title,
             Description = video.Description,
             Tags = video.Tags,
-            IsAiTemplateInProgress = video.IsAiTemplateInProgress,
-            Location = video.Location is { } loc ? new GeoLocationDto(loc.Latitude, loc.Longitude) : null,
-            LocationDescription = video.LocationDescription,
-            Playlists = [.. playlists.Select(p => new PlaylistDto(p.PlaylistId, p.Title))],
+            IsAiTitleInProgress = video.IsAiTitleInProgress,
+            IsAiDescriptionInProgress = video.IsAiDescriptionInProgress,
+            IsAiTagsInProgress = video.IsAiTagsInProgress,
+            IsAiPlaylistSuggestionInProgress = video.IsAiPlaylistSuggestionInProgress,
+            Playlists = [.. playlists.Select(p => new PlaylistDto { Id = p.PlaylistId, Name = p.Title })],
             Category = video.CategoryId is { } catId ? new CategoryDto(catId, null) : null,
             DefaultLanguage = video.DefaultLanguage,
             DefaultAudioLanguage = video.DefaultAudioLanguage
@@ -145,15 +147,15 @@ public class VideoService(
             throw new ArgumentException("User id is required.", nameof(userId));
         }
 
-        var channelId = channelContext.GetRequiredChannelId();
+        var uploadPlaylistId = channelContext.GetRequiredUploadPlaylistId();
 
         // Load source and target videos from DB
         var sourceVideo =
-            await videoRepository.GetVideoByIdAsync(channelId, request.SourceVideoId, cancellationToken)
+            await videoRepository.GetVideoByIdAsync(uploadPlaylistId, request.SourceVideoId, cancellationToken)
             ?? throw new ArgumentException($"Source video {request.SourceVideoId} not found in cache.");
 
         var targetVideo =
-            await videoRepository.GetVideoByIdAsync(channelId, request.TargetVideoId, cancellationToken)
+            await videoRepository.GetVideoByIdAsync(uploadPlaylistId, request.TargetVideoId, cancellationToken)
             ?? throw new ArgumentException($"Target video {request.TargetVideoId} not found in cache.");
 
         // Build effective metadata starting from source
@@ -184,7 +186,7 @@ public class VideoService(
             targetVideo.CommentsAllowed
         );
 
-        await videoRepository.UpsertAsync(channelId, [targetVideo], cancellationToken);
+        await videoRepository.UpsertAsync(uploadPlaylistId, [targetVideo], cancellationToken);
 
         await userEventLogger.LogAsync(
             userId,
@@ -257,8 +259,8 @@ public class VideoService(
             return null;
         }
 
-        var channelId = channelContext.GetRequiredChannelId();
-        var video = await videoRepository.GetVideoByIdAsync(channelId, request.VideoId, cancellationToken);
+        var uploadPlaylistId = channelContext.GetRequiredUploadPlaylistId();
+        var video = await videoRepository.GetVideoByIdAsync(uploadPlaylistId, request.VideoId, cancellationToken);
 
         if (video is null)
         {
@@ -301,6 +303,13 @@ public class VideoService(
             video.DefaultAudioLanguage,
             cancellationToken);
 
+        if (request.PlaylistIds is not null)
+        {
+            var playlistIdSet = request.PlaylistIds.ToHashSet(StringComparer.Ordinal);
+            var tasks = playlistIdSet.Select(p => youTubeIntegration.AddVideoToPlaylistAsync(p, video.VideoId, cancellationToken));
+            await Task.WhenAll(tasks);
+        }
+
         var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
         video.ApplyDetails(
             title,
@@ -317,7 +326,7 @@ public class VideoService(
             video.CommentsAllowed
         );
 
-        await videoRepository.UpsertAsync(channelId, [video], cancellationToken);
+        await videoRepository.UpsertAsync(uploadPlaylistId, [video], cancellationToken);
 
         await userEventLogger.LogAsync(
             userId,
@@ -328,9 +337,17 @@ public class VideoService(
             {
                 generateTitle = !string.IsNullOrWhiteSpace(request.Title),
                 generateDescription = request.Description is not null,
-                generateTags = request.Tags is not null
+                generateTags = request.Tags is not null,
+                updatePlaylists = request.PlaylistIds is not null
             },
             cancellationToken);
+
+        // Update video playlist memberships if playlistIds provided
+        if (request.PlaylistIds is not null)
+        {
+            var playlistIdSet = request.PlaylistIds.ToHashSet(StringComparer.Ordinal);
+            await playlistRepository.SetMembershipsToPlaylistsAsync(video.VideoId, playlistIdSet, cancellationToken);
+        }
 
         var aiTemplatePlaylists = await playlistRepository.GetPlaylistsByVideoAsync(request.VideoId, cancellationToken);
 
@@ -339,10 +356,11 @@ public class VideoService(
             Title = title,
             Description = description,
             Tags = tags.ToArray(),
-            IsAiTemplateInProgress = video.IsAiTemplateInProgress,
-            Location = video.Location is { } aiTemplateLoc ? new GeoLocationDto(aiTemplateLoc.Latitude, aiTemplateLoc.Longitude) : null,
-            LocationDescription = video.LocationDescription,
-            Playlists = [.. aiTemplatePlaylists.Select(p => new PlaylistDto(p.PlaylistId, p.Title))],
+            IsAiTitleInProgress = video.IsAiTitleInProgress,
+            IsAiDescriptionInProgress = video.IsAiDescriptionInProgress,
+            IsAiTagsInProgress = video.IsAiTagsInProgress,
+            IsAiPlaylistSuggestionInProgress = video.IsAiPlaylistSuggestionInProgress,
+            Playlists = [.. aiTemplatePlaylists.Select(p => new PlaylistDto { Id = p.PlaylistId, Name = p.Title })],
             Category = video.CategoryId is { } aiTemplateCatId ? new CategoryDto(aiTemplateCatId, null) : null,
             DefaultLanguage = video.DefaultLanguage,
             DefaultAudioLanguage = video.DefaultAudioLanguage
@@ -364,8 +382,8 @@ public class VideoService(
             return null;
         }
 
-        var channelId = channelContext.GetRequiredChannelId();
-        var video = await videoRepository.GetVideoByIdAsync(channelId, request.VideoId, cancellationToken);
+        var uploadPlaylistId = channelContext.GetRequiredUploadPlaylistId();
+        var video = await videoRepository.GetVideoByIdAsync(uploadPlaylistId, request.VideoId, cancellationToken);
 
         if (video is null)
         {
@@ -392,7 +410,14 @@ public class VideoService(
             video.CommentsAllowed
         );
 
-        await videoRepository.UpsertAsync(channelId, [video], cancellationToken);
+        await videoRepository.UpsertAsync(uploadPlaylistId, [video], cancellationToken);
+
+        // Update video playlist memberships if playlistIds provided
+        if (request.PlaylistIds is not null)
+        {
+            var playlistIdSet = request.PlaylistIds.ToHashSet(StringComparer.Ordinal);
+            await playlistRepository.SetMembershipsToPlaylistsAsync(video.VideoId, playlistIdSet, cancellationToken);
+        }
 
         var draftPlaylists = await playlistRepository.GetPlaylistsByVideoAsync(request.VideoId, cancellationToken);
 
@@ -401,10 +426,11 @@ public class VideoService(
             Title = title,
             Description = description,
             Tags = tags.ToArray(),
-            IsAiTemplateInProgress = video.IsAiTemplateInProgress,
-            Location = video.Location is { } draftLoc ? new GeoLocationDto(draftLoc.Latitude, draftLoc.Longitude) : null,
-            LocationDescription = video.LocationDescription,
-            Playlists = [.. draftPlaylists.Select(p => new PlaylistDto(p.PlaylistId, p.Title))],
+            IsAiTitleInProgress = video.IsAiTitleInProgress,
+            IsAiDescriptionInProgress = video.IsAiDescriptionInProgress,
+            IsAiTagsInProgress = video.IsAiTagsInProgress,
+            IsAiPlaylistSuggestionInProgress = video.IsAiPlaylistSuggestionInProgress,
+            Playlists = [.. draftPlaylists.Select(p => new PlaylistDto { Id = p.PlaylistId, Name = p.Title })],
             Category = video.CategoryId is { } draftCatId ? new CategoryDto(draftCatId, null) : null,
             DefaultLanguage = video.DefaultLanguage,
             DefaultAudioLanguage = video.DefaultAudioLanguage
@@ -446,8 +472,8 @@ public class VideoService(
             return null;
         }
 
-        var channelId = channelContext.GetRequiredChannelId();
-        var video = await videoRepository.GetVideoByIdAsync(channelId, videoId, cancellationToken);
+        var uploadPlaylistId = channelContext.GetRequiredUploadPlaylistId();
+        var video = await videoRepository.GetVideoByIdAsync(uploadPlaylistId, videoId, cancellationToken);
 
         if (video is null)
         {
@@ -491,9 +517,10 @@ public class VideoService(
             videoDto.CommentsAllowed
         );
 
-        await videoRepository.UpsertAsync(channelId, [video], cancellationToken);
+        await videoRepository.UpsertAsync(uploadPlaylistId, [video], cancellationToken);
 
         // Resync playlists for this video
+        var channelId = channelContext.GetRequiredChannelId();
         var channelPlaylists = await playlistRepository.GetByChannelAsync(channelId, cancellationToken);
         var updatedPlaylistIds = new HashSet<string>(StringComparer.Ordinal);
 
@@ -524,10 +551,11 @@ public class VideoService(
             Title = video.Title,
             Description = video.Description,
             Tags = video.Tags,
-            IsAiTemplateInProgress = video.IsAiTemplateInProgress,
-            Location = video.Location is { } loc ? new GeoLocationDto(loc.Latitude, loc.Longitude) : null,
-            LocationDescription = video.LocationDescription,
-            Playlists = [.. playlists.Select(p => new PlaylistDto(p.PlaylistId, p.Title))],
+            IsAiTitleInProgress = video.IsAiTitleInProgress,
+            IsAiDescriptionInProgress = video.IsAiDescriptionInProgress,
+            IsAiTagsInProgress = video.IsAiTagsInProgress,
+            IsAiPlaylistSuggestionInProgress = video.IsAiPlaylistSuggestionInProgress,
+            Playlists = [.. playlists.Select(p => new PlaylistDto { Id = p.PlaylistId, Name = p.Title })],
             Category = video.CategoryId is { } catId ? new CategoryDto(catId, null) : null,
             DefaultLanguage = video.DefaultLanguage,
             DefaultAudioLanguage = video.DefaultAudioLanguage

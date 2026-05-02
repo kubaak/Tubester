@@ -80,7 +80,7 @@ public sealed class YouTubeIntegration(
         {
             var youTubeService = CreateReadOnlyServiceAsync(accessToken);
 
-            var channelsRequest = youTubeService.Channels.List("snippet");
+            var channelsRequest = youTubeService.Channels.List("snippet,contentDetails");
             channelsRequest.Mine = true;
             channelsRequest.MaxResults = 1;
 
@@ -114,10 +114,13 @@ public sealed class YouTubeIntegration(
                 }
             }
 
+            var uploadsPlaylistId = channel.ContentDetails?.RelatedPlaylists?.Uploads;
+
             return new UserChannelDto(
                 channel.Id,
                 title,
-                picture
+                picture,
+                uploadsPlaylistId
             );
         }
         catch (GoogleApiException ex)
@@ -191,7 +194,7 @@ public sealed class YouTubeIntegration(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Unexpected error while getting channels for current user.");
+            logger.LogError(ex, "Unexpected error while getting channels for current user");
             return Array.Empty<ChannelDto>();
         }
     }
@@ -499,7 +502,7 @@ public sealed class YouTubeIntegration(
         await insert.ExecuteAsync(cancellationToken);
     }
 
-    public async IAsyncEnumerable<PlaylistDto> GetPlaylistsAsync(
+    public async IAsyncEnumerable<DetailedPlaylistDto> GetPlaylistsAsync(
         string channelId,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
@@ -527,7 +530,7 @@ public sealed class YouTubeIntegration(
                 if (!string.IsNullOrWhiteSpace(playlist.Id))
                 {
                     var visibility = playlist.Status?.PrivacyStatus ?? "private";
-                    yield return new PlaylistDto(playlist.Id!, playlist.Snippet.Title, playlist.Snippet.Description, visibility, playlist.Snippet.ETag);
+                    yield return new DetailedPlaylistDto(playlist.Id!, playlist.Snippet.Title, playlist.Snippet.Description, visibility, playlist.Snippet.ETag);
                 }
             }
 
