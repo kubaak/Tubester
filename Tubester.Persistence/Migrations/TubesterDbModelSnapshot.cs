@@ -291,8 +291,8 @@ namespace Tubester.Persistence.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
-                    b.Property<bool>("IsAiTemplateInProgress")
-                        .HasColumnType("boolean");
+                    b.Property<int>("AiOperationsInProgress")
+                        .HasColumnType("integer");
 
                     b.Property<string>("LocationDescription")
                         .HasColumnType("text");

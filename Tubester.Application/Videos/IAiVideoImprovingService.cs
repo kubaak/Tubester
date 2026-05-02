@@ -1,16 +1,13 @@
-using Tubester.Application.Contracts.Videos;
+using Tubester.Application.Jobs;
 
 namespace Tubester.Application.Videos;
 
 public interface IAiVideoImprovingService
 {
     Task GenerateAiTemplateAsync(
-        string channelId,
-        AiVideoTemplateRequest request,
+        AiVideoDetailsRequest request,
         CancellationToken cancellationToken);
     Task SuggestPlaylistIdsAsync(
-        string channelId,
-        string videoId,
-        string context,
+        PlaylistSuggestionRequest request,
         CancellationToken cancellationToken);
 }

@@ -30,7 +30,7 @@ public interface IYouTubeIntegration
 
     Task AddVideoToPlaylistAsync(string playlistId, string videoId, CancellationToken cancellationToken);
 
-    IAsyncEnumerable<PlaylistDto> GetPlaylistsAsync(
+    IAsyncEnumerable<DetailedPlaylistDto> GetPlaylistsAsync(
         string channelId,
         CancellationToken cancellationToken);
 

@@ -589,7 +589,7 @@ public sealed class CreditsStore(
         await transaction.CommitAsync(ct);
     }
 
-    public async Task<GrantResult> GrantCreditsAsync(
+    public async Task<GrantResult> AdminGrantCreditsAsync(
         string userId,
         int amount,
         string idempotencyKey,
@@ -599,7 +599,7 @@ public sealed class CreditsStore(
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(amount);
-        
+
         if (occurredAtUtc.Offset != TimeSpan.Zero)
         {
             occurredAtUtc = occurredAtUtc.ToUniversalTime();
@@ -609,7 +609,7 @@ public sealed class CreditsStore(
 
         var metadataJson =
             JsonSerializer.Serialize(new { type = "admin_grant", amount }, _jsonSerializerOptions);
-        
+
         // 1) Idempotency gate
         var inserted = await databaseContext.Database.ExecuteSqlInterpolatedAsync($"""
 
@@ -620,7 +620,7 @@ public sealed class CreditsStore(
              ON CONFLICT ("UserId","IdempotencyKey") DO NOTHING;
 
              """, ct);
-        
+
         if (inserted == 0)
         {
             var walletDto = await databaseContext.Wallets
@@ -630,7 +630,7 @@ public sealed class CreditsStore(
                 .SingleOrDefaultAsync(ct);
 
             await tx.RollbackAsync(ct);
-            
+
             if (walletDto is null)
             {
                 logger.LogError("Ledger entry already exists for idempotency key '{IdempotencyKey}', but wallet was not found", idempotencyKey);

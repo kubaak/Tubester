@@ -1,6 +1,7 @@
 using Hangfire;
 using Hangfire.PostgreSql;
 using Hangfire.RecurringJobExtensions;
+using Tubester.Abstractions;
 using Tubester.Abstractions.Analytics;
 using Tubester.Abstractions.Auth;
 using Tubester.Abstractions.Channels;

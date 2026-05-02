@@ -3,8 +3,10 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Users;
 using Tubester.Application.Channels;
+using Tubester.Application.Credits;
 using Tubester.Domain;
 using Tubester.Integration.Dtos;
 using Tubester.IntegrationTests.TestHost;
@@ -15,49 +17,27 @@ using Xunit;
 namespace Tubester.IntegrationTests;
 
 [Collection(nameof(TestCollection))]
-public sealed class ChannelTests(TestFixture fixture)
+public class ChannelTests(TestFixture fixture)
 {
+    private readonly TestHelpers _helpers = new(fixture);
+
     [Fact]
     public async Task Sync_WithDummyChannelAndMockedYouTubeData_UpdatesDatabaseCorrectly()
     {
         // Arrange
         await fixture.ResetDbAsync();
-
-        const string testChannelId = "UCTestChannel123456789";
-        const string testChannelName = "TestChannelName";
-        const string testUploadsPlaylistId = "PLTestUploads123456789";
-        const string userId = MockAuthenticationExtensions.TestSub;
-
-        // Insert dummy user and channel into database
-        var dummyUser = User.Create(
-            userId,
-            MockAuthenticationExtensions.TestEmail,
-            MockAuthenticationExtensions.TestName,
-            MockAuthenticationExtensions.TestPicture,
-            TestFixture.TestingDateTimeOffset);
-
-        var dummyChannel = Channel.Create(
-            testChannelId,
-            userId,
-            testChannelName,
-            testUploadsPlaylistId,
-            TestFixture.TestingDateTimeOffset
-        );
-
-        using (var scope = fixture.ApiServices.CreateScope())
+        const string video1 = "video123";
+        const string video2 = "video456";
+        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
         {
-            var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
-            databaseContext.Users.Add(dummyUser);
-            databaseContext.Channels.Add(dummyChannel);
-            databaseContext.Plans.Add(CreateFreePlan());
-            await databaseContext.SaveChangesAsync();
-        }
-
+            Videos = []
+        });
+        
         // Create mock video DTOs
         var mockVideos = new List<VideoDto>
         {
             new(
-                "video123",
+                video1,
                 "Test Video 1",
                 "Test Description 1",
                 ["tag1", "tag2"],
@@ -74,7 +54,7 @@ public sealed class ChannelTests(TestFixture fixture)
                 null
             ),
             new(
-                "video456",
+                video2,
                 "Test Video 2",
                 "Test Description 2",
                 ["tag3", "tag4"],
@@ -92,7 +72,7 @@ public sealed class ChannelTests(TestFixture fixture)
             )
         };
 
-        var mockPlaylistData = new List<PlaylistDto>
+        var mockPlaylistData = new List<DetailedPlaylistDto>
         {
             new("playlist123", "Test Playlist 1", "Description 1", "public", "etag-playlist123"),
             new("playlist456", "Test Playlist 2", "Description 2", "private", "etag-playlist456")
@@ -100,18 +80,18 @@ public sealed class ChannelTests(TestFixture fixture)
 
         var mockPlaylistVideoIds = new Dictionary<string, List<string>>
         {
-            ["playlist123"] = ["video123", "video456"],
-            ["playlist456"] = ["video456"]
+            ["playlist123"] = [video1, video2],
+            ["playlist456"] = [video2]
         };
 
         // Setup MockYouTubeIntegration
         fixture.ApiFactory.MockYouTubeIntegration
-            .Setup(x => x.GetAllVideosAsync(testUploadsPlaylistId,
+            .Setup(x => x.GetAllVideosAsync(TestConstants.UploadsPlaylistId,
                 It.IsAny<DateTimeOffset?>(), It.IsAny<CancellationToken>()))
             .Returns(CreateAsyncEnumerable(mockVideos));
 
         fixture.ApiFactory.MockYouTubeIntegration
-            .Setup(x => x.GetPlaylistsAsync(testChannelId,
+            .Setup(x => x.GetPlaylistsAsync(TestConstants.ChannelId,
                 It.IsAny<CancellationToken>()))
             .Returns(CreateAsyncEnumerable(mockPlaylistData));
 
@@ -129,10 +109,7 @@ public sealed class ChannelTests(TestFixture fixture)
             .Setup(x => x.GetVideosAsync(It.IsAny<IEnumerable<string>>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(mockVideos.ToList().AsReadOnly());
-
-        fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
-            .Returns(testChannelId);
-
+        
         // Act
         var response = await fixture.HttpClient.PostAsync($"/api/channels/sync/current", null);
 
@@ -140,8 +117,7 @@ public sealed class ChannelTests(TestFixture fixture)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var responseContent = await response.Content.ReadAsStringAsync();
-        var syncResult = JsonSerializer.Deserialize<ChannelSyncResult>(responseContent,
-            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        var syncResult = JsonSerializer.Deserialize<ChannelSyncResult>(responseContent, TestHelpers.SerializerOptions);
 
         Assert.NotNull(syncResult);
         Assert.Equal(2, syncResult.VideosInserted);
@@ -157,19 +133,19 @@ public sealed class ChannelTests(TestFixture fixture)
         // Verify videos were created
         var createdVideos = await verificationDatabaseContext.Videos
             .AsNoTracking()
-            .Where(v => v.UploadsPlaylistId == testUploadsPlaylistId)
+            .Where(v => v.UploadsPlaylistId == TestConstants.UploadsPlaylistId)
             .OrderBy(v => v.VideoId)
             .ToListAsync();
 
         Assert.Equal(2, createdVideos.Count);
 
-        var firstVideo = createdVideos.First(v => v.VideoId == "video123");
+        var firstVideo = createdVideos.First(v => v.VideoId == video1);
         Assert.Equal("Test Video 1", firstVideo.Title);
         Assert.Equal(TimeSpan.FromMinutes(5), firstVideo.Duration);
         Assert.Equal(VideoVisibility.Public, firstVideo.Visibility);
         Assert.Equal(new DateTimeOffset(2024, 1, 1, 12, 0, 0, TimeSpan.Zero), firstVideo.PublishedAt);
 
-        var secondVideo = createdVideos.First(v => v.VideoId == "video456");
+        var secondVideo = createdVideos.First(v => v.VideoId == video2);
         Assert.Equal("Test Video 2", secondVideo.Title);
         Assert.Equal(TimeSpan.FromMinutes(10), secondVideo.Duration);
         Assert.Equal(VideoVisibility.Unlisted, secondVideo.Visibility);
@@ -178,7 +154,7 @@ public sealed class ChannelTests(TestFixture fixture)
         // Verify playlists were created
         var createdPlaylists = await verificationDatabaseContext.Playlists
             .AsNoTracking()
-            .Where(p => p.ChannelId == testChannelId)
+            .Where(p => p.ChannelId == TestConstants.ChannelId)
             .OrderBy(p => p.PlaylistId)
             .ToListAsync();
 
@@ -207,7 +183,7 @@ public sealed class ChannelTests(TestFixture fixture)
         // Verify channel uploads cutoff was updated
         var updatedChannel = await verificationDatabaseContext.Channels
             .AsNoTracking()
-            .FirstOrDefaultAsync(c => c.ChannelId == testChannelId);
+            .FirstOrDefaultAsync(c => c.ChannelId == TestConstants.ChannelId);
 
         Assert.NotNull(updatedChannel);
         Assert.NotNull(updatedChannel.LastUploadsCutoff);
@@ -219,42 +195,13 @@ public sealed class ChannelTests(TestFixture fixture)
     {
         // Arrange
         await fixture.ResetDbAsync();
-
-        const string testChannelId = "UCTestChannel987654321";
-        const string testChannelName = "TestChannelIdempotent";
-        const string testUploadsPlaylistId = "PLTestUploads987654321";
-        const string userId = MockAuthenticationExtensions.TestSub;
-
-        // Insert dummy user and channel into database
-        var dummyUser = User.Create(
-            userId,
-            MockAuthenticationExtensions.TestEmail,
-            MockAuthenticationExtensions.TestName,
-            MockAuthenticationExtensions.TestPicture,
-            TestFixture.TestingDateTimeOffset);
-
-        var dummyChannel = Channel.Create(
-            testChannelId,
-            userId,
-            testChannelName,
-            testUploadsPlaylistId,
-            TestFixture.TestingDateTimeOffset
-        );
-
-        using (var scope = fixture.ApiServices.CreateScope())
-        {
-            var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
-            databaseContext.Users.Add(dummyUser);
-            databaseContext.Channels.Add(dummyChannel);
-            databaseContext.Plans.Add(CreateFreePlan());
-            await databaseContext.SaveChangesAsync();
-        }
+        await _helpers.SeedVideoTestDataAsync();
 
         // Create mock video DTOs
         var mockVideosFirstCall = new List<VideoDto>
         {
             new(
-                "video789",
+                TestConstants.TargetVideoId,
                 "Original Title",
                 "Original Description",
                 ["tag1"],
@@ -275,7 +222,7 @@ public sealed class ChannelTests(TestFixture fixture)
         var mockVideosSecondCall = new List<VideoDto>
         {
             new(
-                "video789",
+                TestConstants.TargetVideoId,
                 "Updated Title",
                 "Updated Description",
                 ["tag1"],
@@ -293,20 +240,20 @@ public sealed class ChannelTests(TestFixture fixture)
             )
         };
 
-        var mockPlaylistData = new List<PlaylistDto> { new("playlist789", "Test Playlist", "Description", "public", "etag-video789-v1") };
+        var mockPlaylistData = new List<DetailedPlaylistDto> { new("playlist789", "Test Playlist", "Description", "public", "etag-video789-v1") };
 
         var mockPlaylistVideoIds = new Dictionary<string, List<string>> { ["playlist789"] = ["video789"] };
 
         // Setup MockYouTubeIntegration for first call
         fixture.ApiFactory.MockYouTubeIntegration
             .SetupSequence(x =>
-                x.GetAllVideosAsync(testUploadsPlaylistId,
+                x.GetAllVideosAsync(TestConstants.UploadsPlaylistId,
                     It.IsAny<DateTimeOffset?>(), It.IsAny<CancellationToken>()))
             .Returns(CreateAsyncEnumerable(mockVideosFirstCall))
             .Returns(CreateAsyncEnumerable(mockVideosSecondCall));
 
         fixture.ApiFactory.MockYouTubeIntegration
-            .Setup(x => x.GetPlaylistsAsync(testChannelId,
+            .Setup(x => x.GetPlaylistsAsync(TestConstants.ChannelId,
                 It.IsAny<CancellationToken>()))
             .Returns(CreateAsyncEnumerable(mockPlaylistData));
 
@@ -321,9 +268,6 @@ public sealed class ChannelTests(TestFixture fixture)
                     It.IsAny<CancellationToken>()))
             .ReturnsAsync(mockVideosFirstCall.ToList().AsReadOnly())
             .ReturnsAsync(mockVideosSecondCall.ToList().AsReadOnly());
-
-        fixture.ApiFactory.MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId())
-            .Returns(testChannelId);
 
         // Act - First call
         var firstResponse = await fixture.HttpClient.PostAsync($"/api/channels/sync/current", null);
@@ -348,11 +292,11 @@ public sealed class ChannelTests(TestFixture fixture)
 
         var videos = await verificationDatabaseContext.Videos
             .AsNoTracking()
-            .Where(v => v.UploadsPlaylistId == testUploadsPlaylistId)
+            .Where(v => v.UploadsPlaylistId == TestConstants.UploadsPlaylistId)
             .ToListAsync();
 
         Assert.Single(videos);
-        Assert.Equal("video789", videos[0].VideoId);
+        Assert.Equal(TestConstants.TargetVideoId, videos[0].VideoId);
         Assert.Equal("Updated Title", videos[0].Title);
     }
 
@@ -361,34 +305,13 @@ public sealed class ChannelTests(TestFixture fixture)
     {
         // Arrange
         await fixture.ResetDbAsync();
+        await _helpers.SeedVideoTestDataAsync(
+            new TestDataOptions
+            {
+                CreateSubscription = false
+            });
 
-        const string testChannelId = "UCSubMissingChannel";
-        const string testUploadsPlaylistId = "PLSubMissingUploads";
-        const string userId = MockAuthenticationExtensions.TestSub;
-
-        using (var scope = fixture.ApiServices.CreateScope())
-        {
-            var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
-
-            databaseContext.Users.Add(User.Create(
-                userId,
-                MockAuthenticationExtensions.TestEmail,
-                MockAuthenticationExtensions.TestName,
-                MockAuthenticationExtensions.TestPicture,
-                TestFixture.TestingDateTimeOffset));
-
-            databaseContext.Channels.Add(Channel.Create(
-                testChannelId,
-                userId,
-                "SubMissingChannel",
-                testUploadsPlaylistId,
-                TestFixture.TestingDateTimeOffset));
-
-            databaseContext.Plans.Add(CreateFreePlan());
-            await databaseContext.SaveChangesAsync();
-        }
-
-        SetupMinimalSyncMocks(testChannelId, testUploadsPlaylistId);
+        SetupMinimalSyncMocks();
 
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/channels/sync/current", null);
@@ -403,7 +326,7 @@ public sealed class ChannelTests(TestFixture fixture)
         var subscription = await verificationDb.Subscriptions
             .AsNoTracking()
             .Include(entity => entity.Plan)
-            .SingleOrDefaultAsync(entity => entity.UserId == userId);
+            .SingleOrDefaultAsync(entity => entity.UserId == TestConstants.UserId);
 
         Assert.NotNull(subscription);
         Assert.Equal("free", subscription.Plan.Code);
@@ -414,22 +337,22 @@ public sealed class ChannelTests(TestFixture fixture)
         // Verify wallet was created with monthly credits
         var wallet = await verificationDb.Wallets
             .AsNoTracking()
-            .SingleOrDefaultAsync(entity => entity.UserId == userId);
+            .SingleOrDefaultAsync(entity => entity.UserId == TestConstants.UserId);
 
         Assert.NotNull(wallet);
-        Assert.Equal(50, wallet.Balance);
+        Assert.Equal(TestConstants.MonthlyCredits, wallet.Balance);
         Assert.Equal(TestFixture.TestingDateTimeOffset, wallet.PeriodStartUtc);
         Assert.Equal(TestFixture.TestingDateTimeOffset.AddDays(30), wallet.PeriodEndUtc);
 
         // Verify ledger has a single PeriodGrant entry
         var ledgerEntries = await verificationDb.LedgerEntries
             .AsNoTracking()
-            .Where(entry => entry.UserId == userId)
+            .Where(entry => entry.UserId == TestConstants.UserId)
             .ToListAsync();
 
         var grantEntry = Assert.Single(ledgerEntries);
         Assert.Equal("PeriodGrant", grantEntry.ActionType);
-        Assert.Equal(50, grantEntry.Delta);
+        Assert.Equal(TestConstants.MonthlyCredits, grantEntry.Delta);
     }
 
     [Fact]
@@ -437,76 +360,13 @@ public sealed class ChannelTests(TestFixture fixture)
     {
         // Arrange
         await fixture.ResetDbAsync();
-
-        const string testChannelId = "UCSubActiveChannel";
-        const string testUploadsPlaylistId = "PLSubActiveUploads";
-        const string userId = MockAuthenticationExtensions.TestSub;
-        const int initialBalance = 42;
-        const int monthlyCredits = 100;
-
-        using (var scope = fixture.ApiServices.CreateScope())
-        {
-            var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
-
-            databaseContext.Users.Add(User.Create(
-                userId,
-                MockAuthenticationExtensions.TestEmail,
-                MockAuthenticationExtensions.TestName,
-                MockAuthenticationExtensions.TestPicture,
-                TestFixture.TestingDateTimeOffset));
-
-            databaseContext.Channels.Add(Channel.Create(
-                testChannelId,
-                userId,
-                "SubActiveChannel",
-                testUploadsPlaylistId,
-                TestFixture.TestingDateTimeOffset));
-
-            var plan = new Plan
-            {
-                Code = "ActiveTestPlan",
-                Name = "Active Test Plan",
-                MonthlyCredits = monthlyCredits,
-                IsActive = true,
-                CreatedAtUtc = TestFixture.TestingDateTimeOffset,
-                UpdatedAtUtc = TestFixture.TestingDateTimeOffset
-            };
-
-            databaseContext.Plans.Add(plan);
-            await databaseContext.SaveChangesAsync();
-
-            databaseContext.Subscriptions.Add(new Subscription
-            {
-                UserId = userId,
-                PlanId = plan.Id,
-                PeriodStartUtc = TestFixture.TestingDateTimeOffset,
-                PeriodEndUtc = TestFixture.TestingDateTimeOffset.AddMonths(1),
-                Status = SubscriptionStatus.Active
-            });
-
-            databaseContext.Wallets.Add(new Wallet
-            {
-                UserId = userId,
-                Balance = initialBalance,
-                PeriodStartUtc = TestFixture.TestingDateTimeOffset,
-                PeriodEndUtc = TestFixture.TestingDateTimeOffset.AddMonths(1),
-                UpdatedAtUtc = TestFixture.TestingDateTimeOffset
-            });
-
-            databaseContext.LedgerEntries.Add(new LedgerEntry
-            {
-                UserId = userId,
-                OccurredAtUtc = TestFixture.TestingDateTimeOffset,
-                ActionType = "PeriodGrant",
-                Delta = monthlyCredits,
-                IdempotencyKey = $"grant:{userId}:{TestFixture.TestingDateTimeOffset:O}"
-            });
-
-            await databaseContext.SaveChangesAsync();
-        }
-
-        SetupMinimalSyncMocks(testChannelId, testUploadsPlaylistId);
-
+        var testData = await _helpers.SeedVideoTestDataAsync();
+        var serviceScope = fixture.ApiServices.CreateScope();
+        var creditStore = serviceScope.ServiceProvider.GetRequiredService<ICreditsStore>();
+        var idempotencyKey = $"grant:{TestConstants.UserId}:{TestFixture.TestingDateTimeOffset.ToUniversalTime():O}";
+        await creditStore.GrantPeriodCreditsAsync(TestConstants.UserId, testData.Subscription!.PeriodStartUtc,
+            testData.Subscription.PeriodEndUtc, TestConstants.MonthlyCredits, idempotencyKey, TestFixture.TestingDateTimeOffset, CancellationToken.None);
+        SetupMinimalSyncMocks();
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/channels/sync/current", null);
 
@@ -514,8 +374,7 @@ public sealed class ChannelTests(TestFixture fixture)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var responseContent = await response.Content.ReadAsStringAsync();
-        var syncResult = JsonSerializer.Deserialize<ChannelSyncResult>(responseContent,
-            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        var syncResult = JsonSerializer.Deserialize<ChannelSyncResult>(responseContent, TestHelpers.SerializerOptions);
         Assert.NotNull(syncResult);
 
         using var verificationScope = fixture.ApiServices.CreateScope();
@@ -524,7 +383,7 @@ public sealed class ChannelTests(TestFixture fixture)
         // Verify subscription is unchanged
         var subscription = await verificationDb.Subscriptions
             .AsNoTracking()
-            .SingleOrDefaultAsync(entity => entity.UserId == userId);
+            .SingleOrDefaultAsync(entity => entity.UserId == TestConstants.UserId);
 
         Assert.NotNull(subscription);
         Assert.Equal(SubscriptionStatus.Active, subscription.Status);
@@ -532,20 +391,20 @@ public sealed class ChannelTests(TestFixture fixture)
         // Verify wallet balance is unchanged
         var wallet = await verificationDb.Wallets
             .AsNoTracking()
-            .SingleOrDefaultAsync(entity => entity.UserId == userId);
+            .SingleOrDefaultAsync(entity => entity.UserId == TestConstants.UserId);
 
         Assert.NotNull(wallet);
-        Assert.Equal(initialBalance, wallet.Balance);
+        Assert.Equal(TestConstants.MonthlyCredits, wallet.Balance);
 
         // Verify no new ledger entries were created
         var ledgerEntries = await verificationDb.LedgerEntries
             .AsNoTracking()
-            .Where(entry => entry.UserId == userId)
+            .Where(entry => entry.UserId == TestConstants.UserId)
             .ToListAsync();
 
         var grantEntry = Assert.Single(ledgerEntries);
         Assert.Equal("PeriodGrant", grantEntry.ActionType);
-        Assert.Equal(monthlyCredits, grantEntry.Delta);
+        Assert.Equal(TestConstants.MonthlyCredits, grantEntry.Delta);
     }
 
     [Fact]
@@ -636,7 +495,7 @@ public sealed class ChannelTests(TestFixture fixture)
         Assert.Empty(ledgerEntries);
     }
 
-    private void SetupMinimalSyncMocks(string channelId, string uploadsPlaylistId)
+    private void SetupMinimalSyncMocks(string channelId = TestConstants.ChannelId, string uploadsPlaylistId = TestConstants.UploadsPlaylistId)
     {
         fixture.ApiFactory.MockYouTubeIntegration
             .Setup(x => x.GetAllVideosAsync(uploadsPlaylistId,
@@ -646,24 +505,7 @@ public sealed class ChannelTests(TestFixture fixture)
         fixture.ApiFactory.MockYouTubeIntegration
             .Setup(x => x.GetPlaylistsAsync(channelId,
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncEnumerable(Array.Empty<PlaylistDto>()));
-
-        fixture.ApiFactory.MockCurrentChannelContext
-            .Setup(x => x.GetRequiredChannelId())
-            .Returns(channelId);
-    }
-
-    private static Plan CreateFreePlan()
-    {
-        return new Plan
-        {
-            Code = "free",
-            Name = "Free",
-            MonthlyCredits = 50,
-            IsActive = true,
-            CreatedAtUtc = TestFixture.TestingDateTimeOffset,
-            UpdatedAtUtc = TestFixture.TestingDateTimeOffset
-        };
+            .Returns(CreateAsyncEnumerable(Array.Empty<DetailedPlaylistDto>()));
     }
 
     private static async IAsyncEnumerable<T> CreateAsyncEnumerable<T>(IEnumerable<T> items)

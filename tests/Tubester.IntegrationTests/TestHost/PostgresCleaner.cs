@@ -26,7 +26,9 @@ public static class PostgresCleaner
                                       SELECT schemaname, tablename
                                       FROM pg_tables
                                       WHERE schemaname IN ('public', 'analytics')
-                                        AND NOT (schemaname = 'public' AND tablename = '__EFMigrationsHistory');
+                                        AND NOT (schemaname = 'public' AND tablename = '__EFMigrationsHistory')
+                                        AND NOT (schemaname = 'public' AND tablename = 'ActionCosts')
+                                      ;
                                       """;
 
                 await using var reader = await command.ExecuteReaderAsync();

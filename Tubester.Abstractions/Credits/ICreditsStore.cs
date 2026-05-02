@@ -75,7 +75,7 @@ public interface ICreditsStore
     /// Grants credits to a user's wallet directly (admin operation).
     /// This adds credits without resetting the wallet balance (unlike period grants).
     /// </summary>
-    Task<GrantResult> GrantCreditsAsync(
+    Task<GrantResult> AdminGrantCreditsAsync(
         string userId,
         int amount,
         string idempotencyKey,

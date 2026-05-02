@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
+using Tubester.Abstractions;
 using Tubester.Abstractions.Account;
 using Tubester.Abstractions.Analytics;
 using Tubester.Abstractions.Auth;

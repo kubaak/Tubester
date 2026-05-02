@@ -21,19 +21,23 @@ public sealed record VideoDetailsDto
     public required string[] Tags { get; init; }
 
     /// <summary>
-    /// Indicates that an AI template job is currently in progress for this video.
+    /// Indicates that an AI title generation is currently in progress for this video.
     /// </summary>
-    public bool IsAiTemplateInProgress { get; init; }
+    public required bool IsAiTitleInProgress { get; init; }
 
     /// <summary>
-    /// Geographic coordinates of the recording location.
+    /// Indicates that an AI description generation is currently in progress for this video.
     /// </summary>
-    public GeoLocationDto? Location { get; init; }
+    public required bool IsAiDescriptionInProgress { get; init; }
 
     /// <summary>
-    /// Human-readable location description.
+    /// Indicates that an AI tags generation is currently in progress for this video.
     /// </summary>
-    public string? LocationDescription { get; init; }
+    public required bool IsAiTagsInProgress { get; init; }
+    /// <summary>
+    /// Indicates that an AI playlist suggestion is currently in progress for this video.
+    /// </summary>
+    public required bool IsAiPlaylistSuggestionInProgress { get; init; }
 
     /// <summary>
     /// Playlists this video belongs to.

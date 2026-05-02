@@ -81,7 +81,7 @@ public class ReplyRepository(TubesterDb db) : IReplyRepository
     }
 
     public async Task<List<Reply>> GetRepliesPageAsync(
-        string channelId,
+        string uploadPlaylistId,
         IReadOnlyCollection<ReplyStatus>? statuses,
         IReadOnlyCollection<string>? videoIds,
         string? originalComment,
@@ -107,15 +107,10 @@ public class ReplyRepository(TubesterDb db) : IReplyRepository
         var query = db.Replies
             .AsNoTracking()
             .Join(
-                db.Videos,
+                db.Videos.Where(v => v.UploadsPlaylistId == uploadPlaylistId),
                 r => r.VideoId,
                 v => v.VideoId,
-                (r, v) => new { Reply = r, Video = v })
-            .Join(
-                db.Channels.Where(c => c.ChannelId == channelId),
-                rv => rv.Video.UploadsPlaylistId,
-                c => c.UploadsPlaylistId,
-                (rv, _) => rv.Reply);
+                (r, _) => r);
 
         if (statuses is { Count: > 0 })
         {

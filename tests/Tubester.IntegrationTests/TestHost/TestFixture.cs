@@ -17,7 +17,7 @@ public sealed class TestFixture : IAsyncLifetime
     public IServiceProvider ApiServices => ApiFactory.Services;
     public IServiceProvider WorkerServices => WorkerFactory.TestHost.Services;
     public IFixture Auto { get; private set; } = CreateAuto();
-    public static DateTimeOffset TestingDateTimeOffset { get; } = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    public static DateTimeOffset TestingDateTimeOffset { get; } = new(2026, 4, 1, 0, 0, 0, TimeSpan.Zero);
 
     public async Task InitializeAsync()
     {
@@ -72,7 +72,7 @@ public sealed class TestFixture : IAsyncLifetime
         CapturingJobClient.Clear();
         Auto = CreateAuto();
     }
-
+    
     public Task DisposeAsync()
     {
         HttpClient.Dispose();

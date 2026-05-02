@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Tubester.Abstractions.ApplicationConfiguration;
 using Tubester.Abstractions.Playlists;
 using Tubester.Integration;
 using Xunit;
@@ -19,13 +20,12 @@ public class AiClientTests : IAsyncLifetime
 
     public AiClientTests()
     {
-        var aiOptions = new AiOptions { Endpoint = "http://localhost:11434" };
-
+        const string endpoint = "http://localhost:11434";
 
         // Create health check client for IAsyncLifetime
         _healthCheckClient = new HttpClient
         {
-            BaseAddress = new Uri(aiOptions.Endpoint),
+            BaseAddress = new Uri(endpoint),
             Timeout = TimeSpan.FromSeconds(10)
         };
 
@@ -34,9 +34,13 @@ public class AiClientTests : IAsyncLifetime
         services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
         services.Configure<AiOptions>(opts =>
         {
-            opts.Endpoint = aiOptions.Endpoint;
-            opts.Model = aiOptions.Model;
-            opts.Provider = aiOptions.Provider;
+            opts.Endpoint = endpoint;
+            opts.Model = "gemma3:12b";
+            opts.PlaylistModel = "gemma3:12b";
+            opts.PlaylistTemperature = 0.1;
+            opts.PlaylistNumCtx = 4096;
+            opts.Provider = nameof(AiProviders.Ollama);
+            opts.MaxPlaylistsPerBatch = 7;
         });
         services.AddHttpClient<IAiClient, AiClient>((sp, http) =>
         {

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Tubester.Abstractions;
 using Tubester.Abstractions.Channels;
 using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Replies;
@@ -104,11 +105,11 @@ public class ReplyService(
             afterCommentId = commentId;
         }
 
-        var channelId = currentChannelContext.GetRequiredChannelId();
+        var uploadPlaylistId = currentChannelContext.GetRequiredUploadPlaylistId();
         var take = effectivePageSize + 1;
 
         var replies = await repository.GetRepliesPageAsync(
-            channelId,
+            uploadPlaylistId,
             normalizedStatuses,
             normalizedVideoIds,
             normalizedOriginalComment,

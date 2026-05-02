@@ -71,7 +71,7 @@ public sealed class AdminCreditsController(
                 Message = "Amount must be greater than zero."
             });
         }
-        
+
         var adminUserId = currentUserContext.UserId;
 
         if (string.IsNullOrWhiteSpace(adminUserId))
@@ -91,7 +91,7 @@ public sealed class AdminCreditsController(
                 request.Amount,
                 operationId,
                 cancellationToken);
-            
+
             return Ok(new CreditGrantResponse
             {
                 Success = grantResult.Granted,
@@ -112,14 +112,14 @@ public sealed class AdminCreditsController(
                 Message = e.Message
             });
         }
-        catch (BadRequestException  e)
+        catch (BadRequestException e)
         {
             return BadRequest(new CreditGrantResponse
             {
                 Success = false,
                 Message = e.Message
             });
-        }       
+        }
     }
 
     public sealed class CreditGrantRequest

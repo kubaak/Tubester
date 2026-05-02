@@ -122,16 +122,10 @@ public class RepliesController(IReplyService service) : ApiControllerBase
         var result = await service.IgnoreBatchAsync(commentIds, ct);
         return Ok(result);
     }
-
+    
     /// <summary>
-    /// Search Suggested Replies Request
+    /// 
     /// </summary>
-    public sealed class SearchSuggestedRepliesRequest
-    {
-        public string? VideoId { get; init; }
-        public string? OriginalComment { get; init; }
-        public int? PageSize { get; init; }
-        public string? PageToken { get; init; }
-    }
+    /// <param name="Error"></param>
     public sealed record ApiErrorDto(string Error);
 }

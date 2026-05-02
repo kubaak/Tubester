@@ -1,6 +1,4 @@
 using Microsoft.EntityFrameworkCore.Migrations;
-using Tubester.Abstractions.Credits;
-using Tubester.Persistence.Credits;
 
 #nullable disable
 
@@ -52,7 +50,7 @@ namespace Tubester.Persistence.Migrations
                 columns: new[] { "ActionType", "Cost", "IsEnabled", "UpdatedAtUtc", "Notes" },
                 values: new object[,]
                 {
-                    { nameof(CreditActionType.AiTemplateWithPlaylistEnqueued), 2, true, seedTimestamp, "AI suggesting playlists for a video" }
+                    { "AiTemplateWithPlaylistEnqueued", 2, true, seedTimestamp, "AI suggesting playlists for a video" }
                 });
         }
 
@@ -87,7 +85,7 @@ namespace Tubester.Persistence.Migrations
             migrationBuilder.Sql(
                 $"""
                  DELETE FROM "ActionCosts"
-                 WHERE "ActionType" = '{nameof(CreditActionType.AiTemplateWithPlaylistEnqueued)}';
+                 WHERE "ActionType" = 'AiTemplateWithPlaylistEnqueued';
                  """);
         }
     }
