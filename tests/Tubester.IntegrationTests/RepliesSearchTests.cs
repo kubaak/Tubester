@@ -1,13 +1,10 @@
 ﻿using System.Net;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.DependencyInjection;
-using Tubester.Abstractions.Users;
 using Tubester.Application.Contracts;
 using Tubester.Application.Contracts.Replies;
 using Tubester.Domain;
 using Tubester.IntegrationTests.TestHost;
-using Tubester.Persistence;
 using Xunit;
 
 namespace Tubester.IntegrationTests;
@@ -38,7 +35,7 @@ public class RepliesSearchTests(TestFixture fixture)
         Assert.Empty(result.Items);
         Assert.Null(result.NextPageToken);
     }
-    
+
     [Fact]
     public async Task SearchSuggestedReplies_WithSuggestedReplies_ReturnsPaginatedResults()
     {
@@ -124,13 +121,13 @@ public class RepliesSearchTests(TestFixture fixture)
 
         var reply3 = TestHelpers.GetReply("comment3");
         reply3.SuggestText("Reply 3", TestFixture.TestingDateTimeOffset.AddMinutes(7));
-        
+
         await _helpers.SeedVideoTestDataAsync(new TestDataOptions
         {
             Replies = [reply1, reply2, reply3],
             CreateSubscription = false
         });
-        
+
 
         var request = new SearchSuggestedRepliesRequest { OriginalComment = "comment1" };
         var json = JsonSerializer.Serialize(request, TestHelpers.SerializerOptions);
@@ -155,7 +152,7 @@ public class RepliesSearchTests(TestFixture fixture)
     {
         // Arrange
         await fixture.ResetDbAsync();
-        
+
         var replies = new List<Reply>();
         for (var i = 1; i <= 5; i++)
         {
@@ -236,7 +233,7 @@ public class RepliesSearchTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
-    
+
     private static void AssertReplyListItemDto(ReplyListItemDto listItemDto, Reply reply)
     {
         Assert.Equal(reply.CommentId, listItemDto.CommentId);

@@ -71,6 +71,9 @@ public sealed class GlobalExceptionHandler(
             ForbiddenException fb
                 => (StatusCodes.Status403Forbidden, "Forbidden", fb.Message),
 
+            PaymentRequiredException pr
+                => (StatusCodes.Status402PaymentRequired, "Payment Required", pr.Message),
+
             ConflictException cf
                 => (StatusCodes.Status409Conflict, "Conflict", cf.Message),
 

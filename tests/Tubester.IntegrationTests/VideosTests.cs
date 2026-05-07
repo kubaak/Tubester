@@ -11,27 +11,27 @@ namespace Tubester.IntegrationTests;
 public class VideosTests(TestFixture fixture)
 {
     private readonly TestHelpers _helpers = new(fixture);
-    
+
     [Fact]
     public async Task SaveDraft_ValidRequest_SavesMetadataToDbWithoutCallingYouTube()
     {
         // Arrange
         await fixture.ResetDbAsync();
         var targetVideo = TestHelpers.GetTargetVideo();
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions{Videos = [targetVideo]});
+        await _helpers.SeedVideoTestDataAsync(new TestDataOptions { Videos = [targetVideo] });
 
         const string newTitle = "Draft Title";
         const string newDescription = "Draft Description";
         var newTags = new[] { "draft-tag-one", "draft-tag-two" };
 
-        var request = new UpdateVideoMetadataRequest(
+        var request = new SaveVideoDraftRequest(
             TestConstants.TargetVideoId,
             newTitle,
             newDescription,
             newTags,
             null
         );
-        
+
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/videos/save-draft",
             TestHelpers.CreateJsonContent(request));
@@ -45,14 +45,11 @@ public class VideosTests(TestFixture fixture)
             responseJson,
             TestHelpers.SerializerOptions);
         
-        TestHelpers.SetProperty(targetVideo, nameof(targetVideo.UpdatedAt), TestFixture.TestingDateTimeOffset);
-        TestHelpers.SetProperty(targetVideo, nameof(targetVideo.Title), newTitle);
-        TestHelpers.SetProperty(targetVideo, nameof(targetVideo.Description), newDescription);
-        TestHelpers.SetProperty(targetVideo, nameof(targetVideo.Tags), newTags);
-        TestHelpers.SetProperty<string>(targetVideo, nameof(targetVideo.ETag), null); //Etag will be reset
+
+        TestHelpers.SetVideoProperties(targetVideo, newTitle, newDescription, newTags);
         TestHelpers.AssertVideoDetails(videoDetails, targetVideo);
         await _helpers.AssertVideoAsync(targetVideo);
-
+        
         fixture.ApiFactory.MockYouTubeIntegration.Verify(youTubeIntegration =>
                 youTubeIntegration.UpdateVideoAsync(
                     It.IsAny<string>(),
@@ -149,7 +146,8 @@ public class VideosTests(TestFixture fixture)
         var playlist2 = TestHelpers.GetPlaylist("PL2");
         await _helpers.SeedVideoTestDataAsync(new TestDataOptions
         {
-            Videos = [targetVideo], Playlists = [playlist1, playlist2]
+            Videos = [targetVideo],
+            Playlists = [playlist1, playlist2]
         });
 
         const string newTitle = "Updated Title With Playlists";
@@ -208,15 +206,16 @@ public class VideosTests(TestFixture fixture)
         TestHelpers.SetProperty(targetVideo, nameof(targetVideo.Description), newDescription);
         TestHelpers.SetProperty(targetVideo, nameof(targetVideo.Tags), newTags);
         TestHelpers.SetProperty<string>(targetVideo, nameof(targetVideo.ETag), null); //Etag will be reset
-        var expectedPlaylistDtos = new PlaylistDto[] { 
+        var expectedPlaylistDtos = new PlaylistDto[] {
             new() { Id = playlist1.PlaylistId, Name = playlist1.Title },
             new() { Id = playlist2.PlaylistId, Name = playlist2.Title }
-            
+
         };
+        TestHelpers.SetVideoProperties(targetVideo, newTitle, newDescription, newTags);
         TestHelpers.AssertVideoDetails(videoDetails, targetVideo, expectedPlaylistDtos);
         await _helpers.AssertVideoAsync(targetVideo);
         await _helpers.AssertVideoPlaylistsAsync(targetVideo.VideoId, playlist1.PlaylistId, playlist2.PlaylistId);
-        
+
         fixture.ApiFactory.MockYouTubeIntegration.Verify(youTubeIntegration =>
                 youTubeIntegration.UpdateVideoAsync(
                     targetVideo.VideoId,
@@ -249,7 +248,8 @@ public class VideosTests(TestFixture fixture)
         var playlist2 = TestHelpers.GetPlaylist("PL2");
         await _helpers.SeedVideoTestDataAsync(new TestDataOptions
         {
-            Videos = [targetVideo], Playlists = [playlist1, playlist2]
+            Videos = [targetVideo],
+            Playlists = [playlist1, playlist2]
         });
         const string newTitle = "Draft Title With Playlists";
         const string newDescription = "Draft Description";
@@ -282,11 +282,12 @@ public class VideosTests(TestFixture fixture)
         TestHelpers.SetProperty(targetVideo, nameof(targetVideo.Description), newDescription);
         TestHelpers.SetProperty(targetVideo, nameof(targetVideo.Tags), newTags);
         TestHelpers.SetProperty<string>(targetVideo, nameof(targetVideo.ETag), null); //Etag will be reset
-        var expectedPlaylistDtos = new PlaylistDto[] { 
+        var expectedPlaylistDtos = new PlaylistDto[] {
             new() { Id = playlist1.PlaylistId, Name = playlist1.Title },
             new() { Id = playlist2.PlaylistId, Name = playlist2.Title }
-            
+
         };
+        TestHelpers.SetVideoProperties(targetVideo, newTitle, newDescription, newTags);
         TestHelpers.AssertVideoDetails(videoDetails, targetVideo, expectedPlaylistDtos);
         await _helpers.AssertVideoAsync(targetVideo);
         await _helpers.AssertVideoPlaylistsAsync(targetVideo.VideoId, playlist1.PlaylistId, playlist2.PlaylistId);

@@ -23,7 +23,7 @@ public sealed class CreditsTests(TestFixture fixture)
     private readonly TestHelpers _helpers = new(fixture);
 
     private const string OperationId = "credits-idempotency-operation";
-    
+
     [Fact]
     public async Task AiTemplateEnqueue_WithInsufficientCredits_ReturnsForbidden_AndDoesNotPersistWalletOrLedger()
     {
@@ -33,7 +33,7 @@ public sealed class CreditsTests(TestFixture fixture)
         {
             MonthlyCredits = credits
         });
-        
+
         var request = new AiVideoTemplateRequest
         {
             TargetVideoId = TestConstants.TargetVideoId,
@@ -48,7 +48,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
         var response = await fixture.HttpClient.SendAsync(requestMessage);
 
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(HttpStatusCode.PaymentRequired, response.StatusCode);
 
         var responseBody = await response.Content.ReadAsStringAsync();
         Assert.Contains("Insufficient credits to enqueue AI templating.", responseBody);
@@ -94,7 +94,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         await _helpers.VerifyLedgerAndWalletAfterDeductionAsync(nameof(CreditActionType.AiTemplateSubmitted),
-            TestConstants.VideoDetailsSubmitActionCost,TestConstants.TargetVideoId);
+            TestConstants.VideoDetailsSubmitActionCost, TestConstants.TargetVideoId);
     }
 
     [Fact]
@@ -105,7 +105,7 @@ public sealed class CreditsTests(TestFixture fixture)
         {
             MonthlyCredits = 1
         });
-        
+
         var request = new UpdateVideoMetadataRequest(
             TestConstants.TargetVideoId,
             "Updated Title",
@@ -135,7 +135,7 @@ public sealed class CreditsTests(TestFixture fixture)
         await fixture.ResetDbAsync();
         fixture.ApiFactory.MockYouTubeIntegration.Reset();
         await _helpers.SeedVideoTestDataAsync();
-        
+
         var reply = Reply.Create(
             "credits-comment-1",
             TestConstants.TargetVideoId,
@@ -187,7 +187,7 @@ public sealed class CreditsTests(TestFixture fixture)
     {
         await fixture.ResetDbAsync();
         fixture.ApiFactory.MockYouTubeIntegration.Reset();
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions { MonthlyCredits = 0});
+        await _helpers.SeedVideoTestDataAsync(new TestDataOptions { MonthlyCredits = 0 });
 
         var reply = Reply.Create(
             "credits-insufficient-comment-1",
@@ -250,7 +250,7 @@ public sealed class CreditsTests(TestFixture fixture)
         using (var serviceScope = fixture.ApiServices.CreateScope())
         {
             var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
-            
+
             var plan = new Plan
             {
                 Code = "CreditsResubscribePlan",
@@ -307,7 +307,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
         var response = await fixture.HttpClient.SendAsync(requestMessage);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
 
         await _helpers.VerifyLedgerAndWalletAfterDeductionAsync(nameof(CreditActionType.AiTemplateEnqueued), TestConstants.AiTemplateCost, TestConstants.TargetVideoId);
     }
@@ -336,7 +336,7 @@ public sealed class CreditsTests(TestFixture fixture)
             CreatedAtUtc = oldGrantAt,
             UpdatedAtUtc = oldGrantAt
         };
-        
+
         await databaseContext.Plans.AddAsync(plan, CancellationToken.None);
         await databaseContext.SaveChangesAsync(CancellationToken.None);
 
@@ -351,12 +351,12 @@ public sealed class CreditsTests(TestFixture fixture)
 
         await databaseContext.Subscriptions.AddAsync(subscription, CancellationToken.None);
         await databaseContext.SaveChangesAsync(CancellationToken.None);
-        
+
         var creditStore = serviceScope.ServiceProvider.GetRequiredService<ICreditsStore>();
         var idempotencyKey = $"grant:{TestConstants.UserId}:{TestFixture.TestingDateTimeOffset.ToUniversalTime():O}";
         await creditStore.GrantPeriodCreditsAsync(TestConstants.UserId, subscription.PeriodStartUtc,
             subscription.PeriodEndUtc, TestConstants.MonthlyCredits, idempotencyKey, oldGrantAt, CancellationToken.None);
-        
+
         var request = new AiVideoTemplateRequest
         {
             TargetVideoId = TestConstants.TargetVideoId,
@@ -371,7 +371,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
         var response = await fixture.HttpClient.SendAsync(requestMessage);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
 
         await _helpers.VerifyLedgerAndWalletAfterDeductionAsync(nameof(CreditActionType.AiTemplateEnqueued),
             TestConstants.AiTemplateCost, TestConstants.TargetVideoId, oldGrantAt);
@@ -383,7 +383,7 @@ public sealed class CreditsTests(TestFixture fixture)
         await fixture.ResetDbAsync();
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Reset();
         fixture.WorkerFactory.MockAiClient.Invocations.Clear();
-        
+
         var video = TestHelpers.GetTargetVideo();
         await _helpers.SeedVideoTestDataAsync(new TestDataOptions
         {
@@ -391,7 +391,7 @@ public sealed class CreditsTests(TestFixture fixture)
         });
 
         const string commentId = "credits-ai-reply-comment";
-        
+
         var commentThread = new Integration.Dtos.CommentThreadDto(
             commentId,
             TestConstants.TargetVideoId,
@@ -414,14 +414,14 @@ public sealed class CreditsTests(TestFixture fixture)
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync("Thanks for watching! I'll cover that in a future video.");
-        
+
         using (var jobScope = fixture.WorkerServices.CreateScope())
         {
             var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
             await commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false));
         }
-        
-        await _helpers.VerifyLedgerAndWalletAfterDeductionAsync(nameof(CreditActionType.AiReplyGenerated), 
+
+        await _helpers.VerifyLedgerAndWalletAfterDeductionAsync(nameof(CreditActionType.AiReplyGenerated),
             TestConstants.AiReplyGeneratedCost, commentId);
 
         using var verificationScope = fixture.WorkerServices.CreateScope();
@@ -447,7 +447,7 @@ public sealed class CreditsTests(TestFixture fixture)
         });
 
         const string commentId = "credits-ai-reply-comment";
-        
+
         var commentThread = new Integration.Dtos.CommentThreadDto(
             commentId,
             TestConstants.TargetVideoId,
@@ -470,7 +470,7 @@ public sealed class CreditsTests(TestFixture fixture)
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new Exception("Simulated AI client failure."));
-        
+
         using (var jobScope = fixture.WorkerServices.CreateScope())
         {
             var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
@@ -585,7 +585,7 @@ public sealed class CreditsTests(TestFixture fixture)
             };
 
             await databaseContext.Subscriptions.AddAsync(userSubscription, CancellationToken.None);
-            
+
             await databaseContext.SaveChangesAsync(CancellationToken.None);
         }
 
@@ -678,7 +678,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
         await Task.CompletedTask;
     }
-    
+
     private async Task VerifyNoDeductionsAsync(int monthlyCredits = TestConstants.MonthlyCredits)
     {
         using var verificationScope = fixture.ApiServices.CreateScope();
@@ -697,5 +697,808 @@ public sealed class CreditsTests(TestFixture fixture)
         Assert.NotNull(ledgerEntries);
         Assert.Single(ledgerEntries);
         Assert.Equal(monthlyCredits, ledgerEntries[0].Delta);
+    }
+
+    [Fact]
+    public async Task AiTemplate_WhenSubscriptionExpired_Renew()
+    {
+        // Arrange
+        // User had an active subscription 2 months prior to TestingDateTimeOffset (April 1, 2026)
+        // The subscription period ended 2 months ago (February 1, 2026)
+        var expiredPeriodStart = TestFixture.TestingDateTimeOffset.AddMonths(-3).AddDays(-5);
+        var expiredPeriodEnd = TestFixture.TestingDateTimeOffset.AddMonths(-2).AddDays(-5); // Period ended 2 months ago
+
+        await fixture.ResetDbAsync();
+        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        {
+            CreateSubscription = false
+        });
+
+        using var serviceScope = fixture.ApiServices.CreateScope();
+        var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
+        // Create an EXPIRED subscription (period ended 2 months ago)
+        var expiredSubscription = new Subscription
+        {
+            UserId = TestConstants.UserId,
+            PlanId = testData.Plan!.Id,
+            PeriodStartUtc = expiredPeriodStart,
+            PeriodEndUtc = expiredPeriodEnd,
+            Status = SubscriptionStatus.Active // Still active but period ended
+        };
+
+        await databaseContext.Subscriptions.AddAsync(expiredSubscription, CancellationToken.None);
+
+        // Create a wallet from the expired subscription period with remaining credits
+        var expiredWallet = new Wallet
+        {
+            UserId = TestConstants.UserId,
+            Balance = 3, // Some remaining credits from old period
+            PeriodStartUtc = expiredPeriodStart,
+            PeriodEndUtc = expiredPeriodEnd,
+            UpdatedAtUtc = expiredPeriodEnd
+        };
+
+        await databaseContext.Wallets.AddAsync(expiredWallet, CancellationToken.None);
+        await databaseContext.SaveChangesAsync(CancellationToken.None);
+
+        var request = new AiVideoTemplateRequest
+        {
+            TargetVideoId = TestConstants.TargetVideoId,
+            PromptEnrichment = "Generate better metadata"
+        };
+
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = TestHelpers.CreateJsonContent(request)
+        };
+        requestMessage.Headers.Add("OperationId", OperationId);
+
+        // Act
+        var response = await fixture.HttpClient.SendAsync(requestMessage);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+
+        // Verify that fresh credits were granted and the spend was deducted
+        await _helpers.VerifyLedgerAndWalletAfterDeductionAsync(
+            nameof(CreditActionType.AiTemplateEnqueued),
+            TestConstants.AiTemplateCost,
+            TestConstants.TargetVideoId,
+            TestFixture.TestingDateTimeOffset); // Fresh grant should be at TestingDateTimeOffset
+
+        // Verify subscription was correctly extended and history record was inserted
+        using var verificationScope = fixture.ApiServices.CreateScope();
+        var verificationContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        // Verify the subscription has been extended with new period dates
+        var updatedSubscription = await verificationContext.Subscriptions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.UserId == TestConstants.UserId);
+
+        Assert.NotNull(updatedSubscription);
+        var expectedPeriodStart = expiredPeriodStart.AddMonths(3);
+        var expectedPeriodEnd = expiredPeriodEnd.AddMonths(3);
+        Assert.Equal(expectedPeriodStart, updatedSubscription.PeriodStartUtc);
+        Assert.Equal(expectedPeriodEnd, updatedSubscription.PeriodEndUtc);
+
+        // Verify the expired period was recorded in history
+        var historyRecord = await verificationContext.SubscriptionHistories
+            .AsNoTracking()
+            .Include(h => h.Plan)
+            .FirstOrDefaultAsync(h => h.UserId == TestConstants.UserId);
+
+        Assert.NotNull(historyRecord);
+        Assert.Equal(TestConstants.UserId, historyRecord.UserId);
+        Assert.Equal(testData.Plan!.Id, historyRecord.PlanId);
+        Assert.Equal(expiredPeriodStart, historyRecord.PeriodStartUtc);
+        Assert.Equal(expiredPeriodEnd, historyRecord.PeriodEndUtc);
+        Assert.Equal(SubscriptionStatus.Active, historyRecord.Status);
+        Assert.Equal(TestFixture.TestingDateTimeOffset, historyRecord.CreatedAtUtc);
+    }
+
+    [Fact]
+    public async Task AiTemplate_WhenSubscriptionExpiredForManyMonths_RenewsToCurrentAnchoredPeriod()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        {
+            CreateSubscription = false
+        });
+
+        var expiredPeriodStart = TestFixture.TestingDateTimeOffset.AddMonths(-7);
+        var expiredPeriodEnd = TestFixture.TestingDateTimeOffset.AddMonths(-6);
+
+        using var serviceScope = fixture.ApiServices.CreateScope();
+        var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        databaseContext.Subscriptions.Add(new Subscription
+        {
+            UserId = TestConstants.UserId,
+            PlanId = testData.Plan!.Id,
+            PeriodStartUtc = expiredPeriodStart,
+            PeriodEndUtc = expiredPeriodEnd,
+            Status = SubscriptionStatus.Active
+        });
+
+        databaseContext.Wallets.Add(new Wallet
+        {
+            UserId = TestConstants.UserId,
+            Balance = 3,
+            PeriodStartUtc = expiredPeriodStart,
+            PeriodEndUtc = expiredPeriodEnd,
+            UpdatedAtUtc = expiredPeriodEnd
+        });
+
+        await databaseContext.SaveChangesAsync();
+
+        var request = new AiVideoTemplateRequest
+        {
+            TargetVideoId = TestConstants.TargetVideoId,
+            PromptEnrichment = "Generate better metadata"
+        };
+
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = TestHelpers.CreateJsonContent(request)
+        };
+        requestMessage.Headers.Add("OperationId", OperationId);
+
+        // Act
+        var response = await fixture.HttpClient.SendAsync(requestMessage);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+
+        using var verificationScope = fixture.ApiServices.CreateScope();
+        var verificationContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        var updatedSubscription = await verificationContext.Subscriptions
+            .AsNoTracking()
+            .SingleAsync(subscription => subscription.UserId == TestConstants.UserId);
+
+        Assert.Equal(TestFixture.TestingDateTimeOffset, updatedSubscription.PeriodStartUtc);
+        Assert.Equal(TestFixture.TestingDateTimeOffset.AddMonths(1), updatedSubscription.PeriodEndUtc);
+
+        var wallet = await verificationContext.Wallets
+            .AsNoTracking()
+            .SingleAsync(wallet => wallet.UserId == TestConstants.UserId);
+
+        Assert.Equal(TestFixture.TestingDateTimeOffset, wallet.PeriodStartUtc);
+        Assert.Equal(TestFixture.TestingDateTimeOffset.AddMonths(1), wallet.PeriodEndUtc);
+        Assert.Equal(testData.Plan.MonthlyCredits - TestConstants.AiTemplateCost, wallet.Balance);
+
+        var historyRecords = await verificationContext.SubscriptionHistories
+            .AsNoTracking()
+            .Where(history => history.UserId == TestConstants.UserId)
+            .ToListAsync();
+
+        var historyRecord = Assert.Single(historyRecords);
+        Assert.Equal(expiredPeriodStart, historyRecord.PeriodStartUtc);
+        Assert.Equal(expiredPeriodEnd, historyRecord.PeriodEndUtc);
+    }
+
+    [Fact]
+    public async Task AiTemplate_WhenSubscriptionExpiredButInactive_DoesNotRenew()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        {
+            CreateSubscription = false
+        });
+
+        var expiredPeriodStart = TestFixture.TestingDateTimeOffset.AddMonths(-2);
+        var expiredPeriodEnd = TestFixture.TestingDateTimeOffset.AddMonths(-1);
+
+        using var serviceScope = fixture.ApiServices.CreateScope();
+        var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        databaseContext.Subscriptions.Add(new Subscription
+        {
+            UserId = TestConstants.UserId,
+            PlanId = testData.Plan!.Id,
+            PeriodStartUtc = expiredPeriodStart,
+            PeriodEndUtc = expiredPeriodEnd,
+            Status = SubscriptionStatus.Cancelled
+        });
+
+        databaseContext.Wallets.Add(new Wallet
+        {
+            UserId = TestConstants.UserId,
+            Balance = testData.Plan.MonthlyCredits,
+            PeriodStartUtc = expiredPeriodStart,
+            PeriodEndUtc = expiredPeriodEnd,
+            UpdatedAtUtc = expiredPeriodEnd
+        });
+
+        await databaseContext.SaveChangesAsync();
+
+        var request = new AiVideoTemplateRequest
+        {
+            TargetVideoId = TestConstants.TargetVideoId,
+            PromptEnrichment = "Generate better metadata"
+        };
+
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = TestHelpers.CreateJsonContent(request)
+        };
+        requestMessage.Headers.Add("OperationId", OperationId);
+
+        // Act
+        var response = await fixture.HttpClient.SendAsync(requestMessage);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.PaymentRequired, response.StatusCode);
+
+        using var verificationScope = fixture.ApiServices.CreateScope();
+        var verificationContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        var subscription = await verificationContext.Subscriptions
+            .AsNoTracking()
+            .SingleAsync(subscription => subscription.UserId == TestConstants.UserId);
+
+        Assert.Equal(expiredPeriodStart, subscription.PeriodStartUtc);
+        Assert.Equal(expiredPeriodEnd, subscription.PeriodEndUtc);
+
+        Assert.Empty(await verificationContext.SubscriptionHistories
+            .AsNoTracking()
+            .Where(history => history.UserId == TestConstants.UserId)
+            .ToListAsync());
+
+        Assert.Empty(await verificationContext.LedgerEntries
+            .AsNoTracking()
+            .Where(entry => entry.UserId == TestConstants.UserId)
+            .ToListAsync());
+    }
+
+    [Fact]
+    public async Task AiTemplate_WhenSubscriptionExpiredAndPlanInactive_DoesNotRenew()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        {
+            CreateSubscription = false
+        });
+
+        var expiredPeriodStart = TestFixture.TestingDateTimeOffset.AddMonths(-2);
+        var expiredPeriodEnd = TestFixture.TestingDateTimeOffset.AddMonths(-1);
+
+        using var serviceScope = fixture.ApiServices.CreateScope();
+        var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        var plan = await databaseContext.Plans
+            .SingleAsync(plan => plan.Id == testData.Plan!.Id);
+
+        plan.IsActive = false;
+
+        databaseContext.Subscriptions.Add(new Subscription
+        {
+            UserId = TestConstants.UserId,
+            PlanId = plan.Id,
+            PeriodStartUtc = expiredPeriodStart,
+            PeriodEndUtc = expiredPeriodEnd,
+            Status = SubscriptionStatus.Active
+        });
+
+        databaseContext.Wallets.Add(new Wallet
+        {
+            UserId = TestConstants.UserId,
+            Balance = plan.MonthlyCredits,
+            PeriodStartUtc = expiredPeriodStart,
+            PeriodEndUtc = expiredPeriodEnd,
+            UpdatedAtUtc = expiredPeriodEnd
+        });
+
+        await databaseContext.SaveChangesAsync();
+
+        var request = new AiVideoTemplateRequest
+        {
+            TargetVideoId = TestConstants.TargetVideoId,
+            PromptEnrichment = "Generate better metadata"
+        };
+
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = TestHelpers.CreateJsonContent(request)
+        };
+        requestMessage.Headers.Add("OperationId", OperationId);
+
+        // Act
+        var response = await fixture.HttpClient.SendAsync(requestMessage);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.PaymentRequired, response.StatusCode);
+
+        using var verificationScope = fixture.ApiServices.CreateScope();
+        var verificationContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        var subscription = await verificationContext.Subscriptions
+            .AsNoTracking()
+            .SingleAsync(subscription => subscription.UserId == TestConstants.UserId);
+
+        Assert.Equal(expiredPeriodStart, subscription.PeriodStartUtc);
+        Assert.Equal(expiredPeriodEnd, subscription.PeriodEndUtc);
+
+        Assert.Empty(await verificationContext.SubscriptionHistories
+            .AsNoTracking()
+            .Where(history => history.UserId == TestConstants.UserId)
+            .ToListAsync());
+    }
+
+    [Fact]
+    public async Task AiTemplate_WhenSubscriptionRenewed_DoesNotRollOverOldWalletBalance()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        {
+            CreateSubscription = false
+        });
+
+        var expiredPeriodStart = TestFixture.TestingDateTimeOffset.AddMonths(-2);
+        var expiredPeriodEnd = TestFixture.TestingDateTimeOffset.AddMonths(-1);
+
+        using var serviceScope = fixture.ApiServices.CreateScope();
+        var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        databaseContext.Subscriptions.Add(new Subscription
+        {
+            UserId = TestConstants.UserId,
+            PlanId = testData.Plan!.Id,
+            PeriodStartUtc = expiredPeriodStart,
+            PeriodEndUtc = expiredPeriodEnd,
+            Status = SubscriptionStatus.Active
+        });
+
+        databaseContext.Wallets.Add(new Wallet
+        {
+            UserId = TestConstants.UserId,
+            Balance = 999,
+            PeriodStartUtc = expiredPeriodStart,
+            PeriodEndUtc = expiredPeriodEnd,
+            UpdatedAtUtc = expiredPeriodEnd
+        });
+
+        await databaseContext.SaveChangesAsync();
+
+        var request = new AiVideoTemplateRequest
+        {
+            TargetVideoId = TestConstants.TargetVideoId,
+            PromptEnrichment = "Generate better metadata"
+        };
+
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = TestHelpers.CreateJsonContent(request)
+        };
+        requestMessage.Headers.Add("OperationId", OperationId);
+
+        // Act
+        var response = await fixture.HttpClient.SendAsync(requestMessage);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+
+        using var verificationScope = fixture.ApiServices.CreateScope();
+        var verificationContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        var wallet = await verificationContext.Wallets
+            .AsNoTracking()
+            .SingleAsync(wallet => wallet.UserId == TestConstants.UserId);
+
+        Assert.Equal(TestFixture.TestingDateTimeOffset, wallet.PeriodStartUtc);
+        Assert.Equal(TestFixture.TestingDateTimeOffset.AddMonths(1), wallet.PeriodEndUtc);
+
+        Assert.Equal(
+            testData.Plan!.MonthlyCredits - TestConstants.AiTemplateCost,
+            wallet.Balance);
+    }
+
+    [Fact]
+    public async Task AiTemplate_WhenSubscriptionRenewedAndRequestRetried_DoesNotDoubleSpend()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        {
+            CreateSubscription = false
+        });
+
+        var expiredPeriodStart = TestFixture.TestingDateTimeOffset.AddMonths(-3);
+        var expiredPeriodEnd = TestFixture.TestingDateTimeOffset.AddMonths(-2);
+
+        using var serviceScope = fixture.ApiServices.CreateScope();
+        var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        databaseContext.Subscriptions.Add(new Subscription
+        {
+            UserId = TestConstants.UserId,
+            PlanId = testData.Plan!.Id,
+            PeriodStartUtc = expiredPeriodStart,
+            PeriodEndUtc = expiredPeriodEnd,
+            Status = SubscriptionStatus.Active
+        });
+
+        databaseContext.Wallets.Add(new Wallet
+        {
+            UserId = TestConstants.UserId,
+            Balance = 3,
+            PeriodStartUtc = expiredPeriodStart,
+            PeriodEndUtc = expiredPeriodEnd,
+            UpdatedAtUtc = expiredPeriodEnd
+        });
+
+        await databaseContext.SaveChangesAsync();
+
+        var request = new AiVideoTemplateRequest
+        {
+            TargetVideoId = TestConstants.TargetVideoId,
+            PromptEnrichment = "Generate better metadata"
+        };
+
+        var requestMessage1 = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = TestHelpers.CreateJsonContent(request)
+        };
+        requestMessage1.Headers.Add("OperationId", OperationId);
+
+        var requestMessage2 = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = TestHelpers.CreateJsonContent(request)
+        };
+        requestMessage2.Headers.Add("OperationId", OperationId);
+
+        // Act
+        var response1 = await fixture.HttpClient.SendAsync(requestMessage1);
+        var response2 = await fixture.HttpClient.SendAsync(requestMessage2);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Accepted, response1.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response2.StatusCode);
+
+        using var verificationScope = fixture.ApiServices.CreateScope();
+        var verificationContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        var wallet = await verificationContext.Wallets
+            .AsNoTracking()
+            .SingleAsync(wallet => wallet.UserId == TestConstants.UserId);
+
+        Assert.Equal(
+            testData.Plan!.MonthlyCredits - TestConstants.AiTemplateCost,
+            wallet.Balance);
+
+        var spendEntries = await verificationContext.LedgerEntries
+            .AsNoTracking()
+            .Where(entry => entry.UserId == TestConstants.UserId
+                            && entry.ActionType == nameof(CreditActionType.AiTemplateEnqueued))
+            .ToListAsync();
+
+        Assert.Single(spendEntries);
+
+        var periodGrantEntries = await verificationContext.LedgerEntries
+            .AsNoTracking()
+            .Where(entry => entry.UserId == TestConstants.UserId
+                            && entry.ActionType == "PeriodGrant")
+            .ToListAsync();
+
+        Assert.Single(periodGrantEntries);
+
+        var historyRecords = await verificationContext.SubscriptionHistories
+            .AsNoTracking()
+            .Where(history => history.UserId == TestConstants.UserId)
+            .ToListAsync();
+
+        Assert.Single(historyRecords);
+
+        // Verify only one AiTemplateJob was enqueued with correct parameters
+        var enqueuedJobs = fixture.CapturingJobClient.GetEnqueued<AiTemplateJob>();
+        Assert.Single(enqueuedJobs);
+
+        var capturedJob = enqueuedJobs[0];
+        Assert.Equal(nameof(AiTemplateJob.Run), capturedJob.Job.Method.Name);
+
+        var enqueuedRequest = Assert.IsType<AiVideoDetailsRequest>(capturedJob.Job.Args.SingleOrDefault(a => a is AiVideoDetailsRequest));
+        Assert.Equal(TestConstants.ChannelId, enqueuedRequest.ChannelId);
+        Assert.Equal(TestConstants.UploadsPlaylistId, enqueuedRequest.UploadPlaylistId);
+        Assert.Equal(request.TargetVideoId, enqueuedRequest.TargetVideoId);
+        Assert.Equal(request.PromptEnrichment, enqueuedRequest.PromptEnrichment);
+        Assert.Equal(request.GenerateTitle, enqueuedRequest.GenerateTitle);
+        Assert.Equal(request.GenerateDescription, enqueuedRequest.GenerateDescription);
+        Assert.Equal(request.GenerateTags, enqueuedRequest.GenerateTags);
+
+        var videoInDatabase = await verificationContext.Videos.FindAsync(testData.Video!.VideoId);
+
+        Assert.NotNull(videoInDatabase);
+        Assert.True(
+            videoInDatabase.IsAiTitleInProgress ||
+            videoInDatabase.IsAiDescriptionInProgress ||
+            videoInDatabase.IsAiTagsInProgress);
+
+        await _helpers.AssertUserEventAsync(CreditActionType.AiTemplateEnqueued, TestConstants.UserId, testData.Video!.VideoId);
+    }
+    [Fact]
+    public async Task AiTemplate_WhenSubscriptionExpiredAndWalletMissing_RenewsAndCreatesWallet()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        {
+            CreateSubscription = false
+        });
+
+        var expiredPeriodStart = TestFixture.TestingDateTimeOffset.AddMonths(-3);
+        var expiredPeriodEnd = TestFixture.TestingDateTimeOffset.AddMonths(-2);
+
+        using var serviceScope = fixture.ApiServices.CreateScope();
+        var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        databaseContext.Subscriptions.Add(new Subscription
+        {
+            UserId = TestConstants.UserId,
+            PlanId = testData.Plan!.Id,
+            PeriodStartUtc = expiredPeriodStart,
+            PeriodEndUtc = expiredPeriodEnd,
+            Status = SubscriptionStatus.Active
+        });
+
+        await databaseContext.SaveChangesAsync();
+
+        var request = new AiVideoTemplateRequest
+        {
+            TargetVideoId = TestConstants.TargetVideoId,
+            PromptEnrichment = "Generate better metadata"
+        };
+
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = TestHelpers.CreateJsonContent(request)
+        };
+        requestMessage.Headers.Add("OperationId", OperationId);
+
+        // Act
+        var response = await fixture.HttpClient.SendAsync(requestMessage);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+
+        using var verificationScope = fixture.ApiServices.CreateScope();
+        var verificationContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        var wallet = await verificationContext.Wallets
+            .AsNoTracking()
+            .SingleOrDefaultAsync(wallet => wallet.UserId == TestConstants.UserId);
+
+        Assert.NotNull(wallet);
+        Assert.Equal(TestFixture.TestingDateTimeOffset, wallet.PeriodStartUtc);
+        Assert.Equal(TestFixture.TestingDateTimeOffset.AddMonths(1), wallet.PeriodEndUtc);
+        Assert.Equal(testData.Plan!.MonthlyCredits - TestConstants.AiTemplateCost, wallet.Balance);
+
+        var historyRecord = await verificationContext.SubscriptionHistories
+            .AsNoTracking()
+            .SingleOrDefaultAsync(history => history.UserId == TestConstants.UserId);
+
+        Assert.NotNull(historyRecord);
+        Assert.Equal(expiredPeriodStart, historyRecord.PeriodStartUtc);
+        Assert.Equal(expiredPeriodEnd, historyRecord.PeriodEndUtc);
+    }
+    [Fact]
+    public async Task AiTemplate_WhenSubscriptionActiveButWalletExpired_RefreshesWalletWithoutRenewingSubscription()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        {
+            CreateSubscription = false
+        });
+
+        var activePeriodStart = TestFixture.TestingDateTimeOffset;
+        var activePeriodEnd = TestFixture.TestingDateTimeOffset.AddMonths(1);
+
+        var expiredWalletStart = TestFixture.TestingDateTimeOffset.AddMonths(-1);
+        var expiredWalletEnd = TestFixture.TestingDateTimeOffset;
+
+        using var serviceScope = fixture.ApiServices.CreateScope();
+        var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        databaseContext.Subscriptions.Add(new Subscription
+        {
+            UserId = TestConstants.UserId,
+            PlanId = testData.Plan!.Id,
+            PeriodStartUtc = activePeriodStart,
+            PeriodEndUtc = activePeriodEnd,
+            Status = SubscriptionStatus.Active
+        });
+
+        databaseContext.Wallets.Add(new Wallet
+        {
+            UserId = TestConstants.UserId,
+            Balance = 1,
+            PeriodStartUtc = expiredWalletStart,
+            PeriodEndUtc = expiredWalletEnd,
+            UpdatedAtUtc = expiredWalletEnd
+        });
+
+        await databaseContext.SaveChangesAsync();
+
+        var request = new AiVideoTemplateRequest
+        {
+            TargetVideoId = TestConstants.TargetVideoId,
+            PromptEnrichment = "Generate better metadata"
+        };
+
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = TestHelpers.CreateJsonContent(request)
+        };
+        requestMessage.Headers.Add("OperationId", OperationId);
+
+        // Act
+        var response = await fixture.HttpClient.SendAsync(requestMessage);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+
+        using var verificationScope = fixture.ApiServices.CreateScope();
+        var verificationContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        var subscription = await verificationContext.Subscriptions
+            .AsNoTracking()
+            .SingleAsync(subscription => subscription.UserId == TestConstants.UserId);
+
+        Assert.Equal(activePeriodStart, subscription.PeriodStartUtc);
+        Assert.Equal(activePeriodEnd, subscription.PeriodEndUtc);
+
+        var wallet = await verificationContext.Wallets
+            .AsNoTracking()
+            .SingleAsync(wallet => wallet.UserId == TestConstants.UserId);
+
+        Assert.Equal(activePeriodStart, wallet.PeriodStartUtc);
+        Assert.Equal(activePeriodEnd, wallet.PeriodEndUtc);
+        Assert.Equal(testData.Plan!.MonthlyCredits - TestConstants.AiTemplateCost, wallet.Balance);
+
+        Assert.Empty(await verificationContext.SubscriptionHistories
+            .AsNoTracking()
+            .Where(history => history.UserId == TestConstants.UserId)
+            .ToListAsync());
+    }
+    [Fact]
+    public async Task AiTemplate_WhenSubscriptionAndWalletCurrent_DoesNotGrantPeriodCreditsAgain()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        {
+            CreateSubscription = false
+        });
+
+        var periodStart = TestFixture.TestingDateTimeOffset;
+        var periodEnd = TestFixture.TestingDateTimeOffset.AddMonths(1);
+        var startingBalance = testData.Plan!.MonthlyCredits;
+
+        using var serviceScope = fixture.ApiServices.CreateScope();
+        var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        databaseContext.Subscriptions.Add(new Subscription
+        {
+            UserId = TestConstants.UserId,
+            PlanId = testData.Plan.Id,
+            PeriodStartUtc = periodStart,
+            PeriodEndUtc = periodEnd,
+            Status = SubscriptionStatus.Active
+        });
+
+        databaseContext.Wallets.Add(new Wallet
+        {
+            UserId = TestConstants.UserId,
+            Balance = startingBalance,
+            PeriodStartUtc = periodStart,
+            PeriodEndUtc = periodEnd,
+            UpdatedAtUtc = periodStart
+        });
+
+        await databaseContext.SaveChangesAsync();
+
+        var request = new AiVideoTemplateRequest
+        {
+            TargetVideoId = TestConstants.TargetVideoId,
+            PromptEnrichment = "Generate better metadata"
+        };
+
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = TestHelpers.CreateJsonContent(request)
+        };
+        requestMessage.Headers.Add("OperationId", OperationId);
+
+        // Act
+        var response = await fixture.HttpClient.SendAsync(requestMessage);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+
+        using var verificationScope = fixture.ApiServices.CreateScope();
+        var verificationContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        var wallet = await verificationContext.Wallets
+            .AsNoTracking()
+            .SingleAsync(wallet => wallet.UserId == TestConstants.UserId);
+
+        Assert.Equal(startingBalance - TestConstants.AiTemplateCost, wallet.Balance);
+
+        var periodGrantEntries = await verificationContext.LedgerEntries
+            .AsNoTracking()
+            .Where(entry => entry.UserId == TestConstants.UserId
+                            && entry.ActionType == "PeriodGrant")
+            .ToListAsync();
+
+        Assert.Empty(periodGrantEntries);
+
+        Assert.Empty(await verificationContext.SubscriptionHistories
+            .AsNoTracking()
+            .Where(history => history.UserId == TestConstants.UserId)
+            .ToListAsync());
+    }
+    [Fact]
+    public async Task AiTemplate_WhenUserHasNoSubscription_DoesNotGrantOrSpendCredits()
+    {
+        // Arrange
+        await fixture.ResetDbAsync();
+
+        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        {
+            CreateSubscription = false
+        });
+
+        var request = new AiVideoTemplateRequest
+        {
+            TargetVideoId = TestConstants.TargetVideoId,
+            PromptEnrichment = "Generate better metadata"
+        };
+
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = TestHelpers.CreateJsonContent(request)
+        };
+        requestMessage.Headers.Add("OperationId", OperationId);
+
+        // Act
+        var response = await fixture.HttpClient.SendAsync(requestMessage);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.PaymentRequired, response.StatusCode);
+
+        using var verificationScope = fixture.ApiServices.CreateScope();
+        var verificationContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        Assert.Empty(await verificationContext.Subscriptions
+            .AsNoTracking()
+            .Where(subscription => subscription.UserId == TestConstants.UserId)
+            .ToListAsync());
+
+        Assert.Empty(await verificationContext.Wallets
+            .AsNoTracking()
+            .Where(wallet => wallet.UserId == TestConstants.UserId)
+            .ToListAsync());
+
+        Assert.Empty(await verificationContext.LedgerEntries
+            .AsNoTracking()
+            .Where(entry => entry.UserId == TestConstants.UserId)
+            .ToListAsync());
+
+        Assert.Empty(await verificationContext.SubscriptionHistories
+            .AsNoTracking()
+            .Where(history => history.UserId == TestConstants.UserId)
+            .ToListAsync());
     }
 }

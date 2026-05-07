@@ -122,7 +122,7 @@ public class RepliesController(IReplyService service) : ApiControllerBase
         var result = await service.IgnoreBatchAsync(commentIds, ct);
         return Ok(result);
     }
-    
+
     /// <summary>
     /// 
     /// </summary>

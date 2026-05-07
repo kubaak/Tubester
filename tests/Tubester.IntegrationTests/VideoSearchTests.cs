@@ -107,7 +107,7 @@ public class VideoSearchTests(TestFixture fixture)
         Assert.Empty(result.Items);
         Assert.Null(result.NextPageToken);
     }
-    
+
     [Fact]
     public async Task Search_WithInvalidPageSize_ReturnsBadRequest()
     {
@@ -173,7 +173,7 @@ public class VideoSearchTests(TestFixture fixture)
         Assert.NotNull(result);
         Assert.Empty(result.Items);
     }
-    
+
     [Fact]
     public async Task Search_WithVideosInDb_ReturnsFilteredAndPagedResults()
     {

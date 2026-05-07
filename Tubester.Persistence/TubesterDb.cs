@@ -21,6 +21,7 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
 
     public DbSet<Plan> Plans => Set<Plan>();
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
+    public DbSet<SubscriptionHistory> SubscriptionHistories => Set<SubscriptionHistory>();
     public DbSet<Wallet> Wallets => Set<Wallet>();
     public DbSet<LedgerEntry> LedgerEntries => Set<LedgerEntry>();
     public DbSet<ActionCost> ActionCosts => Set<ActionCost>();
@@ -234,6 +235,34 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
             entity.HasOne(subscription => subscription.Plan)
                 .WithMany()
                 .HasForeignKey(subscription => subscription.PlanId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<SubscriptionHistory>(entity =>
+        {
+            entity.ToTable("SubscriptionHistories");
+
+            entity.HasKey(history => new { history.UserId, history.PlanId, history.PeriodStartUtc, history.PeriodEndUtc });
+
+            entity.Property(history => history.UserId)
+                .IsRequired();
+
+            entity.Property(history => history.Status)
+                .IsRequired()
+                .HasConversion<string>();
+
+            entity.Property(history => history.PeriodStartUtc)
+                .IsRequired();
+
+            entity.Property(history => history.PeriodEndUtc)
+                .IsRequired();
+
+            entity.Property(history => history.CreatedAtUtc)
+                .IsRequired();
+
+            entity.HasOne(history => history.Plan)
+                .WithMany()
+                .HasForeignKey(history => history.PlanId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

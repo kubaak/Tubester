@@ -1,5 +1,4 @@
 ﻿using System.Net;
-using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Tubester.Abstractions.Credits;
@@ -15,7 +14,7 @@ namespace Tubester.IntegrationTests;
 public class VideoAiTemplateTests(TestFixture fixture)
 {
     private readonly TestHelpers _helpers = new(fixture);
-    
+
     [Fact]
     public async Task AiTemplate_ValidRequest_EnqueuesAiTemplateJob_AndLogsAnalytics()
     {
@@ -45,21 +44,10 @@ public class VideoAiTemplateTests(TestFixture fixture)
         var videosEndpointResponse = await fixture.HttpClient.SendAsync(requestMessage);
 
         // Assert
-        Assert.Equal(HttpStatusCode.OK, videosEndpointResponse.StatusCode);
-
-        var videosEndpointResponseBody = await videosEndpointResponse.Content.ReadAsStringAsync();
-
-        var enqueueResult = JsonSerializer.Deserialize<AiTemplateEnqueueResult>(
-            videosEndpointResponseBody,
-            TestHelpers.SerializerOptions);
-
-        Assert.NotNull(enqueueResult);
-        Assert.False(string.IsNullOrWhiteSpace(enqueueResult.DetailsJobId));
+        Assert.Equal(HttpStatusCode.Accepted, videosEndpointResponse.StatusCode);
 
         var capturedJobs = fixture.CapturingJobClient.GetEnqueued<AiTemplateJob>();
         Assert.Single(capturedJobs);
-        Assert.Equal(enqueueResult.DetailsJobId, capturedJobs[0].JobId);
-
         Assert.Equal(nameof(AiTemplateJob.Run), capturedJobs[0].Job.Method.Name);
 
         var enqueuedRequest = Assert.IsType<AiVideoDetailsRequest>(capturedJobs[0].Job.Args.SingleOrDefault(a => a is AiVideoDetailsRequest));
@@ -71,17 +59,15 @@ public class VideoAiTemplateTests(TestFixture fixture)
         Assert.Equal(request.GenerateDescription, enqueuedRequest.GenerateDescription);
         Assert.Equal(request.GenerateTags, enqueuedRequest.GenerateTags);
 
-        using (var serviceScope = fixture.ApiServices.CreateScope())
-        {
-            var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
-            var videoInDatabase = await databaseContext.Videos.FindAsync(targetVideo.VideoId);
+        using var serviceScope = fixture.ApiServices.CreateScope();
+        var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
+        var videoInDatabase = await databaseContext.Videos.FindAsync(targetVideo.VideoId);
 
-            Assert.NotNull(videoInDatabase);
-            Assert.True(
-                videoInDatabase.IsAiTitleInProgress ||
-                videoInDatabase.IsAiDescriptionInProgress ||
-                videoInDatabase.IsAiTagsInProgress);
-        }
+        Assert.NotNull(videoInDatabase);
+        Assert.True(
+            videoInDatabase.IsAiTitleInProgress ||
+            videoInDatabase.IsAiDescriptionInProgress ||
+            videoInDatabase.IsAiTagsInProgress);
 
         await _helpers.AssertUserEventAsync(CreditActionType.AiTemplateEnqueued, TestConstants.UserId, targetVideo.VideoId);
     }
@@ -144,6 +130,8 @@ public class VideoAiTemplateTests(TestFixture fixture)
     public async Task AiTemplate_TargetVideoNotFound_ReturnsBadRequest()
     {
         // Arrange
+        await fixture.ResetDbAsync();
+        await _helpers.SeedVideoTestDataAsync();
         var request = new AiVideoTemplateRequest
         {
             TargetVideoId = "non-existent-video-id",
@@ -169,7 +157,7 @@ public class VideoAiTemplateTests(TestFixture fixture)
             $"Target video {request.TargetVideoId} not found for current channel or one of the requested AI operations is already in progress.",
             responseContent);
     }
-    
+
     [Fact]
     public async Task AiTemplate_WithSuggestPlaylists_CallsPlaylistSuggestion()
     {
@@ -181,7 +169,7 @@ public class VideoAiTemplateTests(TestFixture fixture)
         {
             Playlists = [playlist1, playlist2]
         });
-        
+
 
         var request = new AiVideoTemplateRequest
         {
@@ -201,7 +189,7 @@ public class VideoAiTemplateTests(TestFixture fixture)
         var response = await fixture.HttpClient.SendAsync(requestMessage);
 
         // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
 
         var capturedTemplateJobs = fixture.CapturingJobClient.GetEnqueued<AiTemplateJob>();
         Assert.Single(capturedTemplateJobs);
@@ -217,7 +205,7 @@ public class VideoAiTemplateTests(TestFixture fixture)
         Assert.Equal(TestConstants.UploadsPlaylistId, suggestionRequest.UploadPlaylistId);
         Assert.Equal(request.PromptEnrichment, suggestionRequest.PromptEnrichment);
     }
-    
+
     [Fact]
     public async Task AiTemplate_SuggestPlaylists_NoDetailsGeneration()
     {
@@ -228,11 +216,11 @@ public class VideoAiTemplateTests(TestFixture fixture)
         {
             Playlists = [playlist1]
         });
-        
+
 
         var request = new AiVideoTemplateRequest
         {
-            
+
             TargetVideoId = TestConstants.TargetVideoId,
             PromptEnrichment = "Generate metadata",
             GenerateTitle = false,
@@ -252,11 +240,11 @@ public class VideoAiTemplateTests(TestFixture fixture)
         var response = await fixture.HttpClient.SendAsync(requestMessage);
 
         // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
 
         var capturedTemplateJobs = fixture.CapturingJobClient.GetEnqueued<AiTemplateJob>();
         Assert.Empty(capturedTemplateJobs);
-        
+
         var capturedPlaylistSuggestionJobs = fixture.CapturingJobClient.GetEnqueued<AiPlaylistSuggestionJob>();
         Assert.Single(capturedPlaylistSuggestionJobs);
         var suggestionRequest = Assert.IsType<PlaylistSuggestionRequest>(capturedPlaylistSuggestionJobs[0].Job.Args.Single(a => a is PlaylistSuggestionRequest));
@@ -291,7 +279,7 @@ public class VideoAiTemplateTests(TestFixture fixture)
         var response = await fixture.HttpClient.SendAsync(requestMessage);
 
         // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
 
         var capturedTemplateJobs = fixture.CapturingJobClient.GetEnqueued<AiTemplateJob>();
         Assert.Single(capturedTemplateJobs);
@@ -343,7 +331,7 @@ public class VideoAiTemplateTests(TestFixture fixture)
         var capturedPlaylistSuggestionJobs = fixture.CapturingJobClient.GetEnqueued<AiPlaylistSuggestionJob>();
         Assert.Empty(capturedPlaylistSuggestionJobs);
     }
-    
+
     [Fact]
     public async Task AiTemplateEnqueue_WithSufficientCredits_DeductsCreditsAndAppendsLedgerEntry()
     {
@@ -368,8 +356,8 @@ public class VideoAiTemplateTests(TestFixture fixture)
         var response = await fixture.HttpClient.SendAsync(requestMessage);
 
         // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        await _helpers.VerifyLedgerAndWalletAfterDeductionAsync(nameof(CreditActionType.AiTemplateEnqueued), 
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        await _helpers.VerifyLedgerAndWalletAfterDeductionAsync(nameof(CreditActionType.AiTemplateEnqueued),
             TestConstants.AiTemplateCost, TestConstants.TargetVideoId);
     }
 }

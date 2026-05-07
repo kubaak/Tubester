@@ -19,7 +19,7 @@ public sealed class CreditsService(
         WriteIndented = false
     };
 
-    public async Task<bool> TrySpendAsync(
+    public async Task<SpendResult> TrySpendAsync(
         string userId,
         string actionType,
         string idempotencyKey,
@@ -27,82 +27,50 @@ public sealed class CreditsService(
         object? metadata,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(userId))
-        {
-            throw new ArgumentException("User id is required.", nameof(userId));
-        }
-
-        if (string.IsNullOrWhiteSpace(actionType))
-        {
-            throw new ArgumentException("Action type is required.", nameof(actionType));
-        }
-
-        if (string.IsNullOrWhiteSpace(idempotencyKey))
-        {
-            throw new ArgumentException("Idempotency key is required.", nameof(idempotencyKey));
-        }
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(actionType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
 
         var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
 
-        var actionCost = await creditsStore.GetActionCostAsync(actionType, cancellationToken);
+        var actionCost = await GetEnabledActionCostAsync(actionType, cancellationToken);
 
-        if (actionCost is null || !actionCost.IsEnabled)
+        var subscription = await TryEnsureActiveSubscriptionAsync(
+            userId,
+            nowUtc,
+            cancellationToken);
+
+        if (subscription is null)
         {
-            logger.LogError(
-                "Attempted to spend credits for action type {ActionType} without an enabled cost configuration",
-                actionType);
-            throw new InvalidOperationException(
-                $"No enabled credit cost configured for action type '{actionType}'");
+            logger.LogWarning(
+                "User {UserId} has no active or renewable subscription; cannot spend credits",
+                userId);
+
+            return new SpendResult{NewBalance = 0, Succeeded = false, WasDuplicate = false, FailureReason = SpendFailureReason.NoWallet};
         }
 
-        var cost = actionCost.Cost;
-        var metadataJson = SerializeMetadata(metadata);
+        var walletReady = await EnsureWalletForSubscriptionPeriodAsync(
+            userId,
+            subscription,
+            nowUtc,
+            cancellationToken);
 
-        var plan = await creditsStore.GetActiveUserPlanAsync(userId, nowUtc, cancellationToken);
-        if (plan is null)
+        if (!walletReady)
         {
-            logger.LogWarning("User {UserId} has no active subscription; cannot spend credits", userId);
-            return false;
-        }
-
-        var wallet = await creditsStore.GetWalletAsync(userId, cancellationToken);
-
-        var walletNeedsRefresh = wallet is null
-                                 || wallet.PeriodEndUtc.UtcDateTime <= nowUtc.UtcDateTime
-                                 || wallet.PeriodStartUtc.UtcDateTime != plan.PeriodStartUtc.UtcDateTime;
-
-        if (walletNeedsRefresh)
-        {
-            var grantIdempotencyKey = BuildGrantIdempotencyKey(userId, plan.PeriodStartUtc);
-
-            await creditsStore.GrantPeriodCreditsAsync(
-                userId,
-                plan.PeriodStartUtc,
-                plan.PeriodEndUtc,
-                plan.PeriodCredits,
-                grantIdempotencyKey,
-                nowUtc,
-                cancellationToken);
-
-            wallet = await creditsStore.GetWalletAsync(userId, cancellationToken);
-            if (wallet is null)
-            {
-                logger.LogError("Wallet not found for user {UserId} after granting period credits", userId);
-                return false;
-            }
+            return new SpendResult{NewBalance = 0, Succeeded = false, WasDuplicate = false, FailureReason = SpendFailureReason.NoWallet};
         }
 
         var spendResult = await creditsStore.TrySpendAsync(
             userId,
             actionType,
-            cost,
+            actionCost.Cost,
             idempotencyKey,
             referenceId,
-            metadataJson,
+            SerializeMetadata(metadata),
             nowUtc,
             cancellationToken);
 
-        return spendResult.Succeeded;
+        return spendResult;
     }
 
     public async Task RefundAsync(
@@ -151,7 +119,9 @@ public sealed class CreditsService(
     {
         var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
 
-        var userIdsWithExpiredWallets = await creditsStore.GetUserIdsWithExpiredWalletsAsync(nowUtc, cancellationToken);
+        var userIdsWithExpiredWallets = await creditsStore.GetUserIdsWithExpiredWalletsAsync(
+            nowUtc,
+            cancellationToken);
 
         if (userIdsWithExpiredWallets.Count == 0)
         {
@@ -166,23 +136,23 @@ public sealed class CreditsService(
 
         foreach (var userId in userIdsWithExpiredWallets)
         {
-            var activePlan = await creditsStore.GetActiveUserPlanAsync(userId, nowUtc, cancellationToken);
-            if (activePlan is null)
+            var subscription = await TryEnsureActiveSubscriptionAsync(
+                userId,
+                nowUtc,
+                cancellationToken);
+
+            if (subscription is null)
             {
                 logger.LogWarning(
-                    "Skipping credit grant for user {UserId} because there is no active subscription or plan is inactive",
+                    "Skipping credit grant for user {UserId} because there is no active or renewable subscription",
                     userId);
+
                 continue;
             }
 
-            var grantIdempotencyKey = BuildGrantIdempotencyKey(userId, activePlan.PeriodStartUtc);
-
-            var grantResult = await creditsStore.GrantPeriodCreditsAsync(
+            var grantResult = await GrantSubscriptionPeriodCreditsAsync(
                 userId,
-                activePlan.PeriodStartUtc,
-                activePlan.PeriodEndUtc,
-                activePlan.PeriodCredits,
-                grantIdempotencyKey,
+                subscription,
                 nowUtc,
                 cancellationToken);
 
@@ -231,14 +201,116 @@ public sealed class CreditsService(
         }
     }
 
-    private static string BuildGrantIdempotencyKey(string userId, DateTimeOffset periodStartUtc)
+    private static string BuildGrantIdempotencyKey(string userId, string planCode, DateTimeOffset periodStartUtc)
     {
         var utc = periodStartUtc.ToUniversalTime();
-        return $"grant:{userId}:{utc:O}";
+        return $"period_grant:{userId}:{planCode}:{utc:O}";
     }
 
     private static string? SerializeMetadata(object? metadata)
     {
         return metadata is null ? null : JsonSerializer.Serialize(metadata, _jsonSerializerOptions);
+    }
+
+    private async Task<SubscriptionDto?> TryEnsureActiveSubscriptionAsync(
+        string userId,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var subscription = await creditsStore.GetActiveSubscriptionAsync(
+            userId,
+            nowUtc,
+            cancellationToken);
+
+        if (subscription is not null)
+        {
+            return subscription;
+        }
+
+        return await creditsStore.TryRenewSubscriptionAsync(
+            userId,
+            nowUtc,
+            cancellationToken);
+    }
+
+    private async Task<CreditActionCostDto> GetEnabledActionCostAsync(
+        string actionType,
+        CancellationToken cancellationToken)
+    {
+        var actionCost = await creditsStore.GetActionCostAsync(actionType, cancellationToken);
+
+        if (actionCost is not null && actionCost.IsEnabled)
+        {
+            return actionCost;
+        }
+
+        logger.LogError(
+            "Attempted to spend credits for action type {ActionType} without an enabled cost configuration",
+            actionType);
+
+        throw new InvalidOperationException(
+            $"No enabled credit cost configured for action type '{actionType}'");
+    }
+
+    private async Task<bool> EnsureWalletForSubscriptionPeriodAsync(
+        string userId,
+        SubscriptionDto subscription,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var wallet = await creditsStore.GetWalletAsync(userId, cancellationToken);
+
+        var walletNeedsRefresh = wallet is null
+                                 || wallet.PeriodEndUtc.UtcDateTime <= nowUtc.UtcDateTime
+                                 || wallet.PeriodStartUtc.UtcDateTime != subscription.PeriodStartUtc.UtcDateTime;
+
+        if (!walletNeedsRefresh)
+        {
+            return true;
+        }
+
+        await GrantSubscriptionPeriodCreditsAsync(
+            userId,
+            subscription,
+            nowUtc,
+            cancellationToken);
+
+        var refreshedWallet = await creditsStore.GetWalletAsync(userId, cancellationToken);
+
+        if (refreshedWallet is not null
+            && refreshedWallet.PeriodStartUtc.UtcDateTime == subscription.PeriodStartUtc.UtcDateTime
+            && refreshedWallet.PeriodEndUtc.UtcDateTime == subscription.PeriodEndUtc.UtcDateTime)
+        {
+            return true;
+        }
+
+        logger.LogError(
+            "Wallet for user {UserId} was not refreshed to subscription period {PeriodStartUtc} to {PeriodEndUtc}",
+            userId,
+            subscription.PeriodStartUtc,
+            subscription.PeriodEndUtc);
+
+        return false;
+    }
+
+    private async Task<GrantResult> GrantSubscriptionPeriodCreditsAsync(
+        string userId,
+        SubscriptionDto subscription,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var grantIdempotencyKey = BuildGrantIdempotencyKey(
+            userId,
+            subscription.PlanCode,
+            subscription.PeriodStartUtc);
+
+        return await creditsStore.GrantPeriodCreditsAsync(
+            userId,
+            subscription.PeriodStartUtc,
+            subscription.PeriodEndUtc,
+            subscription.PeriodCredits,
+            grantIdempotencyKey,
+            nowUtc,
+            cancellationToken);
     }
 }

@@ -40,8 +40,9 @@ public sealed class AiVideoImprovingService(
 
         try
         {
-            var targetVideo = await videoRepository.GetVideoByIdAsync(uploadPlaylistId, request.TargetVideoId, cancellationToken)
-                          ?? throw new ArgumentException($"Target video {request.TargetVideoId} not found in cache.");
+            var targetVideo =
+                await videoRepository.GetVideoByIdAsync(uploadPlaylistId, request.TargetVideoId, cancellationToken)
+                ?? throw new ArgumentException($"Target video {request.TargetVideoId} not found in cache.");
 
             logger.LogDebug(
                 "Loaded target video {TargetVideoId}. Current title length: {TitleLength}, description length: {DescriptionLength}, tag count: {TagCount}",
@@ -99,12 +100,18 @@ public sealed class AiVideoImprovingService(
                 null,
                 targetVideo.CommentsAllowed);
 
-            await videoRepository.UpsertAsync(channelId, [targetVideo], cancellationToken);
+            await videoRepository.UpsertAsync(uploadPlaylistId, [targetVideo], cancellationToken);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "AI templating failed for video {TargetVideoId}", request.TargetVideoId);
             throw;
+        }
+        finally
+        {
+            await videoRepository.TryClearAiOperationsInProgressAsync(
+                uploadPlaylistId, request.TargetVideoId, AiVideoOperationFlags.Title | AiVideoOperationFlags.Description
+                | AiVideoOperationFlags.Tags, cancellationToken);
         }
 
         logger.LogInformation(
@@ -125,7 +132,7 @@ public sealed class AiVideoImprovingService(
             var targetVideo = await videoRepository.GetVideoByIdAsync(uploadPlaylistId, targetVideoId, cancellationToken)
                               ?? throw new InvalidOperationException($"Target video {targetVideoId} not found in cache.");
 
-            var playlistCandidates = await playlistRepository.GetPublicByChannelAsync(uploadPlaylistId, cancellationToken);
+            var playlistCandidates = await playlistRepository.GetPublicByChannelAsync(channelId, cancellationToken);
 
             if (playlistCandidates.Count == 0)
             {
@@ -201,7 +208,7 @@ public sealed class AiVideoImprovingService(
         finally
         {
             await videoRepository.TryClearAiOperationsInProgressAsync(
-                channelId, targetVideoId, AiVideoOperationFlags.PlaylistSuggestion, cancellationToken);
+                uploadPlaylistId, targetVideoId, AiVideoOperationFlags.PlaylistSuggestion, cancellationToken);
         }
     }
 

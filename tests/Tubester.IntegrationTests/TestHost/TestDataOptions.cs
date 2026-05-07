@@ -17,4 +17,5 @@ public sealed record TestDataOptions
     public IReadOnlyCollection<Reply> Replies { get; init; } = [];
     public bool CreateSubscription { get; init; } = true;
     public int MonthlyCredits { get; init; } = TestConstants.MonthlyCredits;
+    public bool EnableCommentScan { get; init; } = true;
 }

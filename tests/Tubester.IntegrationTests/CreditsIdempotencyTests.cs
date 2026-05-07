@@ -20,7 +20,7 @@ public sealed class CreditsIdempotencyTests(TestFixture fixture)
     {
         // Arrange
         await fixture.ResetDbAsync();
-        
+
         await _helpers.SeedVideoTestDataAsync();
         var request = CreateAiTemplateRequest(TestConstants.TargetVideoId);
 
@@ -41,12 +41,12 @@ public sealed class CreditsIdempotencyTests(TestFixture fixture)
         // Act
         var response1 = await fixture.HttpClient.SendAsync(requestMessage1);
         //Mark as finished
-        await _helpers.MarkAsFinishedAsync(TestConstants.TargetVideoId); 
+        await _helpers.MarkAsFinishedAsync(TestConstants.TargetVideoId);
         var response2 = await fixture.HttpClient.SendAsync(requestMessage2);
 
         // Assert
-        Assert.Equal(HttpStatusCode.OK, response1.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, response2.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response1.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response2.StatusCode);
 
         using var verificationScope = fixture.ApiServices.CreateScope();
         var databaseContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
@@ -94,13 +94,13 @@ public sealed class CreditsIdempotencyTests(TestFixture fixture)
         // Act
         var response1 = await fixture.HttpClient.SendAsync(requestMessage1);
         //Mark as finished
-        await _helpers.MarkAsFinishedAsync(TestConstants.TargetVideoId); 
+        await _helpers.MarkAsFinishedAsync(TestConstants.TargetVideoId);
         //Act again
         var response2 = await fixture.HttpClient.SendAsync(requestMessage2);
 
         // Assert
-        Assert.Equal(HttpStatusCode.OK, response1.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, response2.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response1.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response2.StatusCode);
 
         using var verificationScope = fixture.ApiServices.CreateScope();
         var databaseContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();

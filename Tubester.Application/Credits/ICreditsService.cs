@@ -4,7 +4,7 @@ namespace Tubester.Application.Credits;
 
 public interface ICreditsService
 {
-    Task<bool> TrySpendAsync(
+    Task<SpendResult> TrySpendAsync(
         string userId,
         string actionType,
         string idempotencyKey,

@@ -30,7 +30,7 @@ public interface IVideoService
 
     Task<VideoDetailsDto?> SaveDraftMetadataAsync(
         string userId,
-        UpdateVideoMetadataRequest request,
+        SaveVideoDraftRequest request,
         CancellationToken cancellationToken);
 
     Task<VideoDetailsDto?> ResyncVideoAsync(

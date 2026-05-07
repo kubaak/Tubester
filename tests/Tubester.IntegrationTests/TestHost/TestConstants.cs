@@ -11,10 +11,10 @@ public static class TestConstants
     public const string TargetVideoCategoryId = "23";
     public const string DefaultLanguage = "en";
     public const string DefaultAudioLanguage = "en";
-    
+
     public const string FreePlanCode = "free";
     public const string FreePlanName = "Free";
-    
+
     public const int MonthlyCredits = 10;
     public const int AiTemplateCost = 5;
     public const int AiPlaylistSuggestionCost = 5;

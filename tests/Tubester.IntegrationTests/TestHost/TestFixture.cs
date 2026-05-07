@@ -72,7 +72,7 @@ public sealed class TestFixture : IAsyncLifetime
         CapturingJobClient.Clear();
         Auto = CreateAuto();
     }
-    
+
     public Task DisposeAsync()
     {
         HttpClient.Dispose();

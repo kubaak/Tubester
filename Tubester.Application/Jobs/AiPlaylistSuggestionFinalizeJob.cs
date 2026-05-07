@@ -12,7 +12,7 @@ public sealed class AiPlaylistSuggestionFinalizeJob(
     [Queue("ai-templating")]
     [AutomaticRetry(Attempts = 3, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
     public async Task Run(
-        string channelId,
+        string uploadPlaylistId,
         string videoId,
         IJobCancellationToken jobCancellationToken)
     {
@@ -20,7 +20,7 @@ public sealed class AiPlaylistSuggestionFinalizeJob(
 
         try
         {
-            await videoRepository.TryClearAiOperationsInProgressAsync(channelId, videoId, AiVideoOperationFlags.PlaylistSuggestion,
+            await videoRepository.TryClearAiOperationsInProgressAsync(uploadPlaylistId, videoId, AiVideoOperationFlags.PlaylistSuggestion,
                 jobCancellationToken.ShutdownToken);
             logger.LogInformation("AI playlist suggestion finalized for video {VideoId}", videoId);
         }

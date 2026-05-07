@@ -274,7 +274,7 @@ public class VideoService(
         var aiTemplateSubmittedIdempotencyKey =
             $"ai-template-submitted:{userId}:{request.VideoId}:{operationId}";
 
-        var aiTemplateSubmittedSpendSucceeded = await creditsService.TrySpendAsync(
+        var spendResult = await creditsService.TrySpendAsync(
             userId,
             nameof(CreditActionType.AiTemplateSubmitted),
             aiTemplateSubmittedIdempotencyKey,
@@ -287,7 +287,7 @@ public class VideoService(
             },
             cancellationToken);
 
-        if (!aiTemplateSubmittedSpendSucceeded)
+        if (!spendResult.Succeeded)
         {
             throw new ForbiddenException(
                 "Insufficient credits to submit AI template changes.");
@@ -369,7 +369,7 @@ public class VideoService(
 
     public async Task<VideoDetailsDto?> SaveDraftMetadataAsync(
         string userId,
-        UpdateVideoMetadataRequest request,
+        SaveVideoDraftRequest request,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(userId))

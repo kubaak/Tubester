@@ -44,7 +44,7 @@ public sealed class CurrentChannelContext(IHttpContextAccessor httpContextAccess
             return user.FindFirst("yt_upload_playlist_id")?.Value;
         }
     }
-    
+
     public string GetRequiredUploadPlaylistId()
     {
         var uploadPlaylistId = UploadPlaylistId;

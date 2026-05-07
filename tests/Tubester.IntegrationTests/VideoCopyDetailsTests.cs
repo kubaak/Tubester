@@ -11,7 +11,7 @@ namespace Tubester.IntegrationTests;
 public class VideoCopyDetailsTests(TestFixture fixture)
 {
     private readonly TestHelpers _helpers = new(fixture);
-    
+
     [Fact]
     public async Task CopyTemplate_ValidRequest_LogsAnalytics()
     {
@@ -30,8 +30,7 @@ public class VideoCopyDetailsTests(TestFixture fixture)
             sourceVideo.VideoId,
             targetVideo.VideoId,
             true,
-            true,
-            false
+            true
         );
 
         // Act
@@ -48,11 +47,8 @@ public class VideoCopyDetailsTests(TestFixture fixture)
         // await _helpers.VerifyLedgerAndWalletAfterDeductionAsync(nameof(CreditActionType.CopyTemplateExecuted), 
         //     TestConstants.CopyTemplateExecutedCost, targetVideo.VideoId);
         
-        TestHelpers.SetProperty(targetVideo, nameof(targetVideo.UpdatedAt), TestFixture.TestingDateTimeOffset);
-        TestHelpers.SetProperty(targetVideo, nameof(targetVideo.Title), sourceVideo.Title);
-        TestHelpers.SetProperty(targetVideo, nameof(targetVideo.Tags), sourceVideo.Tags);
-        TestHelpers.SetProperty<string>(targetVideo, nameof(targetVideo.ETag), null); //Etag will be reset
         TestHelpers.SetProperty(targetVideo, nameof(targetVideo.CategoryId), sourceVideo.CategoryId); //TODO implement category copy option
+        TestHelpers.SetVideoProperties(targetVideo, sourceVideo.Title!, targetVideo.Description!, sourceVideo.Tags.ToArray());
         await _helpers.AssertVideoAsync(targetVideo);
         await _helpers.AssertUserEventAsync(CreditActionType.CopyTemplateExecuted, TestConstants.UserId, targetVideo.VideoId);
     }
