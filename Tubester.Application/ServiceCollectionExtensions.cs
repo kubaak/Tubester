@@ -44,7 +44,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IApplicationConfigurationService, ApplicationConfigurationService>();
         services.AddScoped<IFeatureFlagService, FeatureFlagService>();
         services.AddScoped<IAiRuntimeOptionsService, AiRuntimeOptionsService>();
-        services.AddScoped<IAiClientFactory, AiClientFactory>();
+        services.AddScoped<IAiTextGenerationClientFactory, AiTextGenerationClientFactory>();
 
         return services;
     }

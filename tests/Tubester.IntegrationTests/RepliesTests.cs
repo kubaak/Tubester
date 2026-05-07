@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,7 +17,7 @@ namespace Tubester.IntegrationTests;
 [Collection(nameof(TestCollection))]
 public class RepliesTests(TestFixture fixture)
 {
-    private readonly TestHelpers _helpers = new(fixture);
+    private readonly TestHelpers _helpers = new(fixture.ApiServices);
 
     private const string OperationId = "replies-idempotency-operation";
 
@@ -26,9 +25,9 @@ public class RepliesTests(TestFixture fixture)
     public async Task DeleteDraft_ExistingReply_ReturnsOkAndDeletesFromDb()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var reply = TestHelpers.GetReply("comment-to-delete");
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Replies = [reply],
         });
@@ -39,8 +38,7 @@ public class RepliesTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var content = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<JsonElement>(content, TestHelpers.SerializerOptions);
+        var result = await TestHelpers.DeserializeAsync<JsonElement>(response);
 
         Assert.NotEqual(JsonValueKind.Undefined, result.ValueKind);
         Assert.Equal("comment-to-delete", result.GetProperty("commentId").GetString());
@@ -58,7 +56,7 @@ public class RepliesTests(TestFixture fixture)
     public async Task DeleteDraft_NonExistentReply_ReturnsNotFound()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         // Act
         var response = await fixture.HttpClient.DeleteAsync("/api/replies/non-existent-comment");
@@ -71,7 +69,7 @@ public class RepliesTests(TestFixture fixture)
     public async Task BatchApprove_ValidDecisions_CallsYoutubeService_AndLogsAnalytics()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         fixture.ApiFactory.MockYouTubeIntegration.Reset();
 
         const string testChannelId = "batch-approve-channel";
@@ -166,8 +164,7 @@ public class RepliesTests(TestFixture fixture)
 
         var request = new BatchDecisionRequest([decision1, decision2]);
 
-        var json = JsonSerializer.Serialize(request, TestHelpers.SerializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var content = TestHelpers.CreateJsonContent(request);
 
         var sequence = new MockSequence();
 
@@ -197,9 +194,7 @@ public class RepliesTests(TestFixture fixture)
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<BatchDecisionResultDto>(responseContent, TestHelpers.SerializerOptions);
+        var result = await TestHelpers.DeserializeAsync<BatchDecisionResultDto>(response);
 
         Assert.NotNull(result);
         Assert.Equal(2, result.Total);
@@ -243,12 +238,11 @@ public class RepliesTests(TestFixture fixture)
     public async Task BatchApprove_EmptyDecisions_ReturnsBadRequest()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         fixture.ApiFactory.MockYouTubeIntegration.Reset();
 
         var request = new BatchDecisionRequest([]);
-        var json = JsonSerializer.Serialize(request, TestHelpers.SerializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var content = TestHelpers.CreateJsonContent(request);
 
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/replies/approve", content);
@@ -261,7 +255,7 @@ public class RepliesTests(TestFixture fixture)
     public async Task BatchIgnore_ValidCommentIds_ReturnsSuccessResult()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         const string testChannelId = "batch-ignore-channel";
         const string testUploadsPlaylistId = "PLBatchIgnore";
@@ -332,17 +326,14 @@ public class RepliesTests(TestFixture fixture)
         }
 
         var commentIds = new[] { "comment1", "comment2", "comment3", "non-existent" };
-        var json = JsonSerializer.Serialize(commentIds, TestHelpers.SerializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var content = TestHelpers.CreateJsonContent(commentIds);
 
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/replies/batch-ignore", content);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<BatchIgnoreResult>(responseContent, TestHelpers.SerializerOptions);
+        var result = await TestHelpers.DeserializeAsync<BatchIgnoreResult>(response);
 
         Assert.NotNull(result);
         Assert.Equal(4, result.Requested);
@@ -373,11 +364,10 @@ public class RepliesTests(TestFixture fixture)
     public async Task BatchIgnore_EmptyCommentIds_ReturnsBadRequest()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         var commentIds = Array.Empty<string>();
-        var json = JsonSerializer.Serialize(commentIds, TestHelpers.SerializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var content = TestHelpers.CreateJsonContent(commentIds);
 
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/replies/batch-ignore", content);

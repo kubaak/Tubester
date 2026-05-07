@@ -17,7 +17,8 @@ jobs:
 
     env:
       REGISTRY: ghcr.io
-      IMAGE_NAME: ${{ github.repository_owner }}/tubester-api
+      API_IMAGE_NAME: ${{ github.repository_owner }}/tubester-api
+      WORKER_IMAGE_NAME: ${{ github.repository_owner }}/tubester-worker
       IMAGE_TAG: sha-${{ github.sha }}
 
     steps:
@@ -34,15 +35,27 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push image
+      - name: Build and push API image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Tubester.Api/Dockerfile
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+            ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
+      - name: Build and push Worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Tubester.Worker/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+            ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE_NAME }}:latest
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
@@ -52,7 +65,7 @@ jobs:
           host: ${{ secrets.PROD_HOST }}
           username: ${{ secrets.PROD_USER }}
           key: ${{ secrets.PROD_SSH_KEY }}
-          envs: FULL_IMAGE
+          envs: API_FULL_IMAGE
           script: |
             kubectl -n tubester delete job tubester-db-migration --ignore-not-found
             cat <<EOF | kubectl apply -f -
@@ -70,7 +83,7 @@ jobs:
                     - name: ghcr-secret
                   containers:
                     - name: migration
-                      image: ${FULL_IMAGE}
+                      image: ${API_FULL_IMAGE}
                       envFrom:
                         - secretRef:
                             name: tubester-api-secrets
@@ -81,7 +94,7 @@ jobs:
             kubectl -n tubester wait --for=condition=complete --timeout=120s job/tubester-db-migration || \
               (echo "Migration failed. Logs:" && kubectl -n tubester logs job/tubester-db-migration && exit 1)
         env:
-          FULL_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          API_FULL_IMAGE: ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
       - name: Deploy API
         uses: appleboy/ssh-action@v1.0.3
@@ -89,9 +102,22 @@ jobs:
           host: ${{ secrets.PROD_HOST }}
           username: ${{ secrets.PROD_USER }}
           key: ${{ secrets.PROD_SSH_KEY }}
-          envs: FULL_IMAGE
+          envs: API_FULL_IMAGE
           script: |
-            kubectl -n tubester set image deployment/tubester-api api=${FULL_IMAGE}
+            kubectl -n tubester set image deployment/tubester-api api=${API_FULL_IMAGE}
             kubectl -n tubester rollout status deployment/tubester-api
         env:
-          FULL_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          API_FULL_IMAGE: ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+
+      - name: Deploy Worker
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          envs: WORKER_FULL_IMAGE
+          script: |
+            kubectl -n tubester set image deployment/tubester-worker worker=${WORKER_FULL_IMAGE}
+            kubectl -n tubester rollout status deployment/tubester-worker
+        env:
+          WORKER_FULL_IMAGE: ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE_NAME }}:${{ env.IMAGE_TAG }}

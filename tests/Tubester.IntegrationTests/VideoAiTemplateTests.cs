@@ -13,16 +13,16 @@ namespace Tubester.IntegrationTests;
 [Collection(nameof(TestCollection))]
 public class VideoAiTemplateTests(TestFixture fixture)
 {
-    private readonly TestHelpers _helpers = new(fixture);
+    private readonly TestHelpers _helpers = new(fixture.ApiServices);
 
     [Fact]
     public async Task AiTemplate_ValidRequest_EnqueuesAiTemplateJob_AndLogsAnalytics()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var targetVideo = TestHelpers.GetTargetVideo();
 
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [targetVideo]
         });
@@ -130,8 +130,8 @@ public class VideoAiTemplateTests(TestFixture fixture)
     public async Task AiTemplate_TargetVideoNotFound_ReturnsBadRequest()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        await _helpers.SeedVideoTestDataAsync();
+        await fixture.CleanStateAsync();
+        await _helpers.SeedTestDataAsync();
         var request = new AiVideoTemplateRequest
         {
             TargetVideoId = "non-existent-video-id",
@@ -162,10 +162,10 @@ public class VideoAiTemplateTests(TestFixture fixture)
     public async Task AiTemplate_WithSuggestPlaylists_CallsPlaylistSuggestion()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var playlist1 = TestHelpers.GetPlaylist("PL1");
         var playlist2 = TestHelpers.GetPlaylist("PL2");
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Playlists = [playlist1, playlist2]
         });
@@ -210,9 +210,9 @@ public class VideoAiTemplateTests(TestFixture fixture)
     public async Task AiTemplate_SuggestPlaylists_NoDetailsGeneration()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var playlist1 = TestHelpers.GetPlaylist("PL1");
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Playlists = [playlist1]
         });
@@ -258,8 +258,8 @@ public class VideoAiTemplateTests(TestFixture fixture)
     public async Task AiTemplate_WithoutSuggestPlaylists_DoesNotCallPlaylistSuggestion()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        await _helpers.SeedVideoTestDataAsync();
+        await fixture.CleanStateAsync();
+        await _helpers.SeedTestDataAsync();
 
         var request = new AiVideoTemplateRequest
         {
@@ -295,7 +295,7 @@ public class VideoAiTemplateTests(TestFixture fixture)
     public async Task AiTemplate_WhenNoFieldsSelected_ReturnsBadRequest()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var request = new AiVideoTemplateRequest
         {
             TargetVideoId = TestConstants.TargetVideoId,
@@ -336,8 +336,8 @@ public class VideoAiTemplateTests(TestFixture fixture)
     public async Task AiTemplateEnqueue_WithSufficientCredits_DeductsCreditsAndAppendsLedgerEntry()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        await _helpers.SeedVideoTestDataAsync();
+        await fixture.CleanStateAsync();
+        await _helpers.SeedTestDataAsync();
 
         var request = new AiVideoTemplateRequest
         {

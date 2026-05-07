@@ -1,23 +1,18 @@
-﻿using System.Net.Http.Json;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Tubester.Abstractions.ApplicationConfiguration;
 using Tubester.Abstractions.Playlists;
 
 namespace Tubester.Integration;
 
-public sealed class AiClient(
-    HttpClient httpClient,
-    IOptions<AiOptions> aiOptions,
+/// <summary>
+/// Provider-agnostic AI client that orchestrates text generation workflows.
+/// </summary>
+public sealed partial class AiClient(
+    IAiTextGenerationClientFactory textGenerationClientFactory,
+    IAiPromptBuilder promptBuilder,
     ILogger<AiClient> logger)
     : IAiClient
 {
-    private readonly AiOptions _ai = aiOptions.Value;
-
-    /// <inheritdoc />
-    public string Provider => AiProviders.Ollama;
-
     public async Task<SuggestedMetadata> SuggestMetadataAsync(
         string context,
         bool generateTitle,
@@ -25,6 +20,7 @@ public sealed class AiClient(
         bool generateTags,
         CancellationToken cancellationToken)
     {
+        var aiTextGenerationClient = await textGenerationClientFactory.GetClientAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(context))
         {
             throw new ArgumentException("Context must not be empty.", nameof(context));
@@ -36,67 +32,68 @@ public sealed class AiClient(
         }
 
         logger.LogInformation(
-            "Getting suggested metadata. GenerateTitle: {GenerateTitle}, GenerateDescription: {GenerateDescription}, GenerateTags: {GenerateTags}, Context: {Context}",
+            "Getting suggested metadata from {Provider}. GenerateTitle: {GenerateTitle}, GenerateDescription: {GenerateDescription}, GenerateTags: {GenerateTags}",
+            aiTextGenerationClient.Provider,
             generateTitle,
             generateDescription,
-            generateTags,
-            context);
+            generateTags);
 
-        var prompt = BuildPrompt(context, generateTitle, generateDescription, generateTags);
-        logger.LogDebug("Prompt: {Prompt}", prompt);
+        var prompt = promptBuilder.BuildMetadataPrompt(context, generateTitle, generateDescription, generateTags);
 
-        var body = new
-        {
-            model = _ai.Model,
+        var result = await aiTextGenerationClient.GenerateTextAsync(
+            AiOperation.Metadata,
             prompt,
-            stream = false,
-            format = "json",
-            options = new
-            {
-                temperature = 0.7,
-                num_ctx = 4096
-            }
-        };
-
-        using var response = await httpClient.PostAsJsonAsync(
-            "/api/generate",
-            body,
             cancellationToken);
 
-        response.EnsureSuccessStatusCode();
+        LogUsage(result.Usage, AiOperation.Metadata);
 
-        var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
+        var parseResult = AiJsonResponseParser.DeserializeModelJson<AiMetadataJsonResult>(
+            result.Text,
+            logger);
 
-        using var envelopeDocument = JsonDocument.Parse(responseText);
-        var envelopeRoot = envelopeDocument.RootElement;
+        return AiSuggestionNormalizer.ToSuggestedMetadata(
+            parseResult,
+            generateTitle,
+            generateDescription,
+            generateTags);
+    }
 
-        if (!envelopeRoot.TryGetProperty("response", out var responseElement) ||
-            responseElement.ValueKind != JsonValueKind.String)
+    public async Task<string?> SuggestReplyAsync(
+        string videoTitle,
+        IEnumerable<string> tags,
+        string commentText,
+        string language,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(commentText))
         {
-            throw new InvalidOperationException("AI response did not contain a valid 'response' string.");
+            return null;
         }
 
-        var content = responseElement.GetString();
-        if (string.IsNullOrWhiteSpace(content))
-        {
-            logger.LogWarning("AI returned an empty response payload");
-            return new SuggestedMetadata();
-        }
+        var tagList = tags.ToList();
 
-        try
-        {
-            using var contentDocument = JsonDocument.Parse(content);
-            return ParseSuggestedMetadata(
-                contentDocument.RootElement,
-                generateTitle,
-                generateDescription,
-                generateTags);
-        }
-        catch (JsonException ex)
-        {
-            logger.LogWarning(ex, "Failed to parse AI JSON content. Raw content: {Content}", content);
-            throw new InvalidOperationException("AI returned invalid JSON content.", ex);
-        }
+        var aiTextGenerationClient = await textGenerationClientFactory.GetClientAsync(cancellationToken);
+        logger.LogInformation(
+            "Getting suggested reply from {Provider}. TagCount: {TagCount}, Language: {Language}, CommentLength: {CommentLength}",
+            aiTextGenerationClient.Provider,
+            tagList.Count,
+            language,
+            commentText.Length);
+
+        var prompt = promptBuilder.BuildReplyPrompt(videoTitle, tagList, commentText, language);
+
+        var result = await aiTextGenerationClient.GenerateTextAsync(
+            AiOperation.Reply,
+            prompt,
+            cancellationToken);
+
+        LogUsage(result.Usage, AiOperation.Reply);
+
+        var parseResult = AiJsonResponseParser.DeserializeModelJson<AiReplyJsonResult>(
+            result.Text,
+            logger);
+
+        return AiSuggestionNormalizer.NormalizeReply(parseResult.Reply);
     }
 
     public async Task<IEnumerable<string>> SuggestPlaylistIdsAsync(
@@ -104,457 +101,46 @@ public sealed class AiClient(
         IReadOnlyList<PlaylistCandidateDto> playlists,
         CancellationToken cancellationToken)
     {
-        if (playlists is null)
-        {
-            throw new ArgumentNullException(nameof(playlists));
-        }
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(playlists);
 
         if (playlists.Count == 0)
         {
             return [];
         }
-
+        var aiTextGenerationClient = await textGenerationClientFactory.GetClientAsync(cancellationToken);
         logger.LogInformation(
-            "Getting suggested playlist ids for prompt {Prompt}, {PlaylistCount} playlists",
-            context.PromptEnrichment,
-            playlists.Count);
+            "Getting suggested playlist ids from {Provider}. PlaylistCount: {PlaylistCount}, PromptLength: {PromptLength}, LatestPlaylistTitleCount: {LatestPlaylistTitleCount}",
+            aiTextGenerationClient.Provider,
+            playlists.Count,
+            context.PromptEnrichment?.Length ?? 0,
+            context.LatestPlaylistTitlesUsed?.Count ?? 0);
 
-        var prompt = BuildPlaylistPrompt(context, playlists);
-        logger.LogDebug("Playlist suggestion prompt: {Prompt}", prompt);
+        var prompt = promptBuilder.BuildPlaylistPrompt(context, playlists);
 
-        var model = string.IsNullOrWhiteSpace(_ai.PlaylistModel) ? _ai.Model : _ai.PlaylistModel;
-        var temperature = _ai.PlaylistTemperature;
-        var numCtx = _ai.PlaylistNumCtx;
-
-        logger.LogDebug(
-            "Using model: {Model}, temperature: {Temperature}, num_ctx: {NumCtx}",
-            model,
-            temperature,
-            numCtx);
-
-        var body = new
-        {
-            model,
+        var result = await aiTextGenerationClient.GenerateTextAsync(
+            AiOperation.PlaylistSuggestion,
             prompt,
-            stream = false,
-            format = "json",
-            options = new
-            {
-                temperature,
-                num_ctx = numCtx,
-                num_predict = 256
-            }
-        };
-
-        using var response = await httpClient.PostAsJsonAsync(
-            "/api/generate",
-            body,
             cancellationToken);
+        
+        logger.LogDebug("Playlist suggestion result: {Text}", result.Text);
 
-        response.EnsureSuccessStatusCode();
+        LogUsage(result.Usage, AiOperation.PlaylistSuggestion);
 
-        var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
+        var parseResult = AiJsonResponseParser.DeserializeModelJson<AiPlaylistJsonResult>(
+            result.Text,
+            logger);
 
-        using var envelopeDocument = JsonDocument.Parse(responseText);
-        var envelopeRoot = envelopeDocument.RootElement;
-
-        if (!envelopeRoot.TryGetProperty("response", out var responseElement) ||
-            responseElement.ValueKind != JsonValueKind.String)
-        {
-            throw new InvalidOperationException("AI response did not contain a valid 'response' string.");
-        }
-
-        var content = responseElement.GetString();
-        if (string.IsNullOrWhiteSpace(content))
-        {
-            logger.LogWarning("AI returned an empty playlist suggestion payload");
-            return [];
-        }
-
-        try
-        {
-            using var contentDocument = JsonDocument.Parse(content);
-            return ParseSuggestedPlaylistIds(contentDocument.RootElement, playlists);
-        }
-        catch (JsonException ex)
-        {
-            logger.LogWarning(ex, "Failed to parse AI playlist suggestion JSON. Raw content: {Content}", content);
-            throw new InvalidOperationException("AI returned invalid JSON content.", ex);
-        }
+        return AiSuggestionNormalizer.MapPlaylistIndexesToIds(
+            parseResult.I,
+            playlists);
     }
 
-    private static SuggestedMetadata ParseSuggestedMetadata(
-        JsonElement root,
-        bool generateTitle,
-        bool generateDescription,
-        bool generateTags)
+    private void LogUsage(AiUsage usage, AiOperation operation)
     {
-        string? title = null;
-        string? description = null;
-        List<string> tags = [];
-
-        if (generateTitle &&
-            root.TryGetProperty("title", out var titleElement) &&
-            titleElement.ValueKind == JsonValueKind.String)
-        {
-            title = NormalizeTitle(titleElement.GetString());
-        }
-
-        if (generateDescription &&
-            root.TryGetProperty("description", out var descriptionElement) &&
-            descriptionElement.ValueKind == JsonValueKind.String)
-        {
-            description = NormalizeDescription(descriptionElement.GetString());
-        }
-
-        if (generateTags &&
-            root.TryGetProperty("tags", out var tagsElement))
-        {
-            tags = ParseTags(tagsElement);
-        }
-
-        return new SuggestedMetadata
-        {
-            Title = title,
-            Description = description,
-            Tags = tags
-        };
+        LogAiUsageProviderProviderModelModelOperationOperationPromptTokens(usage.Provider, usage.Model, operation, usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens, usage.MaxOutputTokens, usage.Temperature, usage.Duration.TotalMilliseconds);
     }
 
-    private static List<string> ParseTags(JsonElement tagsElement)
-    {
-        List<string> tags = [];
-
-        if (tagsElement.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var tagElement in tagsElement.EnumerateArray())
-            {
-                if (tagElement.ValueKind != JsonValueKind.String)
-                {
-                    continue;
-                }
-
-                var tag = NormalizeTag(tagElement.GetString());
-                if (string.IsNullOrWhiteSpace(tag))
-                {
-                    continue;
-                }
-
-                if (tags.Contains(tag, StringComparer.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                tags.Add(tag);
-            }
-
-            return tags;
-        }
-
-        if (tagsElement.ValueKind == JsonValueKind.String)
-        {
-            var raw = tagsElement.GetString();
-            if (string.IsNullOrWhiteSpace(raw))
-            {
-                return tags;
-            }
-
-            foreach (var part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            {
-                var tag = NormalizeTag(part);
-                if (string.IsNullOrWhiteSpace(tag))
-                {
-                    continue;
-                }
-
-                if (tags.Contains(tag, StringComparer.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                tags.Add(tag);
-            }
-        }
-
-        return tags;
-    }
-
-    private static string BuildPrompt(
-    string context,
-    bool generateTitle,
-    bool generateDescription,
-    bool generateTags)
-    {
-        List<string> requestedFields = [];
-        List<string> schemaParts = [];
-        List<string> sectionRules = [];
-
-        if (generateTitle)
-        {
-            requestedFields.Add("- title (string, max 100 characters, punchy, no ALL CAPS)");
-            schemaParts.Add("""
-                            "title":"..."
-                            """);
-            sectionRules.Add(
-                """
-                Title rules:
-                - Make it concise and clickable
-                - Keep it under 100 characters
-                - Avoid ALL CAPS
-                """);
-        }
-
-        if (generateDescription)
-        {
-            requestedFields.Add("- description (string, max 5000 characters, engaging, include relevant hashtags)");
-            schemaParts.Add("""
-                            "description":"..."
-                            """);
-            sectionRules.Add(
-                """
-                Description rules:
-                - Make it engaging and natural
-                - Include relevant hashtags
-                - Keep it under 5000 characters
-                """);
-        }
-
-        if (generateTags)
-        {
-            requestedFields.Add("- tags (array of strings, useful for YouTube search discoverability)");
-            schemaParts.Add("""
-                            "tags":["...","..."]
-                            """);
-            sectionRules.Add(
-                """
-                Tags rules:
-                - Return an array of strings
-                - Use relevant search phrases
-                - Do not repeat tags
-                """);
-        }
-
-        var requestedFieldsText = string.Join(Environment.NewLine, requestedFields);
-        var schemaText = "{ " + string.Join(", ", schemaParts) + " }";
-        var sectionRulesText = sectionRules.Count == 0
-            ? string.Empty
-            : string.Join(Environment.NewLine + Environment.NewLine, sectionRules) + Environment.NewLine + Environment.NewLine;
-
-        return $"""
-                 You write concise SEO-friendly YouTube metadata.
-                 Return JSON only.
-
-                 Generate only these requested fields:
-                 {requestedFieldsText}
-
-                 Rules:
-                 - Return exactly one valid JSON object
-                 - Include only the requested properties
-                 - Do not include any extra properties
-                 - Do not wrap the JSON in markdown or code fences
-                 - Follow the requested constraints for each field
-
-                 {sectionRulesText}
-                 Context:
-                 {context}
-
-                 Return: {schemaText}
-                 """;
-    }
-
-    private static string? NormalizeTitle(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        var normalized = value.Trim();
-
-        if (normalized.Length > 100)
-        {
-            normalized = normalized[..100].Trim();
-        }
-
-        return normalized;
-    }
-
-    private static string? NormalizeDescription(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        var normalized = value.Trim();
-
-        if (normalized.Length > 5000)
-        {
-            normalized = normalized[..5000].Trim();
-        }
-
-        return normalized;
-    }
-
-    private static string? NormalizeTag(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        return value.Trim();
-    }
-
-    public async Task<string?> SuggestReplyAsync(string videoTitle, IEnumerable<string> tags, string commentText,
-        string language, CancellationToken cancellationToken)
-    {
-        logger.LogInformation("Getting suggested reply for Title: {Title}, Comment: {Comment}", videoTitle,
-            commentText);
-        var prompt = $$"""
-
-                       System: You are the channel owner. Be brief, kind, and helpful. Return JSON only.
-                       User:
-                       Write a reply ≤ 2 sentences in {{language}}. If hostile, defuse politely.
-                       If unsure about a fact, say you're not sure.
-                       If this comment has no letters or digits (emoji-only), a short emoji reply is OK.
-                       Video title: "{{videoTitle}}"
-                       Tags: {{string.Join(", ", tags)}}
-                       Comment: "{{commentText}}"
-                       Return: {"reply":"..."}
-                       """;
-
-        var body = new
-        {
-            model = _ai.Model,
-            prompt,
-            stream = false,
-            format = "json",
-            options = new { temperature = 0.7, num_ctx = 4096 }
-        };
-        var res = await httpClient.PostAsJsonAsync("/api/generate", body, cancellationToken);
-        res.EnsureSuccessStatusCode();
-        using var env = JsonDocument.Parse(await res.Content.ReadAsStringAsync(cancellationToken));
-        var content = env.RootElement.GetProperty("response").GetString() ?? "{}";
-        using var doc = JsonDocument.Parse(content);
-        return doc.RootElement.TryGetProperty("reply", out var r) ? r.GetString() : null;
-    }
-
-    private static string BuildPlaylistPrompt(
-        PlaylistSuggestionContext context,
-        IReadOnlyList<PlaylistCandidateDto> playlists)
-    {
-        var playlistLines = string.Join(
-            Environment.NewLine,
-            playlists.Select(p => $"- {p.PlaylistId} | {p.Name}"));
-
-        var latestPlaylistTitlesUsedText = context.LatestPlaylistTitlesUsed.Count > 0
-            ? $"As a weak hint only, the latest video was assigned to these playlists: {string.Join(", ", context.LatestPlaylistTitlesUsed)}"
-            : "";
-
-        return $$"""
-                 Return JSON only.
-
-                 Choose matching YouTube playlistIds for this video.
-
-                 Video:
-                 {{context.PromptEnrichment}}
-
-                 {{latestPlaylistTitlesUsedText}}
-
-                 Available playlists:
-                 {{playlistLines}}
-
-                 Rules:
-                 - Use only listed playlistIds
-                 - Select only strong matches
-                 - Return all strong matches, not just one
-                 - Return empty array if none match
-                 - Return exactly this JSON shape:
-                   {"playlistIds":["...","..."]}
-
-                 Return:
-                 {"playlistIds":[]}
-                 """;
-    }
-
-    private static IReadOnlyList<string> ParseSuggestedPlaylistIds(
-        JsonElement root,
-        IReadOnlyList<PlaylistCandidateDto> playlists)
-    {
-        if (!root.TryGetProperty("playlistIds", out var playlistIdsElement))
-        {
-            return [];
-        }
-
-        var allowedIds = playlists
-            .Select(x => x.PlaylistId)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .ToHashSet(StringComparer.Ordinal);
-
-        List<string> result = [];
-
-        if (playlistIdsElement.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var idElement in playlistIdsElement.EnumerateArray())
-            {
-                if (idElement.ValueKind != JsonValueKind.String)
-                {
-                    continue;
-                }
-
-                var id = idElement.GetString()?.Trim();
-                if (string.IsNullOrWhiteSpace(id))
-                {
-                    continue;
-                }
-
-                if (!allowedIds.Contains(id))
-                {
-                    continue;
-                }
-
-                if (result.Contains(id, StringComparer.Ordinal))
-                {
-                    continue;
-                }
-
-                result.Add(id);
-            }
-
-            return result;
-        }
-
-        if (playlistIdsElement.ValueKind == JsonValueKind.String)
-        {
-            var raw = playlistIdsElement.GetString();
-            if (string.IsNullOrWhiteSpace(raw))
-            {
-                return [];
-            }
-
-            foreach (var part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            {
-                var id = part.Trim();
-                if (string.IsNullOrWhiteSpace(id))
-                {
-                    continue;
-                }
-
-                if (!allowedIds.Contains(id))
-                {
-                    continue;
-                }
-
-                if (result.Contains(id, StringComparer.Ordinal))
-                {
-                    continue;
-                }
-
-                result.Add(id);
-            }
-        }
-
-        return result;
-    }
+    [LoggerMessage(LogLevel.Information, "AI usage. Provider: {Provider}, Model: {Model}, Operation: {Operation}, PromptTokens: {PromptTokens}, CompletionTokens: {CompletionTokens}, TotalTokens: {TotalTokens}, MaxOutputTokens: {MaxOutputTokens}, Temperature: {Temperature}, DurationMs: {DurationMs}")]
+    partial void LogAiUsageProviderProviderModelModelOperationOperationPromptTokens(string provider, string model, AiOperation operation, int? promptTokens, int? completionTokens, int? totalTokens, int? maxOutputTokens, double? temperature, double durationMs);
 }

@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
+using Tubester.Abstractions;
 using Tubester.Abstractions.Credits;
 
 namespace Tubester.Persistence.Credits;
@@ -11,12 +12,6 @@ public sealed class CreditsStore(
     TubesterDb databaseContext,
     ILogger<CreditsStore> logger) : ICreditsStore
 {
-    private static readonly JsonSerializerOptions _jsonSerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false
-    };
-
     public async Task<CreditActionCostDto?> GetActionCostAsync(string actionType, CancellationToken cancellationToken)
     {
         //todo cache
@@ -314,7 +309,7 @@ public sealed class CreditsStore(
 
         var metadataJson =
             JsonSerializer.Serialize(new { type = "period_grant", periodStartUtc, periodEndUtc, periodCredits },
-                _jsonSerializerOptions);
+                TubesterJsonSerializerOptions.DefaultWrite);
 
         // 1) Idempotency gate (insert ledger once)
         var inserted = await databaseContext.Database.ExecuteSqlInterpolatedAsync($"""
@@ -596,7 +591,7 @@ public sealed class CreditsStore(
         await using var tx = await databaseContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
 
         var metadataJson =
-            JsonSerializer.Serialize(new { type = "admin_grant", amount }, _jsonSerializerOptions);
+            JsonSerializer.Serialize(new { type = "admin_grant", amount }, TubesterJsonSerializerOptions.DefaultWrite);
 
         // 1) Idempotency gate
         var inserted = await databaseContext.Database.ExecuteSqlInterpolatedAsync($"""

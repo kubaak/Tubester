@@ -1,7 +1,4 @@
 using System.Net;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Tubester.Abstractions.Users;
@@ -18,22 +15,11 @@ public sealed class AdminCreditsTests(TestFixture fixture)
 {
     private const string Endpoint = "/api/admin/credits/grants";
 
-    private readonly JsonSerializerOptions _serializerOptions =
-        new()
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            PropertyNameCaseInsensitive = true,
-            Converters =
-            {
-                new JsonStringEnumConverter()
-            }
-        };
-
     [Fact]
     public async Task Grant_ValidRequest_GrantsCreditsToUser()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         const string targetUserId = "target-user-id";
         const int grantAmount = 100;
@@ -59,7 +45,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var result = await DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
+        var result = await TestHelpers.DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
 
         Assert.True(result.Success);
         Assert.False(result.AlreadyProcessed);
@@ -87,7 +73,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
     public async Task Grant_MissingOperationId_ReturnsBadRequest()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         var request = new AdminCreditsController.CreditGrantRequest
         {
@@ -105,7 +91,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
-        var result = await DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
+        var result = await TestHelpers.DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
 
         Assert.False(result.Success);
         Assert.Equal("Missing OperationId header.", result.Message);
@@ -115,7 +101,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
     public async Task Grant_BlankOperationId_ReturnsBadRequest()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         var request = new AdminCreditsController.CreditGrantRequest
         {
@@ -133,7 +119,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
-        var result = await DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
+        var result = await TestHelpers.DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
 
         Assert.False(result.Success);
         Assert.Equal("Missing OperationId header.", result.Message);
@@ -143,7 +129,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
     public async Task Grant_OperationIdTooLong_ReturnsBadRequest()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         var request = new AdminCreditsController.CreditGrantRequest
         {
@@ -163,7 +149,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
-        var result = await DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
+        var result = await TestHelpers.DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
 
         Assert.False(result.Success);
         Assert.Contains("too long", result.Message, StringComparison.OrdinalIgnoreCase);
@@ -173,7 +159,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
     public async Task Grant_MissingUserId_ReturnsBadRequest()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         var request = new AdminCreditsController.CreditGrantRequest
         {
@@ -191,7 +177,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
-        var result = await DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
+        var result = await TestHelpers.DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
 
         Assert.False(result.Success);
         Assert.Contains("UserId", result.Message, StringComparison.OrdinalIgnoreCase);
@@ -201,7 +187,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
     public async Task Grant_ZeroAmount_ReturnsBadRequest()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         var request = new AdminCreditsController.CreditGrantRequest
         {
@@ -219,7 +205,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
-        var result = await DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
+        var result = await TestHelpers.DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
 
         Assert.False(result.Success);
         Assert.Contains("Amount", result.Message, StringComparison.OrdinalIgnoreCase);
@@ -229,7 +215,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
     public async Task Grant_NegativeAmount_ReturnsBadRequest()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         var request = new AdminCreditsController.CreditGrantRequest
         {
@@ -247,7 +233,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
-        var result = await DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
+        var result = await TestHelpers.DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
 
         Assert.False(result.Success);
         Assert.Contains("Amount", result.Message, StringComparison.OrdinalIgnoreCase);
@@ -257,7 +243,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
     public async Task Grant_SameIdempotencyKey_ReturnsAlreadyProcessed()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         const string targetUserId = "idempotency-user-id";
         const int grantAmount = 50;
@@ -285,7 +271,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
         Assert.Equal(HttpStatusCode.OK, response1.StatusCode);
         Assert.Equal(HttpStatusCode.OK, response2.StatusCode);
 
-        var result = await DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response2);
+        var result = await TestHelpers.DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response2);
 
         Assert.True(result.Success);
         Assert.True(result.AlreadyProcessed);
@@ -309,7 +295,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
     public async Task Grant_SameOperationIdWithDifferentAmount_DoesNotGrantAgain()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         const string targetUserId = "same-operation-different-amount-user-id";
         const string sameOperationId = "same-operation-different-amount";
@@ -344,7 +330,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
         Assert.Equal(HttpStatusCode.OK, response1.StatusCode);
         Assert.Equal(HttpStatusCode.OK, response2.StatusCode);
 
-        var result = await DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response2);
+        var result = await TestHelpers.DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response2);
 
         Assert.True(result.Success);
         Assert.True(result.AlreadyProcessed);
@@ -368,7 +354,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
     public async Task Grant_UserDoesNotExist_ReturnsNotFound()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         const string nonExistentUserId = "non-existent-user-id";
         const int grantAmount = 100;
@@ -389,7 +375,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
 
-        var result = await DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
+        var result = await TestHelpers.DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
 
         Assert.False(result.Success);
         Assert.False(result.AlreadyProcessed);
@@ -411,7 +397,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
     public async Task Grant_ExistingActiveWallet_AddsToBalanceAndKeepsPeriod()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         const string targetUserId = "existing-wallet-user-id";
         const int existingBalance = 25;
@@ -445,7 +431,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var result = await DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
+        var result = await TestHelpers.DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
 
         Assert.True(result.Success);
         Assert.False(result.AlreadyProcessed);
@@ -472,7 +458,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
     public async Task Grant_ExpiredWallet_ResetsBalanceAndStartsNewPeriod()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         const string targetUserId = "expired-wallet-user-id";
         const int expiredBalance = 25;
@@ -505,7 +491,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var result = await DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
+        var result = await TestHelpers.DeserializeAsync<AdminCreditsController.CreditGrantResponse>(response);
 
         Assert.True(result.Success);
         Assert.False(result.AlreadyProcessed);
@@ -586,7 +572,7 @@ public sealed class AdminCreditsTests(TestFixture fixture)
     {
         var requestMessage = new HttpRequestMessage(HttpMethod.Post, Endpoint)
         {
-            Content = JsonContent(request)
+            Content = TestHelpers.CreateJsonContent(request)
         };
 
         if (operationId is not null)
@@ -595,21 +581,5 @@ public sealed class AdminCreditsTests(TestFixture fixture)
         }
 
         return requestMessage;
-    }
-
-    private StringContent JsonContent<T>(T value)
-    {
-        var json = JsonSerializer.Serialize(value, _serializerOptions);
-        return new StringContent(json, Encoding.UTF8, "application/json");
-    }
-
-    private async Task<T> DeserializeAsync<T>(HttpResponseMessage response)
-    {
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<T>(responseContent, _serializerOptions);
-
-        Assert.NotNull(result);
-
-        return result;
     }
 }

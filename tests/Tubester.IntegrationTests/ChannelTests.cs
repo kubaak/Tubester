@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
@@ -18,16 +17,16 @@ namespace Tubester.IntegrationTests;
 [Collection(nameof(TestCollection))]
 public class ChannelTests(TestFixture fixture)
 {
-    private readonly TestHelpers _helpers = new(fixture);
+    private readonly TestHelpers _helpers = new(fixture.ApiServices);
 
     [Fact]
     public async Task Sync_WithDummyChannelAndMockedYouTubeData_UpdatesDatabaseCorrectly()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         const string video1 = "video123";
         const string video2 = "video456";
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = []
         });
@@ -114,9 +113,7 @@ public class ChannelTests(TestFixture fixture)
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var syncResult = JsonSerializer.Deserialize<ChannelSyncResult>(responseContent, TestHelpers.SerializerOptions);
+        var syncResult = await TestHelpers.DeserializeAsync<ChannelSyncResult>(response);
 
         Assert.NotNull(syncResult);
         Assert.Equal(2, syncResult.VideosInserted);
@@ -193,8 +190,8 @@ public class ChannelTests(TestFixture fixture)
     public async Task Sync_CalledTwice_IsIdempotentAndUpdatesExistingData()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        await _helpers.SeedVideoTestDataAsync();
+        await fixture.CleanStateAsync();
+        await _helpers.SeedTestDataAsync();
 
         // Create mock video DTOs
         var mockVideosFirstCall = new List<VideoDto>
@@ -276,9 +273,7 @@ public class ChannelTests(TestFixture fixture)
         var secondResponse = await fixture.HttpClient.PostAsync($"/api/channels/sync/current", null);
         Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
 
-        var secondResponseContent = await secondResponse.Content.ReadAsStringAsync();
-        var secondSyncResult = JsonSerializer.Deserialize<ChannelSyncResult>(secondResponseContent,
-            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        var secondSyncResult = await TestHelpers.DeserializeAsync<ChannelSyncResult>(secondResponse);
 
         // Assert
         Assert.NotNull(secondSyncResult);
@@ -303,8 +298,8 @@ public class ChannelTests(TestFixture fixture)
     public async Task Sync_WithoutSubscription_AssignsFreeSubscriptionAndGrantsCredits()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        await _helpers.SeedVideoTestDataAsync(
+        await fixture.CleanStateAsync();
+        await _helpers.SeedTestDataAsync(
             new TestDataOptions
             {
                 CreateSubscription = false
@@ -358,8 +353,8 @@ public class ChannelTests(TestFixture fixture)
     public async Task Sync_WithActiveSubscription_SyncsWithoutModifyingCredits()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        var testData = await _helpers.SeedVideoTestDataAsync();
+        await fixture.CleanStateAsync();
+        var testData = await _helpers.SeedTestDataAsync();
         var serviceScope = fixture.ApiServices.CreateScope();
         var creditStore = serviceScope.ServiceProvider.GetRequiredService<ICreditsStore>();
         var idempotencyKey = $"grant:{TestConstants.UserId}:{TestFixture.TestingDateTimeOffset.ToUniversalTime():O}";
@@ -371,9 +366,7 @@ public class ChannelTests(TestFixture fixture)
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var syncResult = JsonSerializer.Deserialize<ChannelSyncResult>(responseContent, TestHelpers.SerializerOptions);
+        var syncResult = await TestHelpers.DeserializeAsync<ChannelSyncResult>(response);
         Assert.NotNull(syncResult);
 
         using var verificationScope = fixture.ApiServices.CreateScope();
@@ -410,7 +403,7 @@ public class ChannelTests(TestFixture fixture)
     public async Task Sync_WithInactiveSubscription_ReturnsForbiddenAndDoesNotModifyCredits()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         const string testChannelId = "UCSubInactiveChannel";
         const string testUploadsPlaylistId = "PLSubInactiveUploads";

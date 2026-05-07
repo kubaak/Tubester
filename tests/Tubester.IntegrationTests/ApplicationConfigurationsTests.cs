@@ -1,7 +1,4 @@
 using System.Net;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Tubester.Abstractions.ApplicationConfiguration;
@@ -15,22 +12,11 @@ namespace Tubester.IntegrationTests;
 [Collection(nameof(TestCollection))]
 public class ApplicationConfigurationsTests(TestFixture fixture)
 {
-    private readonly JsonSerializerOptions _serializerOptions =
-        new()
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            PropertyNameCaseInsensitive = true,
-            Converters =
-            {
-                new JsonStringEnumConverter()
-            }
-        };
-
     [Fact]
     public async Task GetAll_EmptyDb_ReturnsEmptyList()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         // Act
         var response = await fixture.HttpClient.GetAsync("/api/application-configurations");
@@ -38,10 +24,8 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<IReadOnlyList<ApplicationConfigurationDto>>(responseContent, _serializerOptions);
+        var result = await TestHelpers.DeserializeAsync<IReadOnlyList<ApplicationConfigurationDto>>(response);
 
-        Assert.NotNull(result);
         Assert.Empty(result);
     }
 
@@ -49,7 +33,7 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
     public async Task GetAll_WithConfigs_ReturnsAllConfigs()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         using (var scope = fixture.ApiServices.CreateScope())
         {
@@ -78,10 +62,8 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<IReadOnlyList<ApplicationConfigurationDto>>(responseContent, _serializerOptions);
+        var result = await TestHelpers.DeserializeAsync<IReadOnlyList<ApplicationConfigurationDto>>(response);
 
-        Assert.NotNull(result);
         Assert.Equal(2, result.Count);
     }
 
@@ -89,7 +71,7 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
     public async Task GetByKey_ExistingConfig_ReturnsOk()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         const string key = "GetByKeyTest";
 
         using (var scope = fixture.ApiServices.CreateScope())
@@ -112,10 +94,8 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<ApplicationConfigurationDto>(responseContent, _serializerOptions);
+        var result = await TestHelpers.DeserializeAsync<ApplicationConfigurationDto>(response);
 
-        Assert.NotNull(result);
         Assert.Equal(key, result.Key);
         Assert.Equal("TestValue", result.Value);
         Assert.Equal(ConfigurationValueType.String, result.ValueType);
@@ -125,7 +105,7 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
     public async Task GetByKey_NonExistingConfig_ReturnsNotFound()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         // Act
         var response = await fixture.HttpClient.GetAsync("/api/application-configurations/non-existent-key");
@@ -138,15 +118,15 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
     public async Task Create_ValidRequest_ReturnsCreated()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var request = new CreateApplicationConfigurationRequest(
             "NewKey",
             "NewValue",
             ConfigurationValueType.String,
             "New configuration",
             false);
-        var json = JsonSerializer.Serialize(request, _serializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var content = TestHelpers.CreateJsonContent(request);
 
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/application-configurations", content);
@@ -154,20 +134,18 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<ApplicationConfigurationDto>(responseContent, _serializerOptions);
+        var result = await TestHelpers.DeserializeAsync<ApplicationConfigurationDto>(response);
 
-        Assert.NotNull(result);
         Assert.Equal("NewKey", result.Key);
         Assert.Equal("NewValue", result.Value);
         Assert.Equal(ConfigurationValueType.String, result.ValueType);
         Assert.Equal("New configuration", result.Description);
         Assert.False(result.IsSystem);
 
-        // Verify config was persisted
         using var verificationScope = fixture.ApiServices.CreateScope();
         var dbContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
         var savedConfig = await dbContext.ApplicationConfigurations.FirstOrDefaultAsync(c => c.Key == "NewKey");
+
         Assert.NotNull(savedConfig);
         Assert.Equal("NewValue", savedConfig.Value);
     }
@@ -176,7 +154,7 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
     public async Task Create_DuplicateKey_ReturnsConflict()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         const string key = "DuplicateKey";
 
         using (var scope = fixture.ApiServices.CreateScope())
@@ -199,8 +177,8 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
             ConfigurationValueType.String,
             "New description",
             false);
-        var json = JsonSerializer.Serialize(request, _serializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var content = TestHelpers.CreateJsonContent(request);
 
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/application-configurations", content);
@@ -216,15 +194,15 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
     public async Task Create_EmptyKey_ReturnsBadRequest()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var request = new CreateApplicationConfigurationRequest(
             "",
             "Value",
             ConfigurationValueType.String,
             "Description",
             false);
-        var json = JsonSerializer.Serialize(request, _serializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var content = TestHelpers.CreateJsonContent(request);
 
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/application-configurations", content);
@@ -240,15 +218,15 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
     public async Task Create_WhitespaceKey_ReturnsBadRequest()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var request = new CreateApplicationConfigurationRequest(
             "   ",
             "Value",
             ConfigurationValueType.String,
             "Description",
             false);
-        var json = JsonSerializer.Serialize(request, _serializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var content = TestHelpers.CreateJsonContent(request);
 
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/application-configurations", content);
@@ -261,7 +239,7 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
     public async Task Update_ExistingConfig_ReturnsUpdated()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         const string key = "UpdateTestKey";
 
         using (var scope = fixture.ApiServices.CreateScope())
@@ -282,8 +260,8 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
             "UpdatedValue",
             ConfigurationValueType.String,
             "Updated description");
-        var json = JsonSerializer.Serialize(request, _serializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var content = TestHelpers.CreateJsonContent(request);
 
         // Act
         var response = await fixture.HttpClient.PutAsync($"/api/application-configurations/{key}", content);
@@ -291,19 +269,17 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<ApplicationConfigurationDto>(responseContent, _serializerOptions);
+        var result = await TestHelpers.DeserializeAsync<ApplicationConfigurationDto>(response);
 
-        Assert.NotNull(result);
         Assert.Equal(key, result.Key);
         Assert.Equal("UpdatedValue", result.Value);
         Assert.Equal(ConfigurationValueType.String, result.ValueType);
         Assert.Equal("Updated description", result.Description);
 
-        // Verify config was updated in database
         using var verificationScope = fixture.ApiServices.CreateScope();
         var dbContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
         var savedConfig = await dbContext.ApplicationConfigurations.FirstOrDefaultAsync(c => c.Key == key);
+
         Assert.NotNull(savedConfig);
         Assert.Equal("UpdatedValue", savedConfig.Value);
         Assert.Equal(ConfigurationValueType.String, savedConfig.ValueType);
@@ -313,13 +289,13 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
     public async Task Update_NonExistingConfig_ReturnsNotFound()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var request = new UpdateApplicationConfigurationRequest(
             "NewValue",
             ConfigurationValueType.String,
             "Description");
-        var json = JsonSerializer.Serialize(request, _serializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var content = TestHelpers.CreateJsonContent(request);
 
         // Act
         var response = await fixture.HttpClient.PutAsync("/api/application-configurations/non-existent-key", content);
@@ -332,7 +308,7 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
     public async Task Delete_ExistingConfig_ReturnsNoContent()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         const string key = "DeleteTestKey";
 
         using (var scope = fixture.ApiServices.CreateScope())
@@ -355,10 +331,10 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
-        // Verify config was deleted from database
         using var verificationScope = fixture.ApiServices.CreateScope();
         var dbContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
         var deletedConfig = await dbContext.ApplicationConfigurations.FirstOrDefaultAsync(c => c.Key == key);
+
         Assert.Null(deletedConfig);
     }
 
@@ -366,7 +342,7 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
     public async Task Delete_NonExistingConfig_ReturnsNotFound()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         // Act
         var response = await fixture.HttpClient.DeleteAsync("/api/application-configurations/non-existent-key");
@@ -379,7 +355,7 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
     public async Task Delete_SystemConfig_ReturnsBadRequest()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         const string key = "SystemConfigKey";
 
         using (var scope = fixture.ApiServices.CreateScope())
@@ -391,7 +367,7 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
                     "SystemValue",
                     ConfigurationValueType.String,
                     "System configuration",
-                    true, // IsSystem = true
+                    true,
                     TestFixture.TestingDateTimeOffset));
             await databaseContext.SaveChangesAsync();
         }
@@ -405,10 +381,10 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
         var responseContent = await response.Content.ReadAsStringAsync();
         Assert.Contains("system", responseContent, StringComparison.OrdinalIgnoreCase);
 
-        // Verify config was NOT deleted
         using var verificationScope = fixture.ApiServices.CreateScope();
         var dbContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
         var savedConfig = await dbContext.ApplicationConfigurations.FirstOrDefaultAsync(c => c.Key == key);
+
         Assert.NotNull(savedConfig);
     }
 
@@ -416,15 +392,15 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
     public async Task Create_WithBooleanValue_ReturnsCreated()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var request = new CreateApplicationConfigurationRequest(
             "Feature.Enabled",
             "true",
             ConfigurationValueType.Boolean,
             "Feature flag",
             false);
-        var json = JsonSerializer.Serialize(request, _serializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var content = TestHelpers.CreateJsonContent(request);
 
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/application-configurations", content);
@@ -432,10 +408,8 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<ApplicationConfigurationDto>(responseContent, _serializerOptions);
+        var result = await TestHelpers.DeserializeAsync<ApplicationConfigurationDto>(response);
 
-        Assert.NotNull(result);
         Assert.Equal("Feature.Enabled", result.Key);
         Assert.Equal("true", result.Value);
         Assert.Equal(ConfigurationValueType.Boolean, result.ValueType);
@@ -445,15 +419,15 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
     public async Task Create_WithIntegerValue_ReturnsCreated()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var request = new CreateApplicationConfigurationRequest(
             "Cache.Duration",
             "3600",
             ConfigurationValueType.Integer,
             "Cache duration in seconds",
             false);
-        var json = JsonSerializer.Serialize(request, _serializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var content = TestHelpers.CreateJsonContent(request);
 
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/application-configurations", content);
@@ -461,10 +435,8 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<ApplicationConfigurationDto>(responseContent, _serializerOptions);
+        var result = await TestHelpers.DeserializeAsync<ApplicationConfigurationDto>(response);
 
-        Assert.NotNull(result);
         Assert.Equal("Cache.Duration", result.Key);
         Assert.Equal("3600", result.Value);
         Assert.Equal(ConfigurationValueType.Integer, result.ValueType);
@@ -474,15 +446,15 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
     public async Task Create_WithDecimalValue_ReturnsCreated()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var request = new CreateApplicationConfigurationRequest(
             "Rate.Limit",
             "0.75",
             ConfigurationValueType.Decimal,
             "Rate limit multiplier",
             false);
-        var json = JsonSerializer.Serialize(request, _serializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var content = TestHelpers.CreateJsonContent(request);
 
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/application-configurations", content);
@@ -490,10 +462,8 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<ApplicationConfigurationDto>(responseContent, _serializerOptions);
+        var result = await TestHelpers.DeserializeAsync<ApplicationConfigurationDto>(response);
 
-        Assert.NotNull(result);
         Assert.Equal("Rate.Limit", result.Key);
         Assert.Equal("0.75", result.Value);
         Assert.Equal(ConfigurationValueType.Decimal, result.ValueType);
@@ -503,7 +473,7 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
     public async Task Create_WithJsonValue_ReturnsCreated()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var jsonValue = "{\"key\": \"value\", \"nested\": {\"a\": 1}}";
         var request = new CreateApplicationConfigurationRequest(
             "Settings.Json",
@@ -511,8 +481,8 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
             ConfigurationValueType.Json,
             "JSON configuration",
             false);
-        var json = JsonSerializer.Serialize(request, _serializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var content = TestHelpers.CreateJsonContent(request);
 
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/application-configurations", content);
@@ -520,10 +490,8 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<ApplicationConfigurationDto>(responseContent, _serializerOptions);
+        var result = await TestHelpers.DeserializeAsync<ApplicationConfigurationDto>(response);
 
-        Assert.NotNull(result);
         Assert.Equal("Settings.Json", result.Key);
         Assert.Equal(jsonValue, result.Value);
         Assert.Equal(ConfigurationValueType.Json, result.ValueType);
@@ -533,7 +501,7 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
     public async Task Update_ChangeValueType_ReturnsUpdated()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         const string key = "ChangeTypeTestKey";
 
         using (var scope = fixture.ApiServices.CreateScope())
@@ -554,8 +522,8 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
             "999.99",
             ConfigurationValueType.Decimal,
             "Changed to decimal");
-        var json = JsonSerializer.Serialize(request, _serializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var content = TestHelpers.CreateJsonContent(request);
 
         // Act
         var response = await fixture.HttpClient.PutAsync($"/api/application-configurations/{key}", content);
@@ -563,10 +531,8 @@ public class ApplicationConfigurationsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<ApplicationConfigurationDto>(responseContent, _serializerOptions);
+        var result = await TestHelpers.DeserializeAsync<ApplicationConfigurationDto>(response);
 
-        Assert.NotNull(result);
         Assert.Equal("999.99", result.Value);
         Assert.Equal(ConfigurationValueType.Decimal, result.ValueType);
     }

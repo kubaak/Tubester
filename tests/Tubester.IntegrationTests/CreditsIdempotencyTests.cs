@@ -11,7 +11,7 @@ namespace Tubester.IntegrationTests;
 [Collection(nameof(TestCollection))]
 public sealed class CreditsIdempotencyTests(TestFixture fixture)
 {
-    private readonly TestHelpers _helpers = new(fixture);
+    private readonly TestHelpers _helpers = new(fixture.ApiServices);
 
     private const string OperationId = "credits-idempotency-operation";
 
@@ -19,9 +19,9 @@ public sealed class CreditsIdempotencyTests(TestFixture fixture)
     public async Task AiTemplate_SameIdempotencyKey_DoesNotDoubleCharge()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
-        await _helpers.SeedVideoTestDataAsync();
+        await _helpers.SeedTestDataAsync();
         var request = CreateAiTemplateRequest(TestConstants.TargetVideoId);
 
         var requestMessage1 = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
@@ -72,8 +72,8 @@ public sealed class CreditsIdempotencyTests(TestFixture fixture)
     public async Task AiTemplate_DifferentIdempotencyKey_DoubleCharge()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        await _helpers.SeedVideoTestDataAsync();
+        await fixture.CleanStateAsync();
+        await _helpers.SeedTestDataAsync();
 
         var request = CreateAiTemplateRequest(TestConstants.TargetVideoId);
 
