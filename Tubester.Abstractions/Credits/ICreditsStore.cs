@@ -10,7 +10,7 @@ public interface ICreditsStore
         DateTimeOffset nowUtc,
         CancellationToken cancellationToken);
 
-    Task<UserPlanDto?> GetActiveUserPlanAsync(
+    Task<SubscriptionDto?> GetActiveSubscriptionAsync(
         string userId,
         DateTimeOffset nowUtc,
         CancellationToken cancellationToken);
@@ -80,5 +80,10 @@ public interface ICreditsStore
         int amount,
         string idempotencyKey,
         DateTimeOffset occurredAtUtc,
+        CancellationToken cancellationToken);
+
+    Task<SubscriptionDto?> TryRenewSubscriptionAsync(
+        string userId,
+        DateTimeOffset nowUtc,
         CancellationToken cancellationToken);
 }

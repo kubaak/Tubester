@@ -6,7 +6,6 @@ using Moq;
 using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Users;
 using Tubester.Application.Channels;
-using Tubester.Application.Credits;
 using Tubester.Domain;
 using Tubester.Integration.Dtos;
 using Tubester.IntegrationTests.TestHost;
@@ -32,7 +31,7 @@ public class ChannelTests(TestFixture fixture)
         {
             Videos = []
         });
-        
+
         // Create mock video DTOs
         var mockVideos = new List<VideoDto>
         {
@@ -109,7 +108,7 @@ public class ChannelTests(TestFixture fixture)
             .Setup(x => x.GetVideosAsync(It.IsAny<IEnumerable<string>>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(mockVideos.ToList().AsReadOnly());
-        
+
         // Act
         var response = await fixture.HttpClient.PostAsync($"/api/channels/sync/current", null);
 

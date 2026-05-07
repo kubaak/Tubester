@@ -39,10 +39,10 @@ public sealed class Video : Entity
     public bool? CommentsAllowed { get; private set; }
     public DateTimeOffset CachedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
-    
+
     // Bitmask for AI operations in progress
     public AiVideoOperationFlags AiOperationsInProgress { get; private set; }
-    
+
     // Computed compatibility properties for API/DTO exposure
     public bool IsAiTitleInProgress => AiOperationsInProgress.HasFlag(AiVideoOperationFlags.Title);
     public bool IsAiDescriptionInProgress => AiOperationsInProgress.HasFlag(AiVideoOperationFlags.Description);
@@ -222,7 +222,7 @@ public sealed class Video : Entity
             CommentsAllowed = commentsAllowed;
             dirty = true;
         }
-        
+
         if (dirty)
         {
             UpdatedAt = nowUtc;
@@ -230,7 +230,7 @@ public sealed class Video : Entity
 
         return dirty;
     }
-    
+
     private Video()
     {
     }

@@ -201,7 +201,7 @@ public sealed class CreditsControllerTests(TestFixture fixture)
         // Act - Spend credits
         var spendResponse = await fixture.HttpClient.SendAsync(requestMessage);
 
-        Assert.Equal(HttpStatusCode.OK, spendResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, spendResponse.StatusCode);
 
         // Act - Get balance
         var balanceResponse = await fixture.HttpClient.GetAsync("/api/credits/balance");

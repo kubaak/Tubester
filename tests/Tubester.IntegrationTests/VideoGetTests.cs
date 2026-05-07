@@ -11,13 +11,13 @@ namespace Tubester.IntegrationTests;
 public class VideoGetTests(TestFixture fixture)
 {
     private readonly TestHelpers _helpers = new(fixture);
-    
+
     [Fact]
     public async Task GetVideo_ExistingVideo_ReturnsOkWithDetails()
     {
         // Arrange
         await fixture.ResetDbAsync();
-        
+
         var video = TestHelpers.GetTargetVideo();
 
         await _helpers.SeedVideoTestDataAsync(new TestDataOptions
@@ -69,7 +69,7 @@ public class VideoGetTests(TestFixture fixture)
         TestHelpers.AssertVideoDetails(
             videoDetails,
             video,
-            [new PlaylistDto{Id = playlist.PlaylistId, Name = playlist.Title}]);
+            [new PlaylistDto { Id = playlist.PlaylistId, Name = playlist.Title }]);
     }
 
     [Fact]

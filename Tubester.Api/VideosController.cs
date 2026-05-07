@@ -71,9 +71,10 @@ public sealed class VideosController(
     /// <param name="ct"></param>
     /// <returns></returns>
     [HttpPost("ai-template")]
-    [ProducesResponseType(typeof(AiTemplateEnqueueResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status402PaymentRequired)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
@@ -104,8 +105,8 @@ public sealed class VideosController(
             return Unauthorized();
         }
 
-        var result = await aiTemplateOrchestrationService.EnqueueAiTemplateAsync(userId, operationId, request, ct);
-        return Ok(result);
+        await aiTemplateOrchestrationService.EnqueueAiTemplateAsync(userId, operationId, request, ct);
+        return Accepted();
     }
 
     /// <summary>
@@ -219,7 +220,7 @@ public sealed class VideosController(
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<VideoDetailsDto>> SaveDraft(
-        [FromBody] UpdateVideoMetadataRequest request,
+        [FromBody] SaveVideoDraftRequest request,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.VideoId))

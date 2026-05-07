@@ -13,7 +13,7 @@ public sealed class AiTemplateFinalizeJob(
     [Queue("ai-templating")]
     [AutomaticRetry(Attempts = 3, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
     public async Task Run(
-        string channelId,
+        string uploadPlaylistId,
         AiVideoTemplateRequest request,
         IJobCancellationToken jobCancellationToken)
     {
@@ -33,7 +33,7 @@ public sealed class AiTemplateFinalizeJob(
         try
         {
             await videoRepository.TryClearAiOperationsInProgressAsync(
-                channelId,
+                uploadPlaylistId,
                 request.TargetVideoId,
                 operations,
                 jobCancellationToken.ShutdownToken);

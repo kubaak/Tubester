@@ -81,14 +81,16 @@ public sealed class CreditsStore(
         return userIds;
     }
 
-    public async Task<UserPlanDto?> GetActiveUserPlanAsync(
+    public async Task<SubscriptionDto?> GetActiveSubscriptionAsync(
         string userId,
         DateTimeOffset nowUtc,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(userId))
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        if (nowUtc.Offset != TimeSpan.Zero)
         {
-            throw new ArgumentException("User id is required.", nameof(userId));
+            nowUtc = nowUtc.ToUniversalTime();
         }
 
         var subscription = await databaseContext.Subscriptions
@@ -97,26 +99,12 @@ public sealed class CreditsStore(
             .Where(entity => entity.UserId == userId
                              && entity.Status == SubscriptionStatus.Active
                              && entity.PeriodStartUtc <= nowUtc
-                             && entity.PeriodEndUtc > nowUtc)
+                             && entity.PeriodEndUtc > nowUtc
+                             && entity.Plan.IsActive)
             .OrderByDescending(entity => entity.PeriodStartUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (subscription is null || !subscription.Plan.IsActive)
-        {
-            return null;
-        }
-
-        var result = new UserPlanDto
-        {
-            UserId = subscription.UserId,
-            PlanId = subscription.PlanId,
-            PlanCode = subscription.Plan.Code,
-            PeriodCredits = subscription.Plan.MonthlyCredits,
-            PeriodStartUtc = subscription.PeriodStartUtc,
-            PeriodEndUtc = subscription.PeriodEndUtc
-        };
-
-        return result;
+        return subscription is null ? null : ToSubscriptionDto(subscription);
     }
 
     public async Task<SpendResult> TrySpendAsync(
@@ -430,7 +418,7 @@ public sealed class CreditsStore(
         }
 
         var periodStartUtc = nowUtc;
-        var periodEndUtc = nowUtc.AddDays(30);
+        var periodEndUtc = nowUtc.AddMonths(1);
         var status = nameof(SubscriptionStatus.Active);
 
         var inserted = await databaseContext.Database.ExecuteSqlInterpolatedAsync($"""
@@ -668,6 +656,91 @@ public sealed class CreditsStore(
         };
     }
 
+    public async Task<SubscriptionDto?> TryRenewSubscriptionAsync(
+    string userId,
+    DateTimeOffset nowUtc,
+    CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        if (nowUtc.Offset != TimeSpan.Zero)
+        {
+            nowUtc = nowUtc.ToUniversalTime();
+        }
+
+        await using var transaction = await databaseContext.Database
+            .BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+
+        var subscription = await databaseContext.Subscriptions
+            .FromSqlInterpolated($"""
+                SELECT *
+                FROM "Subscriptions"
+                WHERE "UserId" = {userId}
+                FOR UPDATE
+                """)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (subscription is null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return null;
+        }
+
+        await databaseContext.Entry(subscription)
+            .Reference(entity => entity.Plan)
+            .LoadAsync(cancellationToken);
+
+        if (subscription.Status != SubscriptionStatus.Active || !subscription.Plan.IsActive)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return null;
+        }
+
+        if (subscription.PeriodStartUtc <= nowUtc && subscription.PeriodEndUtc > nowUtc)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return ToSubscriptionDto(subscription);
+        }
+
+        var oldPeriodStartUtc = subscription.PeriodStartUtc;
+        var oldPeriodEndUtc = subscription.PeriodEndUtc;
+
+        var newPeriodStartUtc = oldPeriodStartUtc;
+        var newPeriodEndUtc = oldPeriodEndUtc;
+
+        while (newPeriodEndUtc <= nowUtc)
+        {
+            newPeriodStartUtc = newPeriodEndUtc;
+            newPeriodEndUtc = newPeriodStartUtc.AddMonths(1);
+        }
+
+        await databaseContext.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "SubscriptionHistories"
+                ("UserId", "PlanId", "Status", "PeriodStartUtc", "PeriodEndUtc", "CreatedAtUtc")
+            VALUES
+                ({subscription.UserId}, {subscription.PlanId}, {subscription.Status.ToString()},
+                 {oldPeriodStartUtc}, {oldPeriodEndUtc}, {nowUtc})
+            ON CONFLICT ("UserId", "PlanId", "PeriodStartUtc", "PeriodEndUtc") DO NOTHING;
+            """, cancellationToken);
+
+        subscription.PeriodStartUtc = newPeriodStartUtc;
+        subscription.PeriodEndUtc = newPeriodEndUtc;
+
+        await databaseContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Renewed subscription for user {UserId}, plan {PlanCode}, old period {OldPeriodStartUtc} to {OldPeriodEndUtc}, new period {NewPeriodStartUtc} to {NewPeriodEndUtc}",
+            userId,
+            subscription.Plan.Code,
+            oldPeriodStartUtc,
+            oldPeriodEndUtc,
+            newPeriodStartUtc,
+            newPeriodEndUtc);
+
+        return ToSubscriptionDto(subscription);
+    }
+
     private async Task<int> UpsertWalletForAdminGrantAsync(
         string userId,
         int amount,
@@ -733,5 +806,18 @@ public sealed class CreditsStore(
         var result = await cmd.ExecuteScalarAsync(ct) ?? throw new InvalidOperationException("Wallet admin grant upsert did not return a balance.");
 
         return Convert.ToInt32(result);
+    }
+
+    private static SubscriptionDto ToSubscriptionDto(Subscription subscription)
+    {
+        return new SubscriptionDto
+        {
+            UserId = subscription.UserId,
+            PlanId = subscription.PlanId,
+            PlanCode = subscription.Plan.Code,
+            PeriodCredits = subscription.Plan.MonthlyCredits,
+            PeriodStartUtc = subscription.PeriodStartUtc,
+            PeriodEndUtc = subscription.PeriodEndUtc
+        };
     }
 }

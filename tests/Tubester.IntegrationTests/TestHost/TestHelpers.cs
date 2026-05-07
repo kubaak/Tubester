@@ -1,10 +1,4 @@
-﻿using Tubester.Abstractions.Credits;
-using Tubester.Abstractions.Users;
-using Tubester.Application.Contracts.Videos;
-using Tubester.Domain;
-using Tubester.Persistence;
-using Tubester.Persistence.Credits;
-using System.Net.Http.Json;
+﻿using System.Net.Http.Json;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -12,7 +6,13 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Tubester.Abstractions.Credits;
+using Tubester.Abstractions.Users;
 using Tubester.Abstractions.Videos;
+using Tubester.Application.Contracts.Videos;
+using Tubester.Domain;
+using Tubester.Persistence;
+using Tubester.Persistence.Credits;
 using Xunit;
 using StringContent = System.Net.Http.StringContent;
 
@@ -59,7 +59,7 @@ public sealed class TestHelpers(TestFixture fixture)
         {
             throw new InvalidOperationException("Cannot create default plan and subscription with custom plans provided.");
         }
-        
+
         using var serviceScope = fixture.ApiServices.CreateScope();
         var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
 
@@ -80,17 +80,17 @@ public sealed class TestHelpers(TestFixture fixture)
         await databaseContext.Users.AddAsync(user, CancellationToken.None);
         await databaseContext.Channels.AddAsync(channel, CancellationToken.None);
         await databaseContext.SaveChangesAsync(CancellationToken.None);
-        
+
         var channelSettings = ChannelSettings.CreateDefault(TestConstants.ChannelId, TestFixture.TestingDateTimeOffset);
-        channelSettings.Apply(true, true, 10, 
-            10, "English", null, TestFixture.TestingDateTimeOffset);
+        channelSettings.Apply(options.EnableCommentScan,true, 10,
+            10, "English", "responseForNonTextualComments", TestFixture.TestingDateTimeOffset);
         databaseContext.ChannelSettings.Add(channelSettings);
 
         if (options.Videos.Count > 0)
         {
             databaseContext.Videos.AddRange(options.Videos);
         }
-        
+
         await databaseContext.SaveChangesAsync(CancellationToken.None);
 
         if (options.Playlists.Count > 0)
@@ -102,9 +102,9 @@ public sealed class TestHelpers(TestFixture fixture)
         {
             databaseContext.Replies.AddRange(options.Replies);
         }
-        
+
         await databaseContext.SaveChangesAsync(CancellationToken.None);
-        
+
         var plan = new Plan
         {
             Code = TestConstants.FreePlanCode,
@@ -114,7 +114,7 @@ public sealed class TestHelpers(TestFixture fixture)
             CreatedAtUtc = TestFixture.TestingDateTimeOffset,
             UpdatedAtUtc = TestFixture.TestingDateTimeOffset
         };
-            
+
         await databaseContext.Plans.AddAsync(plan, CancellationToken.None);
         await databaseContext.SaveChangesAsync(CancellationToken.None);
         Subscription? subscription = null;
@@ -135,9 +135,9 @@ public sealed class TestHelpers(TestFixture fixture)
         {
             await databaseContext.Plans.AddRangeAsync(options.Plans, CancellationToken.None);
         }
-        
+
         await databaseContext.SaveChangesAsync(CancellationToken.None);
-        
+
         if (options.VideoPlaylists.Count > 0)
         {
             databaseContext.VideoPlaylists.AddRange(options.VideoPlaylists);
@@ -145,19 +145,28 @@ public sealed class TestHelpers(TestFixture fixture)
 
         await databaseContext.SaveChangesAsync(CancellationToken.None);
 
-        return new VideoTestDataResult(user, channel, subscription);
+        return new VideoTestDataResult(user, channel, plan, subscription, options.Videos.FirstOrDefault(), channelSettings);
     }
 
-    public async Task AssertVideoAsync(Video expectedVideo)
+    public static void SetVideoProperties(Video video, string expectedTitle, string expectedDescription, string[] expectedTags)
+    {
+        SetProperty(video, nameof(video.UpdatedAt), TestFixture.TestingDateTimeOffset);
+        SetProperty(video, nameof(video.Title), expectedTitle);
+        SetProperty(video, nameof(video.Description), expectedDescription);
+        SetProperty(video, nameof(video.Tags), expectedTags);
+        SetProperty<string>(video, nameof(video.ETag), null); //Etag will be reset
+    }
+
+    public async Task AssertVideoAsync(Video video)
     {
         using var verifyScope = fixture.ApiServices.CreateScope();
         var dbContext = verifyScope.ServiceProvider.GetRequiredService<TubesterDb>();
-        var video = await dbContext.Videos
-            .Where(e => e.VideoId == expectedVideo.VideoId)
+        var existing = await dbContext.Videos
+            .Where(e => e.VideoId == video.VideoId)
             .SingleOrDefaultAsync();
 
-        Assert.NotNull(video);
-        Assert.Equivalent(expectedVideo, video, true);
+        Assert.NotNull(existing);
+        Assert.Equivalent(video, existing, true);
     }
 
     public async Task AssertUserEventAsync(CreditActionType actionType, string userId, string videoId)
@@ -196,6 +205,18 @@ public sealed class TestHelpers(TestFixture fixture)
         }
     }
 
+    public async Task AssertReplyAsync(Reply reply)
+    {
+        using var verifyScope = fixture.ApiServices.CreateScope();
+        var dbContext = verifyScope.ServiceProvider.GetRequiredService<TubesterDb>();
+        var existing = await dbContext.Replies
+            .Where(e => e.CommentId == reply.CommentId)
+            .SingleOrDefaultAsync();
+
+        Assert.NotNull(existing);
+        Assert.Equivalent(reply, existing, true);
+    }
+
     public async Task AssertProblemDetailsAsync(
         HttpResponseMessage response,
         int expectedStatusCode,
@@ -211,7 +232,7 @@ public sealed class TestHelpers(TestFixture fixture)
         Assert.True(problemDetails.Extensions.ContainsKey("traceId"));
     }
 
-    public static Video GetTargetVideo(string videoId = TestConstants.TargetVideoId, VideoVisibility visibility = VideoVisibility.Public)
+    public static Video GetTargetVideo(string videoId = TestConstants.TargetVideoId, VideoVisibility visibility = VideoVisibility.Public, bool iscommentable = true)
     {
         return Video.Create(
             TestConstants.UploadsPlaylistId,
@@ -229,7 +250,7 @@ public sealed class TestHelpers(TestFixture fixture)
             null,
             TestFixture.TestingDateTimeOffset.AddDays(-1),
             "etag-target",
-            true
+            iscommentable
         );
     }
 
@@ -266,7 +287,7 @@ public sealed class TestHelpers(TestFixture fixture)
             TestFixture.TestingDateTimeOffset);
         return playlist;
     }
-    
+
     public static Reply GetReply(string commentId, string videoId = TestConstants.TargetVideoId, bool isSuggested = false)
     {
         var reply = Reply.Create(
@@ -281,7 +302,7 @@ public sealed class TestHelpers(TestFixture fixture)
         {
             reply.SuggestText($"Suggested text {commentId} {videoId} ", TestFixture.TestingDateTimeOffset.AddMinutes(5));
         }
-        
+
         return reply;
     }
 
@@ -322,20 +343,20 @@ public sealed class TestHelpers(TestFixture fixture)
                 actualPlaylist.Name == expectedPlaylist.Name);
         }
     }
-    
+
     public async Task MarkAsFinishedAsync(string videoId)
     {
         var repository = fixture.ApiServices.GetRequiredService<IVideoRepository>();
-        await repository.TryClearAiOperationsInProgressAsync(TestConstants.UploadsPlaylistId, videoId, 
+        await repository.TryClearAiOperationsInProgressAsync(TestConstants.UploadsPlaylistId, videoId,
             AiVideoOperationFlags.Title | AiVideoOperationFlags.Description | AiVideoOperationFlags.Tags | AiVideoOperationFlags.PlaylistSuggestion,
             CancellationToken.None);
     }
-    
-    public async Task VerifyLedgerAndWalletAfterDeductionAsync(string actionType, int cost, string expectedReferenceId, 
+
+    public async Task VerifyLedgerAndWalletAfterDeductionAsync(string actionType, int cost, string expectedReferenceId,
         DateTimeOffset? expectedGrantAt = null)
     {
         expectedGrantAt ??= TestFixture.TestingDateTimeOffset;
-        
+
         using var verificationScope = fixture.ApiServices.CreateScope();
         var databaseContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
 
@@ -364,18 +385,13 @@ public sealed class TestHelpers(TestFixture fixture)
         Assert.Equal(-cost, spendEntry.Delta);
         Assert.Equal(expectedReferenceId, spendEntry.ReferenceId);
     }
-    
+
     public static void SetProperty<TValue>(object target, string propertyName, TValue? value)
     {
         var property = target.GetType().GetProperty(
             propertyName,
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-
-        if (property is null)
-        {
-            throw new InvalidOperationException(
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic) ?? throw new InvalidOperationException(
                 $"Property '{propertyName}' was not found on type '{target.GetType().Name}'.");
-        }
 
         if (!property.CanWrite)
         {
@@ -390,4 +406,8 @@ public sealed class TestHelpers(TestFixture fixture)
 public sealed record VideoTestDataResult(
     User User,
     Channel Channel,
-    Subscription? Subscription = null);
+    Plan? Plan = null,
+    Subscription? Subscription = null,
+    Video? Video = null,
+    ChannelSettings? ChannelSettings = null
+    );

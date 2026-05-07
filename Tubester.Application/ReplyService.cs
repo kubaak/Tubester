@@ -232,7 +232,7 @@ public class ReplyService(
                 var replyPostedIdempotencyKey =
                     $"reply-posted:{userId}:{draft.VideoId}:{draft.CommentId}:{operationId}";
 
-                var replyPostedSpendSucceeded = await creditsService.TrySpendAsync(
+                var spendResult = await creditsService.TrySpendAsync(
                     userId,
                     nameof(CreditActionType.ReplyPostedToYouTube),
                     replyPostedIdempotencyKey,
@@ -244,7 +244,7 @@ public class ReplyService(
                     },
                     cancellationToken);
 
-                if (!replyPostedSpendSucceeded)
+                if (!spendResult.Succeeded)
                 {
                     results.Add(new DraftDecisionResultDto(d.CommentId, false, "Insufficient credits."));
                     fail++;

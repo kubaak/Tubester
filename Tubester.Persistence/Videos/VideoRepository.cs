@@ -11,7 +11,8 @@ public sealed class VideoRepository(TubesterDb db, IDateTimeOffsetProvider dateT
     {
         return await db.Videos
             .AsNoTracking()
-            .Where(video => video.UploadsPlaylistId == uploadPlaylistId && (video.CommentsAllowed ?? true))
+            .Where(video => video.UploadsPlaylistId == uploadPlaylistId && (video.CommentsAllowed ?? true) &&
+                            video.Visibility == VideoVisibility.Public)
             .OrderByDescending(video => video.PublishedAt)
             .ThenByDescending(video => video.UpdatedAt)
             .ToListAsync(cancellationToken);
@@ -136,7 +137,7 @@ public sealed class VideoRepository(TubesterDb db, IDateTimeOffsetProvider dateT
             .AsNoTracking()
             .AnyAsync(video => video.UploadsPlaylistId == uploadPlaylistId && video.VideoId == videoId, cancellationToken);
     }
-    
+
     public async Task<bool> TryAddAiOperationsInProgressAsync(
         string uploadPlaylistId,
         string videoId,

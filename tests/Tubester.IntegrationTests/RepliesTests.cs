@@ -157,7 +157,7 @@ public class RepliesTests(TestFixture fixture)
             await databaseContext.Subscriptions.AddAsync(userSubscription, CancellationToken.None);
 
             databaseContext.Replies.AddRange(reply1, reply2);
-            
+
             await databaseContext.SaveChangesAsync();
         }
 
@@ -388,7 +388,7 @@ public class RepliesTests(TestFixture fixture)
         var responseContent = await response.Content.ReadAsStringAsync();
         Assert.Contains("CommentIds cannot be empty", responseContent);
     }
-    
+
     private async Task<(Channel channel, Video video, User user)> SetupTestDataAsync(
         string testChannelId,
         string testUploadsPlaylistId,

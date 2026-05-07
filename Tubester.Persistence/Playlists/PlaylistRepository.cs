@@ -28,20 +28,15 @@ public sealed class PlaylistRepository(TubesterDb databaseContext) : IPlaylistRe
     }
 
     public async Task<List<string>> GetPlaylistNamesForLatestPublicVideoAsync(
-        string channelId,
+        string uploadPlaylistId,
         CancellationToken cancellationToken)
     {
         var latestVideoIdQuery = databaseContext.Videos
             .AsNoTracking()
-            .Join(
-                databaseContext.Channels.AsNoTracking(),
-                v => v.UploadsPlaylistId,
-                c => c.UploadsPlaylistId,
-                (v, c) => new { v, c })
-            .Where(x => x.c.ChannelId == channelId)
-            .Where(x => x.v.Visibility == VideoVisibility.Public)
-            .OrderByDescending(x => x.v.PublishedAt)
-            .Select(x => x.v.VideoId)
+            .Where(x => x.UploadsPlaylistId == uploadPlaylistId)
+            .Where(x => x.Visibility == VideoVisibility.Public)
+            .OrderByDescending(x => x.PublishedAt)
+            .Select(x => x.VideoId)
             .Take(1);
 
         return await databaseContext.VideoPlaylists

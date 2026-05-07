@@ -144,7 +144,7 @@ public sealed class CommentScanJob(
                         var idempotencyKey =
                             $"ai-reply-generated:{userId}:{thread.VideoId}:{thread.ParentCommentId}";
 
-                        var spendSucceeded = await creditsService.TrySpendAsync(
+                        var spendResult = await creditsService.TrySpendAsync(
                             userId,
                             nameof(CreditActionType.AiReplyGenerated),
                             idempotencyKey,
@@ -152,7 +152,7 @@ public sealed class CommentScanJob(
                             new { videoId = thread.VideoId, commentId = thread.ParentCommentId },
                             cancellationToken);
 
-                        if (!spendSucceeded)
+                        if (!spendResult.Succeeded)
                         {
                             logger.LogWarning(
                                 "Insufficient credits to generate AI reply for comment {CommentId}, skipping",

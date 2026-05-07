@@ -1,6 +1,6 @@
 namespace Tubester.Abstractions.Credits;
 
-public sealed class UserPlanDto
+public sealed class SubscriptionDto
 {
     public string UserId { get; set; } = string.Empty;
 

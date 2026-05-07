@@ -32,7 +32,7 @@ namespace Tubester.Persistence.Migrations
             migrationBuilder.DropColumn(
                 name: "IsAiTemplateInProgress",
                 table: "Videos");
-            
+
             migrationBuilder.Sql(
                 """
                 INSERT INTO "ActionCosts" ("ActionType", "Cost", "IsEnabled", "UpdatedAtUtc", "Notes")
@@ -62,7 +62,7 @@ namespace Tubester.Persistence.Migrations
             migrationBuilder.DropColumn(
                 name: "AiOperationsInProgress",
                 table: "Videos");
-            
+
             migrationBuilder.Sql(
                 $"""
                  DELETE FROM "ActionCosts"

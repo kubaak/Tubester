@@ -10,7 +10,7 @@ public interface IPlaylistRepository
     /// <summary>
     /// Gets the names of all playlists that the latest public video in the channel belongs to.
     /// </summary>
-    Task<List<string>> GetPlaylistNamesForLatestPublicVideoAsync(string channelId, CancellationToken cancellationToken);
+    Task<List<string>> GetPlaylistNamesForLatestPublicVideoAsync(string uploadPlaylistId, CancellationToken cancellationToken);
 
     Task<List<string>> GetPlaylistIdsByVideoAsync(string videoId, CancellationToken cancellationToken);
 

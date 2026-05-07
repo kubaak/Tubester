@@ -34,7 +34,7 @@ public enum CreditActionType
     /// Enqueuing an AI template generation job. With suggesting playlists for a video (background job).
     /// </summary>
     AiTemplateWithPlaylistEnqueued = 5,
-    
+
     /// <summary>
     /// Suggesting playlists for a video.
     /// </summary>
