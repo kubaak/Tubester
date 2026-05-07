@@ -1,9 +1,13 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using Tubester.Abstractions.ApplicationConfiguration;
 using Tubester.Application.Jobs;
 using Tubester.Domain;
+using Tubester.Integration;
 using Tubester.Integration.Dtos;
+using Tubester.Integration.Exceptions;
 using Tubester.IntegrationTests.TestHost;
 using Xunit;
 
@@ -12,12 +16,12 @@ namespace Tubester.IntegrationTests;
 [Collection(nameof(TestCollection))]
 public class CommentScanJobTests(TestFixture fixture)
 {
-    private readonly TestHelpers _helpers = new(fixture);
+    private readonly TestHelpers _helpers = new(fixture.WorkerServices);
 
     private const string SuggestedReplyText = "Thanks for watching! 🙌";
     private const string EmojiOnlyComment = "🎉🎊✨";
     private const string CustomEmojiResponse = "🔥💪";
-    private const string SimulatedAiClientFailureMessage = "Simulated AI client failure";
+    private const string SimulatedAiTextGenerationClientFailureMessage = "Simulated AI client failure";
 
     private const string CommentId1 = "comment-id-1";
     private const string CommentId2 = "comment-id-2";
@@ -58,12 +62,12 @@ public class CommentScanJobTests(TestFixture fixture)
     public async Task Run_WithValidComments_GeneratesSuggestedReplies()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Invocations.Clear();
-        fixture.WorkerFactory.MockAiClient.Invocations.Clear();
+        await fixture.CleanStateAsync();
+        
+        
 
         var targetVideo = TestHelpers.GetTargetVideo();
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [targetVideo]
         });
@@ -91,14 +95,13 @@ public class CommentScanJobTests(TestFixture fixture)
                 It.IsAny<CancellationToken>()))
             .Returns(commentThreads.ToAsyncEnumerable());
 
-        fixture.WorkerFactory.MockAiClient
-            .Setup(x => x.SuggestReplyAsync(
-                It.IsAny<string>(),
-                It.IsAny<IEnumerable<string>>(),
-                It.IsAny<string>(),
+        var jsonResponse = JsonSerializer.Serialize(new { reply = SuggestedReplyText });
+        fixture.WorkerFactory.MockAiTextGenerationClient
+            .Setup(x => x.GenerateTextAsync(
+                AiOperation.Reply,
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(SuggestedReplyText);
+            .ReturnsAsync(TestHelpers.CreateMockResult(jsonResponse));
 
         // Act
         using var jobScope = fixture.WorkerServices.CreateScope();
@@ -106,11 +109,9 @@ public class CommentScanJobTests(TestFixture fixture)
         await commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false));
 
         // Assert
-        fixture.WorkerFactory.MockAiClient.Verify(
-            x => x.SuggestReplyAsync(
-                It.IsAny<string>(),
-                It.IsAny<IEnumerable<string>>(),
-                It.IsAny<string>(),
+        fixture.WorkerFactory.MockAiTextGenerationClient.Verify(
+            x => x.GenerateTextAsync(
+                AiOperation.Reply,
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()),
             Times.Exactly(2));
@@ -140,8 +141,8 @@ public class CommentScanJobTests(TestFixture fixture)
     public async Task Run_WhenChannelNotFound_ExitsEarly()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Invocations.Clear();
+        await fixture.CleanStateAsync();
+        
 
         // Act
         using var jobScope = fixture.WorkerServices.CreateScope();
@@ -161,11 +162,11 @@ public class CommentScanJobTests(TestFixture fixture)
     public async Task Run_WhenCommentAssistantDisabled_ExitsEarly()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Invocations.Clear();
+        await fixture.CleanStateAsync();
+        
 
         var targetVideo = TestHelpers.GetTargetVideo();
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [targetVideo],
             EnableCommentScan = false
@@ -189,16 +190,16 @@ public class CommentScanJobTests(TestFixture fixture)
     public async Task Run_WhenCommentIsEmojiOnly_UsesConfiguredResponse()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Invocations.Clear();
-        fixture.WorkerFactory.MockAiClient.Invocations.Clear();
+        await fixture.CleanStateAsync();
+        
+        
 
         var targetVideo = TestHelpers.GetTargetVideo();
-        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        var testData = await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [targetVideo]
         });
-        
+
         var commentThreads = new List<CommentThreadDto>
         {
             new(
@@ -222,11 +223,9 @@ public class CommentScanJobTests(TestFixture fixture)
         await commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false));
 
         // Assert
-        fixture.WorkerFactory.MockAiClient.Verify(
-            x => x.SuggestReplyAsync(
-                It.IsAny<string>(),
-                It.IsAny<IEnumerable<string>>(),
-                It.IsAny<string>(),
+        fixture.WorkerFactory.MockAiTextGenerationClient.Verify(
+            x => x.GenerateTextAsync(
+                AiOperation.Reply,
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()),
             Times.Never);
@@ -243,14 +242,14 @@ public class CommentScanJobTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task Run_WhenAiClientThrows_PropagatesException()
+    public async Task Run_WhenAiTextGenerationClientThrows_PropagatesException()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Invocations.Clear();
-        fixture.WorkerFactory.MockAiClient.Invocations.Clear();
+        await fixture.CleanStateAsync();
         
-        var testData = await _helpers.SeedVideoTestDataAsync();
+        
+
+        var testData = await _helpers.SeedTestDataAsync();
 
         var commentThreads = new List<CommentThreadDto>
         {
@@ -269,14 +268,12 @@ public class CommentScanJobTests(TestFixture fixture)
                 It.IsAny<CancellationToken>()))
             .Returns(commentThreads.ToAsyncEnumerable());
 
-        fixture.WorkerFactory.MockAiClient
-            .Setup(x => x.SuggestReplyAsync(
-                It.IsAny<string>(),
-                It.IsAny<IEnumerable<string>>(),
-                It.IsAny<string>(),
+        fixture.WorkerFactory.MockAiTextGenerationClient
+            .Setup(x => x.GenerateTextAsync(
+                AiOperation.Reply,
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new Exception(SimulatedAiClientFailureMessage));
+            .ThrowsAsync(new Exception(SimulatedAiTextGenerationClientFailureMessage));
 
         // Act & Assert
         using var jobScope = fixture.WorkerServices.CreateScope();
@@ -285,19 +282,19 @@ public class CommentScanJobTests(TestFixture fixture)
         var exception = await Assert.ThrowsAsync<Exception>(() =>
             commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false)));
 
-        Assert.Equal(SimulatedAiClientFailureMessage, exception.Message);
+        Assert.Equal(SimulatedAiTextGenerationClientFailureMessage, exception.Message);
     }
 
     [Fact]
     public async Task Run_WithMaxSuggestionsLimit_StopsAfterLimit()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Invocations.Clear();
-        fixture.WorkerFactory.MockAiClient.Invocations.Clear();
+        await fixture.CleanStateAsync();
+        
+        
 
         var targetVideo = TestHelpers.GetTargetVideo();
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [targetVideo]
         });
@@ -347,14 +344,13 @@ public class CommentScanJobTests(TestFixture fixture)
                 It.IsAny<CancellationToken>()))
             .Returns(commentThreads.ToAsyncEnumerable());
 
-        fixture.WorkerFactory.MockAiClient
-            .Setup(x => x.SuggestReplyAsync(
-                It.IsAny<string>(),
-                It.IsAny<IEnumerable<string>>(),
-                It.IsAny<string>(),
+        var jsonResponse = JsonSerializer.Serialize(new { reply = SuggestedReplyText });
+        fixture.WorkerFactory.MockAiTextGenerationClient
+            .Setup(x => x.GenerateTextAsync(
+                AiOperation.Reply,
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(SuggestedReplyText);
+            .ReturnsAsync(TestHelpers.CreateMockResult(jsonResponse));
 
         // Act
         using var jobScope = fixture.WorkerServices.CreateScope();
@@ -362,11 +358,9 @@ public class CommentScanJobTests(TestFixture fixture)
         await commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false));
 
         // Assert
-        fixture.WorkerFactory.MockAiClient.Verify(
-            x => x.SuggestReplyAsync(
-                It.IsAny<string>(),
-                It.IsAny<IEnumerable<string>>(),
-                It.IsAny<string>(),
+        fixture.WorkerFactory.MockAiTextGenerationClient.Verify(
+            x => x.GenerateTextAsync(
+                AiOperation.Reply,
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()),
             Times.Exactly(LimitedMaxSuggestions));
@@ -381,12 +375,12 @@ public class CommentScanJobTests(TestFixture fixture)
     public async Task Run_WithMaxCommentAgeFilter_SkipsOldComments()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Invocations.Clear();
-        fixture.WorkerFactory.MockAiClient.Invocations.Clear();
+        await fixture.CleanStateAsync();
+        
+        
 
         var targetVideo = TestHelpers.GetTargetVideo();
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [targetVideo]
         });
@@ -430,14 +424,13 @@ public class CommentScanJobTests(TestFixture fixture)
                 It.IsAny<CancellationToken>()))
             .Returns(commentThreads.ToAsyncEnumerable());
 
-        fixture.WorkerFactory.MockAiClient
-            .Setup(x => x.SuggestReplyAsync(
-                It.IsAny<string>(),
-                It.IsAny<IEnumerable<string>>(),
-                It.IsAny<string>(),
+        var jsonResponse = JsonSerializer.Serialize(new { reply = SuggestedReplyText });
+        fixture.WorkerFactory.MockAiTextGenerationClient
+            .Setup(x => x.GenerateTextAsync(
+                AiOperation.Reply,
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(SuggestedReplyText);
+            .ReturnsAsync(TestHelpers.CreateMockResult(jsonResponse));
 
         // Act
         using var jobScope = fixture.WorkerServices.CreateScope();
@@ -445,11 +438,9 @@ public class CommentScanJobTests(TestFixture fixture)
         await commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false));
 
         // Assert
-        fixture.WorkerFactory.MockAiClient.Verify(
-            x => x.SuggestReplyAsync(
-                It.IsAny<string>(),
-                It.IsAny<IEnumerable<string>>(),
-                It.IsAny<string>(),
+        fixture.WorkerFactory.MockAiTextGenerationClient.Verify(
+            x => x.GenerateTextAsync(
+                AiOperation.Reply,
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()),
             Times.Once);
@@ -469,12 +460,12 @@ public class CommentScanJobTests(TestFixture fixture)
     public async Task Run_WhenCommentAlreadyClaimed_SkipsWithoutAiCall()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Invocations.Clear();
-        fixture.WorkerFactory.MockAiClient.Invocations.Clear();
+        await fixture.CleanStateAsync();
+        
+        
 
         var targetVideo = TestHelpers.GetTargetVideo();
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [targetVideo]
         });
@@ -527,11 +518,9 @@ public class CommentScanJobTests(TestFixture fixture)
         await commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false));
 
         // Assert
-        fixture.WorkerFactory.MockAiClient.Verify(
-            x => x.SuggestReplyAsync(
-                It.IsAny<string>(),
-                It.IsAny<IEnumerable<string>>(),
-                It.IsAny<string>(),
+        fixture.WorkerFactory.MockAiTextGenerationClient.Verify(
+            x => x.GenerateTextAsync(
+                AiOperation.Reply,
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()),
             Times.Never);
@@ -541,19 +530,19 @@ public class CommentScanJobTests(TestFixture fixture)
     public async Task Run_SkipsNonCommentableVideos()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Invocations.Clear();
-        fixture.WorkerFactory.MockAiClient.Invocations.Clear();
+        await fixture.CleanStateAsync();
         
+        
+
         var publicVideo = TestHelpers.GetTargetVideo(visibility: VideoVisibility.Public);
         var privateVideo = TestHelpers.GetTargetVideo("private-video-id", VideoVisibility.Private);
         var nonCommentableVideo = TestHelpers.GetTargetVideo("non-commentable-video-id", iscommentable: false);
 
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [publicVideo, privateVideo, nonCommentableVideo]
         });
-        
+
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration
             .Setup(x => x.GetUnansweredTopLevelCommentsAsync(
                 TestConstants.ChannelId,
@@ -567,7 +556,7 @@ public class CommentScanJobTests(TestFixture fixture)
                 privateVideo.VideoId,
                 It.IsAny<CancellationToken>()))
             .Returns(AsyncEnumerable.Empty<CommentThreadDto>());
-        
+
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration
             .Setup(x => x.GetUnansweredTopLevelCommentsAsync(
                 TestConstants.ChannelId,
@@ -594,12 +583,47 @@ public class CommentScanJobTests(TestFixture fixture)
                 privateVideo.VideoId,
                 It.IsAny<CancellationToken>()),
             Times.Never);
-        
+
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Verify(
             x => x.GetUnansweredTopLevelCommentsAsync(
                 TestConstants.ChannelId,
                 privateVideo.VideoId,
                 It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    [Fact]
+    public async Task Run_WhenCommentsDisabled_MarksVideoAsCommentsDisabled()
+    {
+        // Arrange
+        await fixture.CleanStateAsync();
+        
+        
+
+        var targetVideo = TestHelpers.GetTargetVideo();
+        await _helpers.SeedTestDataAsync(new TestDataOptions
+        {
+            Videos = [targetVideo]
+        });
+
+        var commentsDisabledException = new CommentsDisabledException(
+            targetVideo.VideoId,
+            "Comments are disabled for this video");
+
+        fixture.WorkerFactory.MockBackgroundYoutubeIntegration
+            .Setup(x => x.GetUnansweredTopLevelCommentsAsync(
+                TestConstants.ChannelId,
+                targetVideo.VideoId,
+                It.IsAny<CancellationToken>()))
+            .Throws(commentsDisabledException);
+
+        // Act
+        using var jobScope = fixture.WorkerServices.CreateScope();
+        var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
+        await commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false));
+
+        // Assert
+        TestHelpers.SetProperty(targetVideo, nameof(targetVideo.CommentsAllowed), false);
+        await _helpers.AssertVideoAsync(targetVideo);
     }
 }

@@ -62,7 +62,7 @@ public sealed class TestFixture : IAsyncLifetime
         }
     }
 
-    public async Task ResetDbAsync()
+    public async Task CleanStateAsync()
     {
         using var scope = ApiServices.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
@@ -71,6 +71,10 @@ public sealed class TestFixture : IAsyncLifetime
         // Clear capturing job client
         CapturingJobClient.Clear();
         Auto = CreateAuto();
+        ApiFactory.MockYouTubeIntegration.Invocations.Clear();
+        WorkerFactory.MockYouTubeIntegration.Invocations.Clear();
+        WorkerFactory.MockAiTextGenerationClient.Invocations.Clear();
+        WorkerFactory.MockBackgroundYoutubeIntegration.Invocations.Clear();
     }
 
     public Task DisposeAsync()

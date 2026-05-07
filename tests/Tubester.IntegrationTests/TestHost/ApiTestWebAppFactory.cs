@@ -11,7 +11,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using Tubester.Abstractions;
-using Tubester.Abstractions.ApplicationConfiguration;
 using Tubester.Abstractions.Channels;
 using Tubester.Integration;
 using Tubester.Persistence;
@@ -21,7 +20,6 @@ namespace Tubester.IntegrationTests.TestHost;
 public class ApiTestWebAppFactory : WebApplicationFactory<Program>
 {
     private CapturingBackgroundJobClient CapturingJobClient { get; }
-    public Mock<IAiClient> MockAiClient { get; }
     public Mock<IYouTubeIntegration> MockYouTubeIntegration { get; }
     public Mock<ICurrentChannelContext> MockCurrentChannelContext { get; }
     public Mock<IDateTimeOffsetProvider> MockDateTimeOffsetProvider { get; }
@@ -29,8 +27,6 @@ public class ApiTestWebAppFactory : WebApplicationFactory<Program>
     public ApiTestWebAppFactory(CapturingBackgroundJobClient capturingJobClient, DateTimeOffset testingUtcNow)
     {
         CapturingJobClient = capturingJobClient;
-        MockAiClient = new Mock<IAiClient>(MockBehavior.Strict);
-        MockAiClient.Setup(x => x.Provider).Returns(AiProviders.Ollama);
         MockYouTubeIntegration = new Mock<IYouTubeIntegration>(MockBehavior.Strict);
         MockCurrentChannelContext = new Mock<ICurrentChannelContext>(MockBehavior.Strict);
         MockCurrentChannelContext.Setup(x => x.GetRequiredChannelId()).Returns(TestConstants.ChannelId);
@@ -58,7 +54,7 @@ public class ApiTestWebAppFactory : WebApplicationFactory<Program>
             services.RemoveAll<DbContextOptions<TubesterDb>>();
             services.RemoveAll<TubesterDb>();
             services.RemoveAll<IBackgroundJobClient>();
-            services.RemoveAll<IAiClient>();
+            services.RemoveAll<IAiTextGenerationClientFactory>();
             services.RemoveAll<IYouTubeIntegration>();
             services.RemoveAll<IDateTimeOffsetProvider>();
 
@@ -79,7 +75,6 @@ public class ApiTestWebAppFactory : WebApplicationFactory<Program>
             });
 
             services.AddSingleton<IBackgroundJobClient>(CapturingJobClient);
-            services.AddSingleton(MockAiClient.Object);
             services.AddSingleton(MockYouTubeIntegration.Object);
             services.AddSingleton(MockDateTimeOffsetProvider.Object);
 

@@ -94,7 +94,7 @@ public class AiTemplateOrchestrationService(
             {
                 return;
             }
-            
+
             marked = await videoRepository.TryAddAiOperationsInProgressAsync(
                 uploadPlaylistId,
                 request.TargetVideoId,

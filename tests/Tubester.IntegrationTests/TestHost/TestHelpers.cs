@@ -1,16 +1,17 @@
-﻿using System.Net.Http.Json;
-using System.Reflection;
+﻿using System.Reflection;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Tubester.Abstractions;
+using Tubester.Abstractions.ApplicationConfiguration;
 using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Users;
 using Tubester.Abstractions.Videos;
 using Tubester.Application.Contracts.Videos;
 using Tubester.Domain;
+using Tubester.Integration;
 using Tubester.Persistence;
 using Tubester.Persistence.Credits;
 using Xunit;
@@ -18,40 +19,27 @@ using StringContent = System.Net.Http.StringContent;
 
 namespace Tubester.IntegrationTests.TestHost;
 
-public sealed class TestHelpers(TestFixture fixture)
+public sealed class TestHelpers(IServiceProvider serviceProvider)
 {
-    public static JsonSerializerOptions SerializerOptions { get; } =
-        new()
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            PropertyNameCaseInsensitive = true,
-            Converters =
-            {
-                new JsonStringEnumConverter()
-            }
-        };
-
     public static StringContent CreateJsonContent<T>(T request)
     {
-        var json = JsonSerializer.Serialize(request, SerializerOptions);
+        var json = JsonSerializer.Serialize(request, TubesterJsonSerializerOptions.DefaultWrite);
         return new StringContent(json, Encoding.UTF8, "application/json");
+    }
+
+    public static async Task<T> DeserializeAsync<T>(HttpResponseMessage response)
+    {
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<T>(responseContent, TubesterJsonSerializerOptions.DefaultWrite);
+
+        Assert.NotNull(result);
+
+        return result;
     }
 
     public static string NewOperationId() => $"operation-{Guid.NewGuid():N}";
 
-    public static ActionCost CreateActionCost(CreditActionType actionType, int cost)
-    {
-        return new ActionCost
-        {
-            ActionType = actionType.ToString(),
-            Cost = cost,
-            IsEnabled = true,
-            UpdatedAtUtc = TestFixture.TestingDateTimeOffset,
-            Notes = $"Integration test cost for {actionType}."
-        };
-    }
-
-    public async Task<VideoTestDataResult> SeedVideoTestDataAsync(TestDataOptions? videoTestDataOptions = null)
+    public async Task<VideoTestDataResult> SeedTestDataAsync(TestDataOptions? videoTestDataOptions = null)
     {
         var options = videoTestDataOptions ?? new TestDataOptions();
 
@@ -60,7 +48,7 @@ public sealed class TestHelpers(TestFixture fixture)
             throw new InvalidOperationException("Cannot create default plan and subscription with custom plans provided.");
         }
 
-        using var serviceScope = fixture.ApiServices.CreateScope();
+        using var serviceScope = serviceProvider.CreateScope();
         var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
 
         var user = User.Create(
@@ -82,9 +70,14 @@ public sealed class TestHelpers(TestFixture fixture)
         await databaseContext.SaveChangesAsync(CancellationToken.None);
 
         var channelSettings = ChannelSettings.CreateDefault(TestConstants.ChannelId, TestFixture.TestingDateTimeOffset);
-        channelSettings.Apply(options.EnableCommentScan,true, 10,
+        channelSettings.Apply(options.EnableCommentScan, true, 10,
             10, "English", "responseForNonTextualComments", TestFixture.TestingDateTimeOffset);
         databaseContext.ChannelSettings.Add(channelSettings);
+
+        if (options.ApplicationConfigurations.Count > 0)
+        {
+            databaseContext.ApplicationConfigurations.AddRange(options.ApplicationConfigurations);
+        }
 
         if (options.Videos.Count > 0)
         {
@@ -159,7 +152,7 @@ public sealed class TestHelpers(TestFixture fixture)
 
     public async Task AssertVideoAsync(Video video)
     {
-        using var verifyScope = fixture.ApiServices.CreateScope();
+        using var verifyScope = serviceProvider.CreateScope();
         var dbContext = verifyScope.ServiceProvider.GetRequiredService<TubesterDb>();
         var existing = await dbContext.Videos
             .Where(e => e.VideoId == video.VideoId)
@@ -171,7 +164,7 @@ public sealed class TestHelpers(TestFixture fixture)
 
     public async Task AssertUserEventAsync(CreditActionType actionType, string userId, string videoId)
     {
-        using var verifyScope = fixture.ApiServices.CreateScope();
+        using var verifyScope = serviceProvider.CreateScope();
         var dbContext = verifyScope.ServiceProvider.GetRequiredService<TubesterDb>();
 
         var events = await dbContext.UserEvents
@@ -190,7 +183,7 @@ public sealed class TestHelpers(TestFixture fixture)
 
     public async Task AssertVideoPlaylistsAsync(string videoId, params string[] expectedPlaylistIds)
     {
-        using var verifyScope = fixture.ApiServices.CreateScope();
+        using var verifyScope = serviceProvider.CreateScope();
         var databaseContext = verifyScope.ServiceProvider.GetRequiredService<TubesterDb>();
 
         var memberships = await databaseContext.VideoPlaylists
@@ -207,7 +200,7 @@ public sealed class TestHelpers(TestFixture fixture)
 
     public async Task AssertReplyAsync(Reply reply)
     {
-        using var verifyScope = fixture.ApiServices.CreateScope();
+        using var verifyScope = serviceProvider.CreateScope();
         var dbContext = verifyScope.ServiceProvider.GetRequiredService<TubesterDb>();
         var existing = await dbContext.Replies
             .Where(e => e.CommentId == reply.CommentId)
@@ -223,7 +216,7 @@ public sealed class TestHelpers(TestFixture fixture)
         string expectedTitle,
         string expectedDetail)
     {
-        var problemDetails = await response.Content.ReadFromJsonAsync<ProblemDetails>(SerializerOptions);
+        var problemDetails = await DeserializeAsync<ProblemDetails>(response);
 
         Assert.NotNull(problemDetails);
         Assert.Equal(expectedStatusCode, problemDetails.Status);
@@ -346,7 +339,7 @@ public sealed class TestHelpers(TestFixture fixture)
 
     public async Task MarkAsFinishedAsync(string videoId)
     {
-        var repository = fixture.ApiServices.GetRequiredService<IVideoRepository>();
+        var repository = serviceProvider.GetRequiredService<IVideoRepository>();
         await repository.TryClearAiOperationsInProgressAsync(TestConstants.UploadsPlaylistId, videoId,
             AiVideoOperationFlags.Title | AiVideoOperationFlags.Description | AiVideoOperationFlags.Tags | AiVideoOperationFlags.PlaylistSuggestion,
             CancellationToken.None);
@@ -357,7 +350,7 @@ public sealed class TestHelpers(TestFixture fixture)
     {
         expectedGrantAt ??= TestFixture.TestingDateTimeOffset;
 
-        using var verificationScope = fixture.ApiServices.CreateScope();
+        using var verificationScope = serviceProvider.CreateScope();
         var databaseContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
 
         var wallet = await databaseContext.Wallets
@@ -400,6 +393,28 @@ public sealed class TestHelpers(TestFixture fixture)
         }
 
         property.SetValue(target, value);
+    }
+
+    public static AiTextGenerationResult CreateMockResult(string jsonResponse)
+    {
+        return new AiTextGenerationResult(
+            jsonResponse,
+            new AiUsage(
+                Provider: AiProviders.Ollama,
+                Model: "qwen3:8b",
+                PromptTokens: 100,
+                CompletionTokens: 50,
+                TotalTokens: 150,
+                MaxOutputTokens: 1024,
+                Temperature: 0.7,
+                Duration: TimeSpan.FromMilliseconds(500)));
+    }
+    
+    public async Task ResetDbAsync()
+    {
+        using var scope = serviceProvider.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
+        await PostgresCleaner.CleanAsync(dbContext.Database.GetDbConnection());
     }
 }
 

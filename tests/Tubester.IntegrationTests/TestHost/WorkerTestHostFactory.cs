@@ -18,15 +18,22 @@ public sealed class WorkerTestHostFactory : IDisposable
 {
     public IHost TestHost { get; }
     public string TestDatabaseConnectionString { get; private set; } = default!;
-    public Mock<IAiClient> MockAiClient { get; }
+    public Mock<IAiTextGenerationClient> MockAiTextGenerationClient { get; }
+    public Mock<IAiTextGenerationClientFactory> MockAiTextGenerationClientFactory { get; }
     public Mock<IYouTubeIntegration> MockYouTubeIntegration { get; }
     public Mock<IBackgroundYoutubeIntegration> MockBackgroundYoutubeIntegration { get; }
     public Mock<IDateTimeOffsetProvider> MockDateTimeOffsetProvider { get; }
+    private readonly TestAiMode _aiMode;
 
-    public WorkerTestHostFactory(CapturingBackgroundJobClient capturingJobClient, DateTimeOffset testingUtcNow)
+
+    public WorkerTestHostFactory(CapturingBackgroundJobClient capturingJobClient, DateTimeOffset testingUtcNow, TestAiMode aiMode = TestAiMode.Mock)
     {
-        MockAiClient = new Mock<IAiClient>(MockBehavior.Strict);
-        MockAiClient.Setup(x => x.Provider).Returns(AiProviders.Ollama);
+        _aiMode = aiMode;
+        MockAiTextGenerationClient = new Mock<IAiTextGenerationClient>(MockBehavior.Strict);
+        MockAiTextGenerationClient.SetupGet(x => x.Provider).Returns(AiProviders.Ollama);
+        MockAiTextGenerationClientFactory = new Mock<IAiTextGenerationClientFactory>();
+        MockAiTextGenerationClientFactory.Setup(x => x.GetClientAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MockAiTextGenerationClient.Object);
         MockYouTubeIntegration = new Mock<IYouTubeIntegration>(MockBehavior.Strict);
         MockBackgroundYoutubeIntegration = new Mock<IBackgroundYoutubeIntegration>(MockBehavior.Strict);
         MockDateTimeOffsetProvider = new Mock<IDateTimeOffsetProvider>(MockBehavior.Strict);
@@ -80,9 +87,14 @@ public sealed class WorkerTestHostFactory : IDisposable
             options.EnableDetailedErrors();
         });
 
+        if (_aiMode == TestAiMode.Mock)
+        {
+            services.Replace(ServiceDescriptor.Scoped<IAiTextGenerationClientFactory>(_ => MockAiTextGenerationClientFactory.Object));
+            services.Replace(ServiceDescriptor.Scoped<IAiTextGenerationClient>(_ => MockAiTextGenerationClient.Object));
+        }
+
         // Override background job client + external integrations with mocks
         services.Replace(ServiceDescriptor.Singleton<IBackgroundJobClient>(capturingJobClient));
-        services.Replace(ServiceDescriptor.Singleton(MockAiClient.Object));
         services.Replace(ServiceDescriptor.Singleton(MockYouTubeIntegration.Object));
         services.Replace(ServiceDescriptor.Singleton(MockBackgroundYoutubeIntegration.Object));
         services.Replace(ServiceDescriptor.Singleton(MockDateTimeOffsetProvider.Object));

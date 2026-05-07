@@ -13,12 +13,6 @@ public sealed class CreditsService(
     IDateTimeOffsetProvider dateTimeOffsetProvider)
     : ICreditsService
 {
-    private static readonly JsonSerializerOptions _jsonSerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false
-    };
-
     public async Task<SpendResult> TrySpendAsync(
         string userId,
         string actionType,
@@ -46,7 +40,7 @@ public sealed class CreditsService(
                 "User {UserId} has no active or renewable subscription; cannot spend credits",
                 userId);
 
-            return new SpendResult{NewBalance = 0, Succeeded = false, WasDuplicate = false, FailureReason = SpendFailureReason.NoWallet};
+            return new SpendResult { NewBalance = 0, Succeeded = false, WasDuplicate = false, FailureReason = SpendFailureReason.NoWallet };
         }
 
         var walletReady = await EnsureWalletForSubscriptionPeriodAsync(
@@ -57,7 +51,7 @@ public sealed class CreditsService(
 
         if (!walletReady)
         {
-            return new SpendResult{NewBalance = 0, Succeeded = false, WasDuplicate = false, FailureReason = SpendFailureReason.NoWallet};
+            return new SpendResult { NewBalance = 0, Succeeded = false, WasDuplicate = false, FailureReason = SpendFailureReason.NoWallet };
         }
 
         var spendResult = await creditsStore.TrySpendAsync(
@@ -209,7 +203,7 @@ public sealed class CreditsService(
 
     private static string? SerializeMetadata(object? metadata)
     {
-        return metadata is null ? null : JsonSerializer.Serialize(metadata, _jsonSerializerOptions);
+        return metadata is null ? null : JsonSerializer.Serialize(metadata, TubesterJsonSerializerOptions.DefaultWrite);
     }
 
     private async Task<SubscriptionDto?> TryEnsureActiveSubscriptionAsync(

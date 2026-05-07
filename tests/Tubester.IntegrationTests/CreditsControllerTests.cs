@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Tubester.Abstractions.Users;
 using Tubester.Api;
@@ -14,25 +13,20 @@ namespace Tubester.IntegrationTests;
 [Collection(nameof(TestCollection))]
 public sealed class CreditsControllerTests(TestFixture fixture)
 {
-    private readonly TestHelpers _helpers = new(fixture);
+    private readonly TestHelpers _helpers = new(fixture.ApiServices);
 
     [Fact]
     public async Task GetBalance_UserHasNoWallet_ReturnsZeroBalance()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         // Act
         var response = await fixture.HttpClient.GetAsync("/api/credits/balance");
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var responseContent = await response.Content.ReadAsStringAsync();
-
-        var result = JsonSerializer.Deserialize<CreditsController.CreditBalanceResponse>(
-            responseContent,
-            TestHelpers.SerializerOptions);
+        var result = await TestHelpers.DeserializeAsync<CreditsController.CreditBalanceResponse>(response);
 
         Assert.NotNull(result);
         Assert.Equal(0, result.Balance);
@@ -44,7 +38,7 @@ public sealed class CreditsControllerTests(TestFixture fixture)
     public async Task GetBalance_UserHasWallet_ReturnsWalletBalance()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         const string userId = MockAuthenticationExtensions.TestSub;
         const int expectedBalance = 100;
@@ -83,12 +77,7 @@ public sealed class CreditsControllerTests(TestFixture fixture)
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var responseContent = await response.Content.ReadAsStringAsync();
-
-        var result = JsonSerializer.Deserialize<CreditsController.CreditBalanceResponse>(
-            responseContent,
-            TestHelpers.SerializerOptions);
+        var result = await TestHelpers.DeserializeAsync<CreditsController.CreditBalanceResponse>(response);
 
         Assert.NotNull(result);
         Assert.Equal(expectedBalance, result.Balance);
@@ -102,7 +91,7 @@ public sealed class CreditsControllerTests(TestFixture fixture)
     public async Task GetBalance_AfterCreditGrant_ReturnsUpdatedBalance()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         const string userId = MockAuthenticationExtensions.TestSub;
         const int initialBalance = 50;
@@ -161,12 +150,7 @@ public sealed class CreditsControllerTests(TestFixture fixture)
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, balanceResponse.StatusCode);
-
-        var responseContent = await balanceResponse.Content.ReadAsStringAsync();
-
-        var result = JsonSerializer.Deserialize<CreditsController.CreditBalanceResponse>(
-            responseContent,
-            TestHelpers.SerializerOptions);
+        var result = await TestHelpers.DeserializeAsync<CreditsController.CreditBalanceResponse>(balanceResponse);
 
         Assert.NotNull(result);
         Assert.Equal(expectedBalance, result.Balance);
@@ -176,14 +160,14 @@ public sealed class CreditsControllerTests(TestFixture fixture)
     public async Task GetBalance_AfterCreditSpend_ReturnsReducedBalance()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var targetVideo = TestHelpers.GetTargetVideo();
         var testData = new TestDataOptions
         {
             Videos = [targetVideo]
         };
 
-        await _helpers.SeedVideoTestDataAsync(testData);
+        await _helpers.SeedTestDataAsync(testData);
 
         var request = new AiVideoTemplateRequest
         {
@@ -208,12 +192,7 @@ public sealed class CreditsControllerTests(TestFixture fixture)
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, balanceResponse.StatusCode);
-
-        var responseContent = await balanceResponse.Content.ReadAsStringAsync();
-
-        var result = JsonSerializer.Deserialize<CreditsController.CreditBalanceResponse>(
-            responseContent,
-            TestHelpers.SerializerOptions);
+        var result = await TestHelpers.DeserializeAsync<CreditsController.CreditBalanceResponse>(balanceResponse);
 
         Assert.NotNull(result);
         Assert.Equal(TestConstants.MonthlyCredits - TestConstants.AiTemplateCost, result.Balance);
@@ -223,7 +202,7 @@ public sealed class CreditsControllerTests(TestFixture fixture)
     public async Task GetBalance_PeriodDatesArePreserved()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         const string userId = MockAuthenticationExtensions.TestSub;
         var periodStart = TestFixture.TestingDateTimeOffset.AddDays(-5);
@@ -261,12 +240,7 @@ public sealed class CreditsControllerTests(TestFixture fixture)
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var responseContent = await response.Content.ReadAsStringAsync();
-
-        var result = JsonSerializer.Deserialize<CreditsController.CreditBalanceResponse>(
-            responseContent,
-            TestHelpers.SerializerOptions);
+        var result = await TestHelpers.DeserializeAsync<CreditsController.CreditBalanceResponse>(response);
 
         Assert.NotNull(result);
         Assert.Equal(50, result.Balance);
@@ -278,7 +252,7 @@ public sealed class CreditsControllerTests(TestFixture fixture)
     public async Task GetBalance_MultipleRequests_ReturnsConsistentResult()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         const string userId = MockAuthenticationExtensions.TestSub;
         const int expectedBalance = 42;
@@ -319,12 +293,7 @@ public sealed class CreditsControllerTests(TestFixture fixture)
         foreach (var response in new[] { response1, response2, response3 })
         {
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-            var responseContent = await response.Content.ReadAsStringAsync();
-
-            var result = JsonSerializer.Deserialize<CreditsController.CreditBalanceResponse>(
-                responseContent,
-                TestHelpers.SerializerOptions);
+            var result = await TestHelpers.DeserializeAsync<CreditsController.CreditBalanceResponse>(response);
 
             Assert.NotNull(result);
             Assert.Equal(expectedBalance, result.Balance);

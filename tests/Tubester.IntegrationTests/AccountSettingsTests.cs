@@ -14,10 +14,12 @@ namespace Tubester.IntegrationTests;
 [Collection(nameof(TestCollection))]
 public sealed class AccountSettingsTests(TestFixture fixture)
 {
+    private readonly TestHelpers _helpers = new(fixture.ApiServices);
+
     [Fact]
     public async Task GetSettings_WhenNoSettingsExist_ReturnsDefaultsWithNullSubscription()
     {
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         const string userId = MockAuthenticationExtensions.TestSub;
         using (var scope = fixture.ApiServices.CreateScope())
@@ -47,7 +49,7 @@ public sealed class AccountSettingsTests(TestFixture fixture)
     [Fact]
     public async Task GetSettings_WithActiveSubscription_ReturnsSubscriptionSummary()
     {
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         const string userId = MockAuthenticationExtensions.TestSub;
         using (var scope = fixture.ApiServices.CreateScope())
@@ -100,7 +102,7 @@ public sealed class AccountSettingsTests(TestFixture fixture)
     [Fact]
     public async Task PutSettings_WithValidRequest_UpdatesPreferences()
     {
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         const string userId = MockAuthenticationExtensions.TestSub;
         using (var scope = fixture.ApiServices.CreateScope())
@@ -139,7 +141,7 @@ public sealed class AccountSettingsTests(TestFixture fixture)
     [Fact]
     public async Task PutSettings_WithInvalidTheme_ReturnsBadRequest()
     {
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         const string userId = MockAuthenticationExtensions.TestSub;
         using (var scope = fixture.ApiServices.CreateScope())
@@ -163,20 +165,8 @@ public sealed class AccountSettingsTests(TestFixture fixture)
     [Fact]
     public async Task GetSettings_CalledTwice_IsIdempotentAndDoesNotDuplicateSettings()
     {
-        await fixture.ResetDbAsync();
-
-        const string userId = MockAuthenticationExtensions.TestSub;
-        using (var scope = fixture.ApiServices.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<TubesterDb>();
-            db.Users.Add(User.Create(
-                userId,
-                MockAuthenticationExtensions.TestEmail,
-                MockAuthenticationExtensions.TestName,
-                MockAuthenticationExtensions.TestPicture,
-                TestFixture.TestingDateTimeOffset));
-            await db.SaveChangesAsync();
-        }
+        await fixture.CleanStateAsync();
+        await _helpers.SeedTestDataAsync();
 
         var firstResponse = await fixture.HttpClient.GetAsync("/api/settings/account");
         Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
@@ -188,7 +178,7 @@ public sealed class AccountSettingsTests(TestFixture fixture)
         var verificationDb = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
         var settingsCount = await verificationDb.AccountSettings
             .AsNoTracking()
-            .CountAsync(s => s.UserId == userId);
+            .CountAsync(s => s.UserId == TestConstants.UserId);
 
         Assert.Equal(1, settingsCount);
     }

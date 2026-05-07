@@ -6,6 +6,7 @@ using Tubester.Abstractions.Channels;
 using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Replies;
 using Tubester.Abstractions.Videos;
+using Tubester.Application.Common;
 using Tubester.Application.Credits;
 using Tubester.Domain;
 using Tubester.Integration;
@@ -13,10 +14,10 @@ using Tubester.Integration.Exceptions;
 
 namespace Tubester.Application.Jobs;
 
-public sealed class CommentScanJob(
+public sealed partial class CommentScanJob(
     ILogger<CommentScanJob> logger,
     IBackgroundYoutubeIntegration youTubeIntegration,
-    IAiClientFactory aiClientFactory,
+    IAiClient aiClient,
     IVideoRepository videoRepository,
     IReplyRepository replyRepository,
     IChannelRepository channelRepository,
@@ -24,21 +25,23 @@ public sealed class CommentScanJob(
     ICreditsService creditsService,
     IDateTimeOffsetProvider dateTimeOffsetProvider)
 {
+    private static readonly Regex _nonEmojiRegex = MyRegex();
+
     [Queue("scanning")]
     [AutomaticRetry(Attempts = 3, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
     public async Task Run(string channelId, IJobCancellationToken jobCancellationToken)
     {
         jobCancellationToken.ThrowIfCancellationRequested();
 
+        using var scope = logger.BeginScope(new Dictionary<string, object?>
+        {
+            { LoggingConstants.ChannelId, channelId }
+        });
+
         try
         {
             var count = await ScanOnceAsync(channelId, jobCancellationToken.ShutdownToken);
             logger.LogInformation("Comment scan completed. Drafted: {Count}", count);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Comment scan failed");
-            throw;
         }
         finally
         {
@@ -46,25 +49,24 @@ public sealed class CommentScanJob(
         }
     }
 
-    private static bool IsEmojiOnly(string text)
-    {
-        return !_nonEmojiRegex.IsMatch(text);
-    }
-
     private async Task<int> ScanOnceAsync(string channelId, CancellationToken cancellationToken)
     {
         var channel = await channelRepository.GetChannelAsync(channelId, cancellationToken);
         if (channel is null)
         {
-            logger.LogWarning("Channel {ChannelId} not found, skipping scan", channelId);
+            logger.LogWarning("Channel not found, skipping scan");
             return 0;
         }
+
+        using var channelScope = logger.BeginScope(new Dictionary<string, object?>
+        {
+            { LoggingConstants.UploadPlaylistId, channel.UploadsPlaylistId }
+        });
 
         var settings = await channelSettingsRepository.GetByChannelIdAsync(channelId, cancellationToken);
         if (settings is null || !settings.IsCommentAssistantEnabled)
         {
-            logger.LogInformation(
-                "Skipping comment scan for channel {ChannelId}: comment assistant disabled", channelId);
+            logger.LogInformation("Skipping comment scan: comment assistant disabled");
             return 0;
         }
 
@@ -75,6 +77,12 @@ public sealed class CommentScanJob(
         foreach (var video in await videoRepository.GetCommentableVideosAsync(channel.UploadsPlaylistId, cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            using var videoScope = logger.BeginScope(new Dictionary<string, object?>
+            {
+                { LoggingConstants.VideoId, video.VideoId }
+            });
+
             if (video.Visibility != VideoVisibility.Public)
             {
                 continue;
@@ -83,23 +91,30 @@ public sealed class CommentScanJob(
             if (settings.MaxSuggestedRepliesPerSync > 0 && drafted >= settings.MaxSuggestedRepliesPerSync)
             {
                 logger.LogInformation(
-                    "Skipping further comments for channel {ChannelId}: max suggestions reached ({MaxSuggestions})",
-                    channelId, settings.MaxSuggestedRepliesPerSync);
+                    "Skipping further comments: max suggestions reached ({MaxSuggestions})",
+                    settings.MaxSuggestedRepliesPerSync);
                 break;
             }
 
             try
             {
                 await foreach (var thread in youTubeIntegration.GetUnansweredTopLevelCommentsAsync(
-                                   channelId, video.VideoId, cancellationToken))
+                                   channelId,
+                                   video.VideoId,
+                                   cancellationToken))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+
+                    using var commentScope = logger.BeginScope(new Dictionary<string, object?>
+                    {
+                        { LoggingConstants.CommentId, thread.ParentCommentId }
+                    });
 
                     if (settings.MaxSuggestedRepliesPerSync > 0 && drafted >= settings.MaxSuggestedRepliesPerSync)
                     {
                         logger.LogInformation(
-                            "Skipping further comments for channel {ChannelId}: max suggestions reached ({MaxSuggestions})",
-                            channelId, settings.MaxSuggestedRepliesPerSync);
+                            "Skipping further comments: max suggestions reached ({MaxSuggestions})",
+                            settings.MaxSuggestedRepliesPerSync);
                         break;
                     }
 
@@ -108,9 +123,7 @@ public sealed class CommentScanJob(
                         var commentAge = nowUtc - thread.PublishedAt.Value;
                         if (commentAge.TotalDays > settings.MaxCommentAgeDays)
                         {
-                            logger.LogDebug(
-                                "Skipping comment {CommentId} for channel {ChannelId}: comment not eligible because too old",
-                                thread.ParentCommentId, channelId);
+                            logger.LogDebug("Skipping comment: comment not eligible because too old");
                             continue;
                         }
                     }
@@ -129,10 +142,12 @@ public sealed class CommentScanJob(
                     if (!claimed)
                     {
                         // Already claimed by another process, skip
+                        logger.LogDebug("Skipping comment: already claimed by another process");
                         continue;
                     }
 
                     string replyText;
+
                     if (IsEmojiOnly(thread.Text))
                     {
                         replyText = !string.IsNullOrWhiteSpace(settings.ResponseForNonTextualComments)
@@ -154,16 +169,14 @@ public sealed class CommentScanJob(
 
                         if (!spendResult.Succeeded)
                         {
-                            logger.LogWarning(
-                                "Insufficient credits to generate AI reply for comment {CommentId}, skipping",
-                                thread.ParentCommentId);
+                            logger.LogWarning("Insufficient credits to generate AI reply, skipping");
                             return drafted;
                         }
 
                         string? suggestion;
+
                         try
                         {
-                            var aiClient = await aiClientFactory.GetClientAsync(cancellationToken);
                             suggestion = await aiClient.SuggestReplyAsync(
                                 video.Title ?? string.Empty,
                                 video.Tags,
@@ -201,7 +214,7 @@ public sealed class CommentScanJob(
             catch (CommentsDisabledException ex)
             {
                 logger.LogInformation(
-                    "Comments are disabled for video {VideoId}, marking as CommentsAllowed = false",
+                    "Comments are disabled for video {DisabledVideoId}, marking as CommentsAllowed = false",
                     ex.VideoId);
 
                 await videoRepository.MarkCommentsDisabledAsync(channel.UploadsPlaylistId, ex.VideoId, cancellationToken);
@@ -211,5 +224,11 @@ public sealed class CommentScanJob(
         return drafted;
     }
 
-    private static readonly Regex _nonEmojiRegex = new(@"\p{L}|\p{N}", RegexOptions.Compiled);
+    private static bool IsEmojiOnly(string text)
+    {
+        return !_nonEmojiRegex.IsMatch(text);
+    }
+
+    [GeneratedRegex(@"\p{L}|\p{N}", RegexOptions.Compiled)]
+    private static partial Regex MyRegex();
 }

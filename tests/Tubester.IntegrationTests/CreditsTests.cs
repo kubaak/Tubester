@@ -1,15 +1,16 @@
 using System.Net;
-using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using Tubester.Abstractions.ApplicationConfiguration;
 using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Users;
 using Tubester.Application.Contracts.Replies;
 using Tubester.Application.Contracts.Videos;
 using Tubester.Application.Jobs;
 using Tubester.Domain;
+using Tubester.Integration;
 using Tubester.IntegrationTests.TestHost;
 using Tubester.Persistence;
 using Tubester.Persistence.Credits;
@@ -20,16 +21,16 @@ namespace Tubester.IntegrationTests;
 [Collection(nameof(TestCollection))]
 public sealed class CreditsTests(TestFixture fixture)
 {
-    private readonly TestHelpers _helpers = new(fixture);
+    private readonly TestHelpers _helpers = new(fixture.ApiServices);
 
     private const string OperationId = "credits-idempotency-operation";
 
     [Fact]
     public async Task AiTemplateEnqueue_WithInsufficientCredits_ReturnsForbidden_AndDoesNotPersistWalletOrLedger()
     {
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         const int credits = 0;
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             MonthlyCredits = credits
         });
@@ -58,8 +59,8 @@ public sealed class CreditsTests(TestFixture fixture)
     [Fact]
     public async Task VideoDetailsSubmit_WithSufficientCredits_DeductsCreditsAndAppendsLedgerEntry()
     {
-        await fixture.ResetDbAsync();
-        await _helpers.SeedVideoTestDataAsync();
+        await fixture.CleanStateAsync();
+        await _helpers.SeedTestDataAsync();
 
         const string newTitle = "Updated Title";
         const string newDescription = "Updated Description";
@@ -100,8 +101,8 @@ public sealed class CreditsTests(TestFixture fixture)
     [Fact]
     public async Task VideoDetailsSubmit_WithInsufficientCredits_ReturnsForbidden_AndDoesNotDeductCredits()
     {
-        await fixture.ResetDbAsync();
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await fixture.CleanStateAsync();
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             MonthlyCredits = 1
         });
@@ -132,9 +133,9 @@ public sealed class CreditsTests(TestFixture fixture)
     [Fact]
     public async Task ReplyPostedToYouTube_WithSufficientCredits_DeductsCreditsAndAppendsLedgerEntry()
     {
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         fixture.ApiFactory.MockYouTubeIntegration.Reset();
-        await _helpers.SeedVideoTestDataAsync();
+        await _helpers.SeedTestDataAsync();
 
         var reply = Reply.Create(
             "credits-comment-1",
@@ -185,9 +186,9 @@ public sealed class CreditsTests(TestFixture fixture)
     [Fact]
     public async Task ReplyPostedToYouTube_WithInsufficientCredits_FailsWithInsufficientCreditsMessage()
     {
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         fixture.ApiFactory.MockYouTubeIntegration.Reset();
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions { MonthlyCredits = 0 });
+        await _helpers.SeedTestDataAsync(new TestDataOptions { MonthlyCredits = 0 });
 
         var reply = Reply.Create(
             "credits-insufficient-comment-1",
@@ -215,10 +216,7 @@ public sealed class CreditsTests(TestFixture fixture)
         var response = await fixture.HttpClient.SendAsync(requestMessage);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var result =
-            JsonSerializer.Deserialize<BatchDecisionResultDto>(responseContent, TestHelpers.SerializerOptions);
+        var result = await TestHelpers.DeserializeAsync<BatchDecisionResultDto>(response);
 
         Assert.NotNull(result);
         Assert.Equal(1, result.Total);
@@ -233,8 +231,8 @@ public sealed class CreditsTests(TestFixture fixture)
     [Fact]
     public async Task TrySpend_WhenUserResubscribesWithNewPeriod_GrantsFreshCredits()
     {
-        await fixture.ResetDbAsync();
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await fixture.CleanStateAsync();
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             CreateSubscription = false
         });
@@ -296,8 +294,7 @@ public sealed class CreditsTests(TestFixture fixture)
             PromptEnrichment = "Generate better metadata"
         };
 
-        var requestJson = JsonSerializer.Serialize(request, TestHelpers.SerializerOptions);
-        var requestContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
+        var requestContent = TestHelpers.CreateJsonContent(request);
 
         var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
         {
@@ -315,8 +312,8 @@ public sealed class CreditsTests(TestFixture fixture)
     [Fact]
     public async Task TrySpend_WhenWalletPeriodMatchesSubscription_DoesNotGrantNewCredits()
     {
-        await fixture.ResetDbAsync();
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await fixture.CleanStateAsync();
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             CreateSubscription = false,
         });
@@ -380,12 +377,12 @@ public sealed class CreditsTests(TestFixture fixture)
     [Fact]
     public async Task AiReplyGenerated_WithSufficientCredits_DeductsCreditsAndAppendsLedgerEntry()
     {
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Reset();
-        fixture.WorkerFactory.MockAiClient.Invocations.Clear();
+        
 
         var video = TestHelpers.GetTargetVideo();
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [video]
         });
@@ -406,14 +403,13 @@ public sealed class CreditsTests(TestFixture fixture)
                 It.IsAny<CancellationToken>()))
             .Returns(ToAsyncEnumerable([commentThread]));
 
-        fixture.WorkerFactory.MockAiClient
-            .Setup(client => client.SuggestReplyAsync(
-                video.Title!,
-                video.Tags,
-                commentThread.Text,
+        var jsonResponse = JsonSerializer.Serialize(new { reply = "Thanks for watching! I'll cover that in a future video." });
+        fixture.WorkerFactory.MockAiTextGenerationClient
+            .Setup(client => client.GenerateTextAsync(
+                AiOperation.Reply,
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync("Thanks for watching! I'll cover that in a future video.");
+            .ReturnsAsync(TestHelpers.CreateMockResult(jsonResponse));
 
         using (var jobScope = fixture.WorkerServices.CreateScope())
         {
@@ -435,13 +431,13 @@ public sealed class CreditsTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task AiReplyGenerated_WhenAiClientFails_RefundsCredits()
+    public async Task AiReplyGenerated_WhenAiTextGenerationClientFails_RefundsCredits()
     {
-        await fixture.ResetDbAsync();
-        fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Invocations.Clear();
-        fixture.WorkerFactory.MockAiClient.Invocations.Clear();
+        await fixture.CleanStateAsync();
+        
+        
         var video = TestHelpers.GetTargetVideo();
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [video]
         });
@@ -462,11 +458,9 @@ public sealed class CreditsTests(TestFixture fixture)
                 It.IsAny<CancellationToken>()))
             .Returns(ToAsyncEnumerable([commentThread]));
 
-        fixture.WorkerFactory.MockAiClient
-            .Setup(client => client.SuggestReplyAsync(
-                video.Title!,
-                video.Tags,
-                commentThread.Text,
+        fixture.WorkerFactory.MockAiTextGenerationClient
+            .Setup(client => client.GenerateTextAsync(
+                AiOperation.Reply,
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new Exception("Simulated AI client failure."));
@@ -511,9 +505,9 @@ public sealed class CreditsTests(TestFixture fixture)
     [Fact]
     public async Task AiReplyGenerated_WithInsufficientCredits_SkipsCommentAndDoesNotDeductCredits()
     {
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Reset();
-        fixture.WorkerFactory.MockAiClient.Invocations.Clear();
+        
 
         const string channelId = "credits-ai-reply-insufficient-channel";
         const string uploadsPlaylistId = "ULCreditsAiReplyInsufficient";
@@ -603,15 +597,13 @@ public sealed class CreditsTests(TestFixture fixture)
                 It.IsAny<CancellationToken>()))
             .Returns(ToAsyncEnumerable([commentThread]));
 
-        // AI client should NOT be called because credits are insufficient
-        fixture.WorkerFactory.MockAiClient
-            .Setup(client => client.SuggestReplyAsync(
-                It.IsAny<string>(),
-                It.IsAny<IReadOnlyList<string>>(),
-                It.IsAny<string>(),
+        // AI text generation client should NOT be called because credits are insufficient
+        fixture.WorkerFactory.MockAiTextGenerationClient
+            .Setup(client => client.GenerateTextAsync(
+                It.IsAny<AiOperation>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new Exception("AI client should not be called."));
+            .ThrowsAsync(new Exception("AI text generation client should not be called."));
 
         using (var setupScope = fixture.WorkerServices.CreateScope())
         {
@@ -659,11 +651,9 @@ public sealed class CreditsTests(TestFixture fixture)
             Assert.Null(reply.SuggestedText);
         }
 
-        fixture.WorkerFactory.MockAiClient.Verify(
-            client => client.SuggestReplyAsync(
-                It.IsAny<string>(),
-                It.IsAny<IReadOnlyList<string>>(),
-                It.IsAny<string>(),
+        fixture.WorkerFactory.MockAiTextGenerationClient.Verify(
+            client => client.GenerateTextAsync(
+                It.IsAny<AiOperation>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()),
             Times.Never);
@@ -708,8 +698,8 @@ public sealed class CreditsTests(TestFixture fixture)
         var expiredPeriodStart = TestFixture.TestingDateTimeOffset.AddMonths(-3).AddDays(-5);
         var expiredPeriodEnd = TestFixture.TestingDateTimeOffset.AddMonths(-2).AddDays(-5); // Period ended 2 months ago
 
-        await fixture.ResetDbAsync();
-        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await fixture.CleanStateAsync();
+        var testData = await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             CreateSubscription = false
         });
@@ -800,9 +790,9 @@ public sealed class CreditsTests(TestFixture fixture)
     public async Task AiTemplate_WhenSubscriptionExpiredForManyMonths_RenewsToCurrentAnchoredPeriod()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
-        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        var testData = await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             CreateSubscription = false
         });
@@ -883,9 +873,9 @@ public sealed class CreditsTests(TestFixture fixture)
     public async Task AiTemplate_WhenSubscriptionExpiredButInactive_DoesNotRenew()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
-        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        var testData = await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             CreateSubscription = false
         });
@@ -959,9 +949,9 @@ public sealed class CreditsTests(TestFixture fixture)
     public async Task AiTemplate_WhenSubscriptionExpiredAndPlanInactive_DoesNotRenew()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
-        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        var testData = await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             CreateSubscription = false
         });
@@ -1035,9 +1025,9 @@ public sealed class CreditsTests(TestFixture fixture)
     public async Task AiTemplate_WhenSubscriptionRenewed_DoesNotRollOverOldWalletBalance()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
-        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        var testData = await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             CreateSubscription = false
         });
@@ -1105,9 +1095,9 @@ public sealed class CreditsTests(TestFixture fixture)
     public async Task AiTemplate_WhenSubscriptionRenewedAndRequestRetried_DoesNotDoubleSpend()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
-        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        var testData = await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             CreateSubscription = false
         });
@@ -1228,9 +1218,9 @@ public sealed class CreditsTests(TestFixture fixture)
     public async Task AiTemplate_WhenSubscriptionExpiredAndWalletMissing_RenewsAndCreatesWallet()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
-        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        var testData = await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             CreateSubscription = false
         });
@@ -1294,9 +1284,9 @@ public sealed class CreditsTests(TestFixture fixture)
     public async Task AiTemplate_WhenSubscriptionActiveButWalletExpired_RefreshesWalletWithoutRenewingSubscription()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
-        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        var testData = await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             CreateSubscription = false
         });
@@ -1375,9 +1365,9 @@ public sealed class CreditsTests(TestFixture fixture)
     public async Task AiTemplate_WhenSubscriptionAndWalletCurrent_DoesNotGrantPeriodCreditsAgain()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
-        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        var testData = await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             CreateSubscription = false
         });
@@ -1453,9 +1443,9 @@ public sealed class CreditsTests(TestFixture fixture)
     public async Task AiTemplate_WhenUserHasNoSubscription_DoesNotGrantOrSpendCredits()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             CreateSubscription = false
         });

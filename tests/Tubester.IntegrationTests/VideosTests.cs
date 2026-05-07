@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text.Json;
 using Moq;
 using Tubester.Application.Contracts.Videos;
 using Tubester.IntegrationTests.TestHost;
@@ -10,15 +9,16 @@ namespace Tubester.IntegrationTests;
 [Collection(nameof(TestCollection))]
 public class VideosTests(TestFixture fixture)
 {
-    private readonly TestHelpers _helpers = new(fixture);
+    private readonly TestHelpers _helpers = new(fixture.ApiServices);
 
     [Fact]
     public async Task SaveDraft_ValidRequest_SavesMetadataToDbWithoutCallingYouTube()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
+        
         var targetVideo = TestHelpers.GetTargetVideo();
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions { Videos = [targetVideo] });
+        await _helpers.SeedTestDataAsync(new TestDataOptions { Videos = [targetVideo] });
 
         const string newTitle = "Draft Title";
         const string newDescription = "Draft Description";
@@ -38,18 +38,13 @@ public class VideosTests(TestFixture fixture)
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var videoDetails = await TestHelpers.DeserializeAsync<VideoDetailsDto>(response);
 
-        var responseJson = await response.Content.ReadAsStringAsync();
-
-        var videoDetails = JsonSerializer.Deserialize<VideoDetailsDto>(
-            responseJson,
-            TestHelpers.SerializerOptions);
-        
 
         TestHelpers.SetVideoProperties(targetVideo, newTitle, newDescription, newTags);
         TestHelpers.AssertVideoDetails(videoDetails, targetVideo);
         await _helpers.AssertVideoAsync(targetVideo);
-        
+
         fixture.ApiFactory.MockYouTubeIntegration.Verify(youTubeIntegration =>
                 youTubeIntegration.UpdateVideoAsync(
                     It.IsAny<string>(),
@@ -67,8 +62,8 @@ public class VideosTests(TestFixture fixture)
     public async Task SaveDraft_VideoDoesNotExist_ReturnsNotFound()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        await _helpers.SeedVideoTestDataAsync();
+        await fixture.CleanStateAsync();
+        await _helpers.SeedTestDataAsync();
 
         var request = new UpdateVideoMetadataRequest(
             "does-not-exist",
@@ -139,12 +134,12 @@ public class VideosTests(TestFixture fixture)
     public async Task UpdateVideo_WithPlaylistIds_UpdatesVideoPlaylistMemberships()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        fixture.ApiFactory.MockYouTubeIntegration.Invocations.Clear();
+        await fixture.CleanStateAsync();
+        
         var targetVideo = TestHelpers.GetTargetVideo();
         var playlist1 = TestHelpers.GetPlaylist("PL1");
         var playlist2 = TestHelpers.GetPlaylist("PL2");
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [targetVideo],
             Playlists = [playlist1, playlist2]
@@ -193,12 +188,7 @@ public class VideosTests(TestFixture fixture)
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var responseJson = await response.Content.ReadAsStringAsync();
-
-        var videoDetails = JsonSerializer.Deserialize<VideoDetailsDto>(
-            responseJson,
-            TestHelpers.SerializerOptions);
+        var videoDetails = await TestHelpers.DeserializeAsync<VideoDetailsDto>(response);
 
 
         TestHelpers.SetProperty(targetVideo, nameof(targetVideo.UpdatedAt), TestFixture.TestingDateTimeOffset);
@@ -241,12 +231,12 @@ public class VideosTests(TestFixture fixture)
     public async Task SaveDraft_WithPlaylistIds_UpdatesVideoPlaylistMembershipsWithoutYouTubeCall()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        fixture.ApiFactory.MockYouTubeIntegration.Invocations.Clear();
+        await fixture.CleanStateAsync();
+        
         var targetVideo = TestHelpers.GetTargetVideo();
         var playlist1 = TestHelpers.GetPlaylist("PL1");
         var playlist2 = TestHelpers.GetPlaylist("PL2");
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [targetVideo],
             Playlists = [playlist1, playlist2]
@@ -270,12 +260,7 @@ public class VideosTests(TestFixture fixture)
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var responseJson = await response.Content.ReadAsStringAsync();
-
-        var videoDetails = JsonSerializer.Deserialize<VideoDetailsDto>(
-            responseJson,
-            TestHelpers.SerializerOptions);
+        var videoDetails = await TestHelpers.DeserializeAsync<VideoDetailsDto>(response);
 
         TestHelpers.SetProperty(targetVideo, nameof(targetVideo.UpdatedAt), TestFixture.TestingDateTimeOffset);
         TestHelpers.SetProperty(targetVideo, nameof(targetVideo.Title), newTitle);

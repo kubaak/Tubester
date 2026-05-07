@@ -1,4 +1,5 @@
-﻿using Tubester.Domain;
+﻿using Tubester.Abstractions.ApplicationConfiguration;
+using Tubester.Domain;
 using Tubester.Persistence.Credits;
 
 namespace Tubester.IntegrationTests.TestHost;
@@ -15,6 +16,10 @@ public sealed record TestDataOptions
     public IReadOnlyCollection<VideoPlaylist> VideoPlaylists { get; init; } = [];
     public IReadOnlyCollection<Plan> Plans { get; init; } = [];
     public IReadOnlyCollection<Reply> Replies { get; init; } = [];
+    public List<ApplicationConfiguration> ApplicationConfigurations { get; init; } = 
+    [
+        ApplicationConfiguration.Create(ApplicationConfigurationKeys.AiProvider, AiProviders.Ollama, ConfigurationValueType.String, "", true, TestFixture.TestingDateTimeOffset)
+    ];
     public bool CreateSubscription { get; init; } = true;
     public int MonthlyCredits { get; init; } = TestConstants.MonthlyCredits;
     public bool EnableCommentScan { get; init; } = true;

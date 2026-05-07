@@ -12,5 +12,5 @@ public sealed class PlaylistSuggestionOptions
     /// If the channel has more playlists, multiple sequential calls will be made.
     /// </summary>
     [Range(1, 500)]
-    public int MaxPlaylistsPerBatch { get; init; } = 50;
+    public int MaxPlaylistsPerBatch { get; init; } = 100;
 }

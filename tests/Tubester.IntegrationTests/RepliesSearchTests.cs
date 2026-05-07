@@ -1,6 +1,4 @@
 ﻿using System.Net;
-using System.Text;
-using System.Text.Json;
 using Tubester.Application.Contracts;
 using Tubester.Application.Contracts.Replies;
 using Tubester.Domain;
@@ -12,24 +10,21 @@ namespace Tubester.IntegrationTests;
 [Collection(nameof(TestCollection))]
 public class RepliesSearchTests(TestFixture fixture)
 {
-    private readonly TestHelpers _helpers = new(fixture);
+    private readonly TestHelpers _helpers = new(fixture.ApiServices);
     [Fact]
     public async Task SearchSuggestedReplies_EmptyDb_ReturnsEmptyPage()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var request = new SearchSuggestedRepliesRequest();
-        var json = JsonSerializer.Serialize(request, TestHelpers.SerializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var content = TestHelpers.CreateJsonContent(request);
 
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/replies/suggested/search", content);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<PagedResult<ReplyListItemDto>>(responseContent, TestHelpers.SerializerOptions);
+        var result = await TestHelpers.DeserializeAsync<PagedResult<ReplyListItemDto>>(response);
 
         Assert.NotNull(result);
         Assert.Empty(result.Items);
@@ -40,30 +35,27 @@ public class RepliesSearchTests(TestFixture fixture)
     public async Task SearchSuggestedReplies_WithSuggestedReplies_ReturnsPaginatedResults()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var suggestedReply1 = TestHelpers.GetReply("comment1");
         suggestedReply1.SuggestText("Suggested reply 1", TestFixture.TestingDateTimeOffset.AddMinutes(5));
         var suggestedReply2 = TestHelpers.GetReply("comment2");
         suggestedReply2.SuggestText("Suggested reply 2", TestFixture.TestingDateTimeOffset.AddMinutes(6));
         var nonSuggestedReply = TestHelpers.GetReply("comment3");
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             CreateSubscription = false,
             Replies = [suggestedReply1, suggestedReply2, nonSuggestedReply]
         });
 
         var request = new SearchSuggestedRepliesRequest();
-        var json = JsonSerializer.Serialize(request, TestHelpers.SerializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var content = TestHelpers.CreateJsonContent(request);
 
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/replies/suggested/search", content);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<PagedResult<ReplyListItemDto>>(responseContent, TestHelpers.SerializerOptions);
+        var result = await TestHelpers.DeserializeAsync<PagedResult<ReplyListItemDto>>(response);
 
         Assert.NotNull(result);
         Assert.Equal(2, result.Items.Count);
@@ -76,12 +68,12 @@ public class RepliesSearchTests(TestFixture fixture)
     public async Task SearchSuggestedReplies_FilterByVideoIds_ReturnsMatchingReplies()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var video1 = TestHelpers.GetTargetVideo("video1");
         var video2 = TestHelpers.GetTargetVideo("video2");
         var reply1 = TestHelpers.GetReply("comment1", video1.VideoId, true);
         var reply2 = TestHelpers.GetReply("comment2", video2.VideoId, true);
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [video1, video2],
             Replies = [reply1, reply2],
@@ -89,17 +81,14 @@ public class RepliesSearchTests(TestFixture fixture)
         });
 
         var request = new SearchSuggestedRepliesRequest { VideoId = video1.VideoId };
-        var json = JsonSerializer.Serialize(request, TestHelpers.SerializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var content = TestHelpers.CreateJsonContent(request);
 
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/replies/suggested/search", content);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<PagedResult<ReplyListItemDto>>(responseContent, TestHelpers.SerializerOptions);
+        var result = await TestHelpers.DeserializeAsync<PagedResult<ReplyListItemDto>>(response);
 
         Assert.NotNull(result);
         Assert.Single(result.Items);
@@ -110,7 +99,7 @@ public class RepliesSearchTests(TestFixture fixture)
     public async Task SearchSuggestedReplies_FilterByOriginalComment_ReturnsMatchingReplies()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
 
         var reply1 = TestHelpers.GetReply("comment1");
@@ -122,7 +111,7 @@ public class RepliesSearchTests(TestFixture fixture)
         var reply3 = TestHelpers.GetReply("comment3");
         reply3.SuggestText("Reply 3", TestFixture.TestingDateTimeOffset.AddMinutes(7));
 
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Replies = [reply1, reply2, reply3],
             CreateSubscription = false
@@ -130,8 +119,7 @@ public class RepliesSearchTests(TestFixture fixture)
 
 
         var request = new SearchSuggestedRepliesRequest { OriginalComment = "comment1" };
-        var json = JsonSerializer.Serialize(request, TestHelpers.SerializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var content = TestHelpers.CreateJsonContent(request);
 
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/replies/suggested/search", content);
@@ -139,8 +127,7 @@ public class RepliesSearchTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<PagedResult<ReplyListItemDto>>(responseContent, TestHelpers.SerializerOptions);
+        var result = await TestHelpers.DeserializeAsync<PagedResult<ReplyListItemDto>>(response);
 
         Assert.NotNull(result);
         Assert.Single(result.Items);
@@ -151,7 +138,7 @@ public class RepliesSearchTests(TestFixture fixture)
     public async Task SearchSuggestedReplies_Pagination_ReturnsCorrectPageAndToken()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         var replies = new List<Reply>();
         for (var i = 1; i <= 5; i++)
@@ -160,11 +147,10 @@ public class RepliesSearchTests(TestFixture fixture)
             reply.SuggestText($"Reply {i}", TestFixture.TestingDateTimeOffset.AddMinutes(i + 5));
             replies.Add(reply);
         }
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions { Replies = replies });
+        await _helpers.SeedTestDataAsync(new TestDataOptions { Replies = replies });
 
         var request = new SearchSuggestedRepliesRequest { PageSize = 2 };
-        var json = JsonSerializer.Serialize(request, TestHelpers.SerializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var content = TestHelpers.CreateJsonContent(request);
 
         // Act - First page
         var response = await fixture.HttpClient.PostAsync("/api/replies/suggested/search", content);
@@ -172,8 +158,7 @@ public class RepliesSearchTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<PagedResult<ReplyListItemDto>>(responseContent, TestHelpers.SerializerOptions);
+        var result = await TestHelpers.DeserializeAsync<PagedResult<ReplyListItemDto>>(response);
 
         Assert.NotNull(result);
         Assert.Equal(2, result.Items.Count);
@@ -183,16 +168,13 @@ public class RepliesSearchTests(TestFixture fixture)
 
         // Act - Second page
         var request2 = new SearchSuggestedRepliesRequest { PageSize = 2, PageToken = result.NextPageToken };
-        var json2 = JsonSerializer.Serialize(request2, TestHelpers.SerializerOptions);
-        var content2 = new StringContent(json2, Encoding.UTF8, "application/json");
+        var content2 = TestHelpers.CreateJsonContent(request2);
 
         var response2 = await fixture.HttpClient.PostAsync("/api/replies/suggested/search", content2);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response2.StatusCode);
-
-        var responseContent2 = await response2.Content.ReadAsStringAsync();
-        var result2 = JsonSerializer.Deserialize<PagedResult<ReplyListItemDto>>(responseContent2, TestHelpers.SerializerOptions);
+        var result2 = await TestHelpers.DeserializeAsync<PagedResult<ReplyListItemDto>>(response2);
 
         Assert.NotNull(result2);
         Assert.Equal(2, result2.Items.Count);
@@ -202,16 +184,13 @@ public class RepliesSearchTests(TestFixture fixture)
 
         // Act - Last page
         var request3 = new SearchSuggestedRepliesRequest { PageSize = 2, PageToken = result2.NextPageToken };
-        var json3 = JsonSerializer.Serialize(request3, TestHelpers.SerializerOptions);
-        var content3 = new StringContent(json3, Encoding.UTF8, "application/json");
+        var content3 = TestHelpers.CreateJsonContent(request3);
 
         var response3 = await fixture.HttpClient.PostAsync("/api/replies/suggested/search", content3);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response3.StatusCode);
-
-        var responseContent3 = await response3.Content.ReadAsStringAsync();
-        var result3 = JsonSerializer.Deserialize<PagedResult<ReplyListItemDto>>(responseContent3, TestHelpers.SerializerOptions);
+        var result3 = await TestHelpers.DeserializeAsync<PagedResult<ReplyListItemDto>>(response3);
 
         Assert.NotNull(result3);
         Assert.Single(result3.Items);
@@ -224,8 +203,7 @@ public class RepliesSearchTests(TestFixture fixture)
     {
         // Arrange
         var request = new SearchSuggestedRepliesRequest { PageSize = 500 }; // Invalid - max is 100
-        var json = JsonSerializer.Serialize(request, TestHelpers.SerializerOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var content = TestHelpers.CreateJsonContent(request);
 
         // Act
         var response = await fixture.HttpClient.PostAsync("/api/replies/suggested/search", content);

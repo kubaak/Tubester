@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Tubester.Abstractions;
 using Tubester.Abstractions.Playlists;
 using Tubester.Abstractions.Videos;
+using Tubester.Application.Common;
 using Tubester.Application.Jobs;
 using Tubester.Application.Options;
 using Tubester.Domain;
@@ -12,7 +13,7 @@ namespace Tubester.Application.Videos;
 
 public sealed class AiVideoImprovingService(
     ILogger<AiVideoImprovingService> logger,
-    IAiClientFactory aiClientFactory,
+    IAiClient aiClient,
     IVideoRepository videoRepository,
     IDateTimeOffsetProvider dateTimeOffsetProvider,
     IPlaylistRepository playlistRepository,
@@ -20,20 +21,26 @@ public sealed class AiVideoImprovingService(
     : IAiVideoImprovingService
 {
     public async Task GenerateAiTemplateAsync(
-    AiVideoDetailsRequest request,
-    CancellationToken cancellationToken)
+        AiVideoDetailsRequest request,
+        CancellationToken cancellationToken)
     {
         var channelId = request.ChannelId;
         var uploadPlaylistId = request.UploadPlaylistId;
-        if (string.IsNullOrWhiteSpace(channelId))
+        var targetVideoId = request.TargetVideoId;
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(channelId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(uploadPlaylistId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetVideoId);
+
+        using var scope = logger.BeginScope(new Dictionary<string, object?>
         {
-            throw new ArgumentException("Channel id is required.", nameof(channelId));
-        }
+            { LoggingConstants.ChannelId, channelId },
+            { LoggingConstants.UploadPlaylistId, uploadPlaylistId },
+            { LoggingConstants.VideoId, targetVideoId }
+        });
 
         logger.LogInformation(
-            "Generating AI template for channel {ChannelId}, target video {TargetVideoId}. GenerateTitle: {GenerateTitle}, GenerateDescription: {GenerateDescription}, GenerateTags: {GenerateTags}",
-            channelId,
-            request.TargetVideoId,
+            "Generating AI template. GenerateTitle: {GenerateTitle}, GenerateDescription: {GenerateDescription}, GenerateTags: {GenerateTags}",
             request.GenerateTitle,
             request.GenerateDescription,
             request.GenerateTags);
@@ -41,16 +48,15 @@ public sealed class AiVideoImprovingService(
         try
         {
             var targetVideo =
-                await videoRepository.GetVideoByIdAsync(uploadPlaylistId, request.TargetVideoId, cancellationToken)
-                ?? throw new ArgumentException($"Target video {request.TargetVideoId} not found in cache.");
+                await videoRepository.GetVideoByIdAsync(uploadPlaylistId, targetVideoId, cancellationToken)
+                ?? throw new ArgumentException($"Target video {targetVideoId} not found in cache.");
 
             logger.LogDebug(
-                "Loaded target video {TargetVideoId}. Current title length: {TitleLength}, description length: {DescriptionLength}, tag count: {TagCount}",
-                targetVideo.VideoId,
+                "Loaded target video. Current title length: {TitleLength}, description length: {DescriptionLength}, tag count: {TagCount}",
                 targetVideo.Title?.Length ?? 0,
                 targetVideo.Description?.Length ?? 0,
                 targetVideo.Tags.Length);
-            var aiClient = await aiClientFactory.GetClientAsync(cancellationToken);
+
             var suggestedMetadata =
                 await aiClient.SuggestMetadataAsync(
                     request.PromptEnrichment,
@@ -60,8 +66,7 @@ public sealed class AiVideoImprovingService(
                     cancellationToken);
 
             logger.LogInformation(
-                "AI metadata generated for video {TargetVideoId}. Suggested title present: {HasTitle}, suggested description present: {HasDescription}, suggested tag count: {SuggestedTagCount}",
-                request.TargetVideoId,
+                "AI metadata generated. Suggested title present: {HasTitle}, suggested description present: {HasDescription}, suggested tag count: {SuggestedTagCount}",
                 !string.IsNullOrWhiteSpace(suggestedMetadata.Title),
                 !string.IsNullOrWhiteSpace(suggestedMetadata.Description),
                 suggestedMetadata.Tags.Count);
@@ -79,13 +84,13 @@ public sealed class AiVideoImprovingService(
                 : targetVideo.Tags;
 
             logger.LogDebug(
-                "Prepared updated metadata for video {TargetVideoId}. New title length: {TitleLength}, new description length: {DescriptionLength}, new tag count: {TagCount}",
-                request.TargetVideoId,
+                "Prepared updated metadata. New title length: {TitleLength}, new description length: {DescriptionLength}, new tag count: {TagCount}",
                 newTitle?.Length ?? 0,
                 newDescription?.Length ?? 0,
                 newTags.Length);
 
             var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
+
             targetVideo.ApplyDetails(
                 newTitle,
                 newDescription,
@@ -104,43 +109,69 @@ public sealed class AiVideoImprovingService(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "AI templating failed for video {TargetVideoId}", request.TargetVideoId);
+            logger.LogError(ex, "AI templating failed");
             throw;
         }
         finally
         {
             await videoRepository.TryClearAiOperationsInProgressAsync(
-                uploadPlaylistId, request.TargetVideoId, AiVideoOperationFlags.Title | AiVideoOperationFlags.Description
-                | AiVideoOperationFlags.Tags, cancellationToken);
+                uploadPlaylistId,
+                targetVideoId,
+                AiVideoOperationFlags.Title | AiVideoOperationFlags.Description | AiVideoOperationFlags.Tags,
+                cancellationToken);
         }
 
-        logger.LogInformation(
-            "AI template generation completed for channel {ChannelId}, video {TargetVideoId}",
-            channelId,
-            request.TargetVideoId);
+        logger.LogInformation("AI template generation completed");
     }
 
-    public async Task SuggestPlaylistIdsAsync(PlaylistSuggestionRequest request, CancellationToken cancellationToken)
+    public async Task SuggestPlaylistIdsAsync(
+        PlaylistSuggestionRequest request,
+        CancellationToken cancellationToken)
     {
         var channelId = request.ChannelId;
         var uploadPlaylistId = request.UploadPlaylistId;
         var targetVideoId = request.TargetVideoId;
+
+        if (string.IsNullOrWhiteSpace(channelId))
+        {
+            throw new ArgumentException("Channel id is required.", nameof(channelId));
+        }
+
+        if (string.IsNullOrWhiteSpace(uploadPlaylistId))
+        {
+            throw new ArgumentException("Upload playlist id is required.", nameof(uploadPlaylistId));
+        }
+
+        if (string.IsNullOrWhiteSpace(targetVideoId))
+        {
+            throw new ArgumentException("Target video id is required.", nameof(targetVideoId));
+        }
+
+        using var scope = logger.BeginScope(new Dictionary<string, object?>
+        {
+            { LoggingConstants.ChannelId, channelId },
+            { LoggingConstants.UploadPlaylistId, uploadPlaylistId },
+            { LoggingConstants.VideoId, targetVideoId }
+        });
+
         try
         {
-            logger.LogInformation("Starting playlist suggestion for video {TargetVideoId}", targetVideoId);
+            logger.LogInformation("Starting playlist suggestion");
 
-            var targetVideo = await videoRepository.GetVideoByIdAsync(uploadPlaylistId, targetVideoId, cancellationToken)
-                              ?? throw new InvalidOperationException($"Target video {targetVideoId} not found in cache.");
+            var targetVideo =
+                await videoRepository.GetVideoByIdAsync(uploadPlaylistId, targetVideoId, cancellationToken)
+                ?? throw new InvalidOperationException($"Target video {targetVideoId} not found in cache.");
 
             var playlistCandidates = await playlistRepository.GetPublicByChannelAsync(channelId, cancellationToken);
 
             if (playlistCandidates.Count == 0)
             {
-                logger.LogWarning("No public playlists found for channel {ChannelId}", channelId);
+                logger.LogWarning("No public playlists found");
                 return;
             }
 
-            var latestVideoPlaylistNames = await playlistRepository.GetPlaylistNamesForLatestPublicVideoAsync(uploadPlaylistId, cancellationToken);
+            var latestVideoPlaylistNames =
+                await playlistRepository.GetPlaylistNamesForLatestPublicVideoAsync(uploadPlaylistId, cancellationToken);
 
             var maxBatchSize = playlistSuggestionOptions.Value.MaxPlaylistsPerBatch;
 
@@ -170,13 +201,16 @@ public sealed class AiVideoImprovingService(
                     PromptEnrichment = request.PromptEnrichment,
                     LatestPlaylistTitlesUsed = latestVideoPlaylistNames
                 };
-                var aiClient = await aiClientFactory.GetClientAsync(cancellationToken);
+
                 var batchSuggestedIds = (await aiClient.SuggestPlaylistIdsAsync(
                     context,
                     batch,
                     cancellationToken)).ToList();
 
-                logger.LogDebug("Suggested playlist ids: {SuggestedPlaylistIds} in batch {BatchIndex}", string.Join(", ", batchSuggestedIds), batchIndex);
+                logger.LogDebug(
+                    "Suggested playlist ids: {SuggestedPlaylistIds} in batch {BatchIndex}",
+                    string.Join(", ", batchSuggestedIds),
+                    batchIndex);
 
                 foreach (var playlistId in batchSuggestedIds)
                 {
@@ -190,25 +224,28 @@ public sealed class AiVideoImprovingService(
                     targetVideo.VideoId,
                     allSuggestedPlaylistIds,
                     cancellationToken);
+
                 logger.LogInformation(
-                    "Assigned video {TargetVideoId} to {PlaylistCount} playlists",
-                    targetVideoId,
+                    "Assigned video to {PlaylistCount} playlists",
                     allSuggestedPlaylistIds.Count);
             }
             else
             {
-                logger.LogInformation("No playlists suggested for video {TargetVideoId}", targetVideoId);
+                logger.LogInformation("No playlists suggested");
             }
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Playlist suggestion failed for video {TargetVideoId}", targetVideoId);
+            logger.LogError(ex, "Playlist suggestion failed");
             throw;
         }
         finally
         {
             await videoRepository.TryClearAiOperationsInProgressAsync(
-                uploadPlaylistId, targetVideoId, AiVideoOperationFlags.PlaylistSuggestion, cancellationToken);
+                uploadPlaylistId,
+                targetVideoId,
+                AiVideoOperationFlags.PlaylistSuggestion,
+                cancellationToken);
         }
     }
 
@@ -222,9 +259,11 @@ public sealed class AiVideoImprovingService(
 
         var result = new List<string>();
         var total = 0;
+
         foreach (var tag in cleaned)
         {
             var add = tag.Length;
+
             if (total + add > 500)
             {
                 break;

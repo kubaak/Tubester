@@ -8,14 +8,14 @@ namespace Tubester.IntegrationTests;
 [Collection(nameof(TestCollection))]
 public sealed class CommentScanTests(TestFixture fixture)
 {
-    private readonly TestHelpers _helpers = new(fixture);
+    private readonly TestHelpers _helpers = new(fixture.WorkerServices);
 
     [Fact]
     public async Task ScanComments_CalledTwiceWithoutFirstCompleting_EnqueuesOnlyOneJob()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        await _helpers.SeedVideoTestDataAsync();
+        await fixture.CleanStateAsync();
+        await _helpers.SeedTestDataAsync();
 
         // Act — first call acquires the lock
         var firstResponse = await fixture.HttpClient.GetAsync("/api/coments/pull");

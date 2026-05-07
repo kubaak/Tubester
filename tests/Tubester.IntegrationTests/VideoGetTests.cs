@@ -1,5 +1,4 @@
 ﻿using System.Net;
-using System.Text.Json;
 using Tubester.Application.Contracts.Videos;
 using Tubester.Domain;
 using Tubester.IntegrationTests.TestHost;
@@ -10,17 +9,17 @@ namespace Tubester.IntegrationTests;
 [Collection(nameof(TestCollection))]
 public class VideoGetTests(TestFixture fixture)
 {
-    private readonly TestHelpers _helpers = new(fixture);
+    private readonly TestHelpers _helpers = new(fixture.ApiServices);
 
     [Fact]
     public async Task GetVideo_ExistingVideo_ReturnsOkWithDetails()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         var video = TestHelpers.GetTargetVideo();
 
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [video]
         });
@@ -30,25 +29,20 @@ public class VideoGetTests(TestFixture fixture)
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var details = await TestHelpers.DeserializeAsync<VideoDetailsDto>(response);
 
-        var content = await response.Content.ReadAsStringAsync();
-
-        var videoDetails = JsonSerializer.Deserialize<VideoDetailsDto>(
-            content,
-            TestHelpers.SerializerOptions);
-
-        TestHelpers.AssertVideoDetails(videoDetails, video);
+        TestHelpers.AssertVideoDetails(details, video);
     }
 
     [Fact]
     public async Task GetVideo_WithPlaylist_ReturnsCorrectDetails()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var video = TestHelpers.GetTargetVideo();
         var playlist = TestHelpers.GetPlaylist();
 
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [video],
             Playlists = [playlist],
@@ -59,15 +53,10 @@ public class VideoGetTests(TestFixture fixture)
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var content = await response.Content.ReadAsStringAsync();
-
-        var videoDetails = JsonSerializer.Deserialize<VideoDetailsDto>(
-            content,
-            TestHelpers.SerializerOptions);
+        var details = await TestHelpers.DeserializeAsync<VideoDetailsDto>(response);
 
         TestHelpers.AssertVideoDetails(
-            videoDetails,
+            details,
             video,
             [new PlaylistDto { Id = playlist.PlaylistId, Name = playlist.Title }]);
     }
@@ -76,7 +65,7 @@ public class VideoGetTests(TestFixture fixture)
     public async Task GetVideo_VideoDoesNotExist_ReturnsNotFound()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         // Act
         var response = await fixture.HttpClient.GetAsync("/api/videos/does-not-exist");

@@ -32,9 +32,15 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddAiClient(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<AiOptions>(configuration.GetSection("AI"));
-        services.AddHttpClient<IAiClient, AiClient>((sp, http) =>
+        services.Configure<OllamaOptions>(configuration.GetSection("AI:Ollama"));
+
+        services.AddSingleton<IAiPromptBuilder, AiPromptBuilder>();
+        services.AddScoped<IAiClient, AiClient>();
+
+        // Register provider-specific text generation clients
+        services.AddHttpClient<OllamaTextGenerationClient>((sp, http) =>
             {
-                var ai = sp.GetRequiredService<IOptions<AiOptions>>().Value;
+                var ai = sp.GetRequiredService<IOptions<OllamaOptions>>().Value;
                 http.BaseAddress = new Uri(ai.Endpoint);
             })
             .AddStandardResilienceHandler(options =>
@@ -44,6 +50,13 @@ public static class ServiceCollectionExtensions
                     options.TotalRequestTimeout = new HttpTimeoutStrategyOptions { Timeout = TimeSpan.FromMinutes(5) };
                 }
             );
+
+        services.Configure<GeminiOptions>(configuration.GetSection("AI:Gemini"));
+        services.AddSingleton<IGeminiClientFactory, GeminiClientFactory>();
+        services.AddScoped<GeminiTextGenerationClient>();
+
+        // Register AI client factory
+        services.AddScoped<IAiTextGenerationClientFactory, AiTextGenerationClientFactory>();
 
         return services;
     }

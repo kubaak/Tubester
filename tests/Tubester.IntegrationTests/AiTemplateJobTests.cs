@@ -1,12 +1,12 @@
-using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using Tubester.Abstractions.ApplicationConfiguration;
 using Tubester.Abstractions.Videos;
 using Tubester.Application.Jobs;
 using Tubester.Domain;
 using Tubester.Integration;
 using Tubester.IntegrationTests.TestHost;
-using Tubester.Persistence;
 using Xunit;
 
 namespace Tubester.IntegrationTests;
@@ -14,7 +14,7 @@ namespace Tubester.IntegrationTests;
 [Collection(nameof(TestCollection))]
 public class AiTemplateJobTests(TestFixture fixture)
 {
-    private readonly TestHelpers _helpers = new(fixture);
+    private readonly TestHelpers _helpers = new(fixture.WorkerServices);
 
     private const string PromptEnrichment = "Generate better metadata";
     private const string TitleAndDescriptionPromptEnrichment = "Generate title and description only";
@@ -33,36 +33,30 @@ public class AiTemplateJobTests(TestFixture fixture)
     private const string Tag1 = "tag1";
     private const string Tag2 = "tag2";
 
-    private const string SimulatedAiClientFailureMessage = "Simulated AI client failure";
+    private const string SimulatedAiTextGenerationClientFailureMessage = "Simulated AI client failure";
 
     [Fact]
     public async Task Run_WithValidRequest_UpdatesVideoWithSuggestedMetadata()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        fixture.WorkerFactory.MockAiClient.Invocations.Clear();
+        await fixture.CleanStateAsync();
+        
 
         var targetVideo = TestHelpers.GetTargetVideo();
-        var testData = await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        var testData = await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [targetVideo]
         });
 
         var suggestedTags = new List<string> { AiTag1, AiTag2, AiTag3 };
+        var jsonResponse = JsonSerializer.Serialize(new { title = SuggestedTitle, description = SuggestedDescription, tags = suggestedTags });
 
-        fixture.WorkerFactory.MockAiClient
-            .Setup(client => client.SuggestMetadataAsync(
-                PromptEnrichment,
-                true,
-                true,
-                true,
+        fixture.WorkerFactory.MockAiTextGenerationClient
+            .Setup(client => client.GenerateTextAsync(
+                AiOperation.Metadata,
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SuggestedMetadata
-            {
-                Title = SuggestedTitle,
-                Description = SuggestedDescription,
-                Tags = suggestedTags
-            });
+            .ReturnsAsync(TestHelpers.CreateMockResult(jsonResponse));
 
         var request = new AiVideoDetailsRequest(
             testData.Channel.ChannelId,
@@ -73,12 +67,12 @@ public class AiTemplateJobTests(TestFixture fixture)
             GenerateDescription: true,
             GenerateTags: true,
             SuggestPlaylists: false);
-        
+
         using var scope = fixture.WorkerServices.CreateScope();
         var videoRepository = scope.ServiceProvider.GetRequiredService<IVideoRepository>();
         await videoRepository.TryAddAiOperationsInProgressAsync(testData.Channel.UploadsPlaylistId, targetVideo.VideoId,
             AiVideoOperationFlags.Title | AiVideoOperationFlags.Description | AiVideoOperationFlags.Tags, CancellationToken.None);
-        
+
         // Act
         using var jobScope = fixture.WorkerServices.CreateScope();
         var aiTemplateJob = jobScope.ServiceProvider.GetRequiredService<AiTemplateJob>();
@@ -88,12 +82,10 @@ public class AiTemplateJobTests(TestFixture fixture)
         TestHelpers.SetVideoProperties(targetVideo, SuggestedTitle, SuggestedDescription, suggestedTags.ToArray());
         await _helpers.AssertVideoAsync(targetVideo);
 
-        fixture.WorkerFactory.MockAiClient.Verify(
-            client => client.SuggestMetadataAsync(
-                PromptEnrichment,
-                true,
-                true,
-                true,
+        fixture.WorkerFactory.MockAiTextGenerationClient.Verify(
+            client => client.GenerateTextAsync(
+                AiOperation.Metadata,
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
@@ -102,30 +94,24 @@ public class AiTemplateJobTests(TestFixture fixture)
     public async Task Run_WhenGenerateTitleFalse_KeepsOriginalTitle()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        fixture.WorkerFactory.MockAiClient.Invocations.Clear();
+        await fixture.CleanStateAsync();
+        
 
         var targetVideo = TestHelpers.GetTargetVideo();
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [targetVideo]
         });
 
         var suggestedTags = new List<string> { AiTag1, AiTag2, AiTag3 };
+        var jsonResponse = JsonSerializer.Serialize(new { title = AlternativeSuggestedTitle, description = SuggestedDescription, tags = suggestedTags });
 
-        fixture.WorkerFactory.MockAiClient
-            .Setup(client => client.SuggestMetadataAsync(
-                PromptEnrichment,
-                false,
-                true,
-                true,
+        fixture.WorkerFactory.MockAiTextGenerationClient
+            .Setup(client => client.GenerateTextAsync(
+                AiOperation.Metadata,
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SuggestedMetadata
-            {
-                Title = AlternativeSuggestedTitle,
-                Description = SuggestedDescription,
-                Tags = suggestedTags
-            });
+            .ReturnsAsync(TestHelpers.CreateMockResult(jsonResponse));
 
         var request = new AiVideoDetailsRequest(
             TestConstants.ChannelId,
@@ -151,30 +137,24 @@ public class AiTemplateJobTests(TestFixture fixture)
     public async Task Run_WhenGenerateDescriptionFalse_KeepsOriginalDescription()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        fixture.WorkerFactory.MockAiClient.Invocations.Clear();
+        await fixture.CleanStateAsync();
+        
 
         var targetVideo = TestHelpers.GetTargetVideo();
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [targetVideo]
         });
 
         var suggestedTags = new List<string> { Tag1, Tag2 };
+        var jsonResponse = JsonSerializer.Serialize(new { title = AlternativeSuggestedTitle, description = AlternativeSuggestedDescription, tags = suggestedTags });
 
-        fixture.WorkerFactory.MockAiClient
-            .Setup(client => client.SuggestMetadataAsync(
-                PromptEnrichment,
-                true,
-                false,
-                true,
+        fixture.WorkerFactory.MockAiTextGenerationClient
+            .Setup(client => client.GenerateTextAsync(
+                AiOperation.Metadata,
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SuggestedMetadata
-            {
-                Title = AlternativeSuggestedTitle,
-                Description = AlternativeSuggestedDescription,
-                Tags = suggestedTags
-            });
+            .ReturnsAsync(TestHelpers.CreateMockResult(jsonResponse));
 
         var request = new AiVideoDetailsRequest(
             TestConstants.ChannelId,
@@ -205,36 +185,31 @@ public class AiTemplateJobTests(TestFixture fixture)
     public async Task Run_WhenGenerateTagsFalse_KeepsOriginalTags()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        fixture.WorkerFactory.MockAiClient.Invocations.Clear();
+        await fixture.CleanStateAsync();
+        
 
         var targetVideo = TestHelpers.GetTargetVideo();
         var originalTags = targetVideo.Tags;
 
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [targetVideo]
         });
 
-        fixture.WorkerFactory.MockAiClient
-            .Setup(client => client.SuggestMetadataAsync(
-                TitleAndDescriptionPromptEnrichment,
-                true,
-                true,
-                false,
+        var jsonResponse = JsonSerializer.Serialize(new { title = AlternativeSuggestedTitle, description = AlternativeSuggestedDescription, tags = new List<string> { AiTag1, AiTag2 } });
+
+        fixture.WorkerFactory.MockAiTextGenerationClient
+            .Setup(client => client.GenerateTextAsync(
+                AiOperation.Metadata,
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SuggestedMetadata
-            {
-                Title = AlternativeSuggestedTitle,
-                Description = AlternativeSuggestedDescription,
-                Tags = [AiTag1, AiTag2]
-            });
+            .ReturnsAsync(TestHelpers.CreateMockResult(jsonResponse));
 
         var request = new AiVideoDetailsRequest(
             TestConstants.ChannelId,
             TestConstants.UploadsPlaylistId,
             targetVideo.VideoId,
-            TitleAndDescriptionPromptEnrichment,
+            PromptEnrichment,
             GenerateTitle: true,
             GenerateDescription: true,
             GenerateTags: false,
@@ -246,43 +221,35 @@ public class AiTemplateJobTests(TestFixture fixture)
         await aiTemplateJob.Run(request, new Hangfire.JobCancellationToken(false));
 
         // Assert
-        TestHelpers.SetVideoProperties(
-            targetVideo,
-            AlternativeSuggestedTitle,
-            AlternativeSuggestedDescription,
-            originalTags);
-
+        TestHelpers.SetVideoProperties(targetVideo, AlternativeSuggestedTitle, AlternativeSuggestedDescription, originalTags);
         await _helpers.AssertVideoAsync(targetVideo);
     }
 
     [Fact]
-    public async Task Run_WhenAiClientThrows_PropagatesException()
+    public async Task Run_WhenAiClientFails_ThrowsException()
     {
         // Arrange
-        await fixture.ResetDbAsync();
-        fixture.WorkerFactory.MockAiClient.Invocations.Clear();
+        await fixture.CleanStateAsync();
+        
 
         var targetVideo = TestHelpers.GetTargetVideo();
-
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [targetVideo]
         });
 
-        fixture.WorkerFactory.MockAiClient
-            .Setup(client => client.SuggestMetadataAsync(
+        fixture.WorkerFactory.MockAiTextGenerationClient
+            .Setup(client => client.GenerateTextAsync(
+                AiOperation.Metadata,
                 It.IsAny<string>(),
-                It.IsAny<bool>(),
-                It.IsAny<bool>(),
-                It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new Exception(SimulatedAiClientFailureMessage));
+            .ThrowsAsync(new Exception(SimulatedAiTextGenerationClientFailureMessage));
 
         var request = new AiVideoDetailsRequest(
             TestConstants.ChannelId,
             TestConstants.UploadsPlaylistId,
             targetVideo.VideoId,
-            MetadataPromptEnrichment,
+            PromptEnrichment,
             GenerateTitle: true,
             GenerateDescription: true,
             GenerateTags: true,
@@ -295,6 +262,6 @@ public class AiTemplateJobTests(TestFixture fixture)
         var exception = await Assert.ThrowsAsync<Exception>(() =>
             aiTemplateJob.Run(request, new Hangfire.JobCancellationToken(false)));
 
-        Assert.Equal(SimulatedAiClientFailureMessage, exception.Message);
+        Assert.Equal(SimulatedAiTextGenerationClientFailureMessage, exception.Message);
     }
 }

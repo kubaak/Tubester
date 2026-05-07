@@ -1,5 +1,4 @@
 ﻿using System.Net;
-using System.Text.Json;
 using Tubester.Abstractions.Credits;
 using Tubester.Application.Contracts.Videos;
 using Tubester.IntegrationTests.TestHost;
@@ -10,18 +9,18 @@ namespace Tubester.IntegrationTests;
 [Collection(nameof(TestCollection))]
 public class VideoCopyDetailsTests(TestFixture fixture)
 {
-    private readonly TestHelpers _helpers = new(fixture);
+    private readonly TestHelpers _helpers = new(fixture.ApiServices);
 
     [Fact]
     public async Task CopyTemplate_ValidRequest_LogsAnalytics()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
 
         var sourceVideo = TestHelpers.GetSourceVideo();
         var targetVideo = TestHelpers.GetTargetVideo();
 
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [sourceVideo, targetVideo]
         });
@@ -46,7 +45,7 @@ public class VideoCopyDetailsTests(TestFixture fixture)
         //TODO currently not being billed
         // await _helpers.VerifyLedgerAndWalletAfterDeductionAsync(nameof(CreditActionType.CopyTemplateExecuted), 
         //     TestConstants.CopyTemplateExecutedCost, targetVideo.VideoId);
-        
+
         TestHelpers.SetProperty(targetVideo, nameof(targetVideo.CategoryId), sourceVideo.CategoryId); //TODO implement category copy option
         TestHelpers.SetVideoProperties(targetVideo, sourceVideo.Title!, targetVideo.Description!, sourceVideo.Tags.ToArray());
         await _helpers.AssertVideoAsync(targetVideo);
@@ -120,11 +119,11 @@ public class VideoCopyDetailsTests(TestFixture fixture)
     public async Task CopyTemplate_WhenCopyTitleFalse_KeepsTargetTitle()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var sourceVideo = TestHelpers.GetSourceVideo();
         var targetVideo = TestHelpers.GetTargetVideo();
 
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [sourceVideo, targetVideo]
         });
@@ -145,11 +144,7 @@ public class VideoCopyDetailsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var responseContent = await response.Content.ReadAsStringAsync();
-
-        var result = JsonSerializer.Deserialize<CopyVideoTemplateResult>(
-            responseContent,
-            TestHelpers.SerializerOptions);
+        var result = await TestHelpers.DeserializeAsync<CopyVideoTemplateResult>(response);
 
         Assert.NotNull(result);
         Assert.Equal(targetVideo.Title, result.FinalTitle);
@@ -161,11 +156,11 @@ public class VideoCopyDetailsTests(TestFixture fixture)
     public async Task CopyTemplate_WhenCopyDescriptionFalse_KeepsTargetDescription()
     {
         // Arrange
-        await fixture.ResetDbAsync();
+        await fixture.CleanStateAsync();
         var sourceVideo = TestHelpers.GetSourceVideo();
         var targetVideo = TestHelpers.GetTargetVideo();
 
-        await _helpers.SeedVideoTestDataAsync(new TestDataOptions
+        await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [sourceVideo, targetVideo]
         });
@@ -185,12 +180,7 @@ public class VideoCopyDetailsTests(TestFixture fixture)
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var responseContent = await response.Content.ReadAsStringAsync();
-
-        var result = JsonSerializer.Deserialize<CopyVideoTemplateResult>(
-            responseContent,
-            TestHelpers.SerializerOptions);
+        var result = await TestHelpers.DeserializeAsync<CopyVideoTemplateResult>(response);
 
         Assert.NotNull(result);
         Assert.Equal(sourceVideo.Title, result.FinalTitle);
