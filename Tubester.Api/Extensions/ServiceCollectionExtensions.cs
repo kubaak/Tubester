@@ -194,10 +194,11 @@ public static class ServiceCollectionExtensions
                     cancellationToken);
 
                 await LogLoginAsync(context, userId);
-            }
+            },
+            OnRemoteFailure = _onRemoteFailure
         };
     }
-
+    
     private static OAuthEvents CreateWriteOAuthEvents()
     {
         return new OAuthEvents
@@ -238,9 +239,42 @@ public static class ServiceCollectionExtensions
                     null,
                     new { scheme = context.Scheme.Name },
                     cancellationToken);
-            }
+            },
+            OnRemoteFailure = _onRemoteFailure
         };
     }
+    
+    private static readonly Func<RemoteFailureContext, Task> _onRemoteFailure = context =>
+    {
+        var loggerFactory = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>();
+        var logger = loggerFactory.CreateLogger("Tubester.Api.Authentication");
+
+        logger.LogWarning(
+            context.Failure,
+            "External login failed. Scheme={Scheme}, Path={Path}",
+            context.Scheme.Name,
+            context.Request.Path);
+        
+        context.HandleResponse();
+
+        foreach (var cookie in context.Request.Cookies.Keys)
+        {
+            if (cookie.StartsWith(".AspNetCore.Correlation.", StringComparison.OrdinalIgnoreCase) ||
+                cookie.StartsWith(".AspNetCore.OpenIdConnect.Nonce.", StringComparison.OrdinalIgnoreCase))
+            {
+                context.Response.Cookies.Delete(cookie, new CookieOptions
+                {
+                    Path = "/",
+                    Secure = true,
+                    SameSite = SameSiteMode.None
+                });
+            }
+        }
+
+        context.Response.Redirect("/login?error=external-login-failed");
+
+        return Task.CompletedTask;
+    };
 
     private static async Task<string?> TryEnrichYouTubeClaimsAsync(TicketReceivedContext context)
     {

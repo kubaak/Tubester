@@ -61,6 +61,18 @@ public sealed class AuthController(IConfiguration configuration) : ApiController
     public async Task<IActionResult> Logout()
     {
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        foreach (var cookie in Request.Cookies.Keys)
+        {
+            if (cookie.StartsWith(".AspNetCore.", StringComparison.OrdinalIgnoreCase))
+            {
+                Response.Cookies.Delete(cookie, new CookieOptions
+                {
+                    Path = "/",
+                    Secure = true,
+                    SameSite = SameSiteMode.None
+                });
+            }
+        }
         return Ok();
     }
 
