@@ -6,7 +6,7 @@ using Tubester.Domain;
 using Tubester.IntegrationTests.TestHost;
 using Xunit;
 
-namespace Tubester.IntegrationTests;
+namespace Tubester.IntegrationTests.Videos;
 
 [Collection(nameof(TestCollection))]
 public class VideoSearchTests(TestFixture fixture)
