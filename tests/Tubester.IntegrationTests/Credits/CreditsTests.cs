@@ -10,13 +10,12 @@ using Tubester.Application.Contracts.Replies;
 using Tubester.Application.Contracts.Videos;
 using Tubester.Application.Jobs;
 using Tubester.Domain;
-using Tubester.Integration;
 using Tubester.IntegrationTests.TestHost;
 using Tubester.Persistence;
 using Tubester.Persistence.Credits;
 using Xunit;
 
-namespace Tubester.IntegrationTests;
+namespace Tubester.IntegrationTests.Credits;
 
 [Collection(nameof(TestCollection))]
 public sealed class CreditsTests(TestFixture fixture)

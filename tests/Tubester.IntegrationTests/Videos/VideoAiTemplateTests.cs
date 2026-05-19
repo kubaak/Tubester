@@ -8,7 +8,7 @@ using Tubester.IntegrationTests.TestHost;
 using Tubester.Persistence;
 using Xunit;
 
-namespace Tubester.IntegrationTests;
+namespace Tubester.IntegrationTests.Videos;
 
 [Collection(nameof(TestCollection))]
 public class VideoAiTemplateTests(TestFixture fixture)

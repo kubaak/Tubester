@@ -2,6 +2,7 @@ using System.Data;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Tubester.Abstractions;
 using Tubester.Abstractions.Credits;
@@ -10,36 +11,73 @@ namespace Tubester.Persistence.Credits;
 
 public sealed class CreditsStore(
     TubesterDb databaseContext,
+    IMemoryCache cache,
     ILogger<CreditsStore> logger) : ICreditsStore
 {
+    private static readonly TimeSpan _actionCostsCacheDuration = TimeSpan.FromMinutes(10);
+    private const string ActionCostsCacheKey = "credits:action-costs";
+    private const string ActionCostCacheKeyPrefix = "credits:action-cost:";
+
+    public async Task<IReadOnlyList<CreditActionCostDto>> GetActionCostsAsync(CancellationToken cancellationToken)
+    {
+        if (cache.TryGetValue<IReadOnlyList<CreditActionCostDto>>(ActionCostsCacheKey, out var cachedCosts))
+        {
+            if (cachedCosts != null)
+            {
+                return cachedCosts;
+            }
+        }
+
+        var costs = await databaseContext.ActionCosts
+            .AsNoTracking()
+            .Where(c => c.IsEnabled)
+            .Select(cost => new CreditActionCostDto
+            {
+                ActionType = cost.ActionType,
+                Cost = cost.Cost
+            })
+            .ToListAsync(cancellationToken);
+
+        cache.Set(ActionCostsCacheKey, costs, _actionCostsCacheDuration);
+
+        return costs;
+    }
+    
     public async Task<CreditActionCostDto?> GetActionCostAsync(string actionType, CancellationToken cancellationToken)
     {
-        //todo cache
         if (string.IsNullOrWhiteSpace(actionType))
         {
             throw new ArgumentException("Action type is required.", nameof(actionType));
         }
 
+        var cacheKey = $"{ActionCostCacheKeyPrefix}{actionType}";
+
+        if (cache.TryGetValue<CreditActionCostDto?>(cacheKey, out var cachedCost))
+        {
+            return cachedCost;
+        }
+
         var creditActionCost = await databaseContext.ActionCosts
             .AsNoTracking()
+            .Where(c => c.IsEnabled)
             .FirstOrDefaultAsync(cost => cost.ActionType == actionType, cancellationToken);
 
         if (creditActionCost is null)
         {
+            cache.Set<CreditActionCostDto?>(cacheKey, null, _actionCostsCacheDuration);
             return null;
         }
 
         var result = new CreditActionCostDto
         {
             ActionType = creditActionCost.ActionType,
-            Cost = creditActionCost.Cost,
-            IsEnabled = creditActionCost.IsEnabled,
-            UpdatedAtUtc = creditActionCost.UpdatedAtUtc
+            Cost = creditActionCost.Cost
         };
 
-        return result;
-    }
+        cache.Set(cacheKey, result, _actionCostsCacheDuration);
 
+        return result;
+    }    
     public async Task<WalletDto?> GetWalletAsync(
         string userId,
         CancellationToken cancellationToken)

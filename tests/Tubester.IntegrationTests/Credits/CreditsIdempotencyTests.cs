@@ -6,7 +6,7 @@ using Tubester.IntegrationTests.TestHost;
 using Tubester.Persistence;
 using Xunit;
 
-namespace Tubester.IntegrationTests;
+namespace Tubester.IntegrationTests.Credits;
 
 [Collection(nameof(TestCollection))]
 public sealed class CreditsIdempotencyTests(TestFixture fixture)

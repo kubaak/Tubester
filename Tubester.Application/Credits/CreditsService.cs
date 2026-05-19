@@ -233,7 +233,7 @@ public sealed class CreditsService(
     {
         var actionCost = await creditsStore.GetActionCostAsync(actionType, cancellationToken);
 
-        if (actionCost is not null && actionCost.IsEnabled)
+        if (actionCost is not null)
         {
             return actionCost;
         }

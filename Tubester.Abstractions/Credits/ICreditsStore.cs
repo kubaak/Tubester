@@ -4,6 +4,8 @@ public interface ICreditsStore
 {
     Task<CreditActionCostDto?> GetActionCostAsync(string actionType, CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<CreditActionCostDto>> GetActionCostsAsync(CancellationToken cancellationToken);
+
     Task<WalletDto?> GetWalletAsync(string userId, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<string>> GetUserIdsWithExpiredWalletsAsync(

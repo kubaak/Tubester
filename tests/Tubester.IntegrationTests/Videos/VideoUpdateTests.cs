@@ -1,11 +1,10 @@
 ﻿using System.Net;
 using Moq;
 using Tubester.Application.Contracts.Videos;
-using Tubester.Domain;
 using Tubester.IntegrationTests.TestHost;
 using Xunit;
 
-namespace Tubester.IntegrationTests;
+namespace Tubester.IntegrationTests.Videos;
 
 [Collection(nameof(TestCollection))]
 public class VideoUpdateTests(TestFixture fixture)

@@ -48,6 +48,24 @@ public sealed class CreditsController(
     }
 
     /// <summary>
+    /// Gets the current costs for credit actions.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The current credit action costs</returns>
+    [HttpGet("costs")]
+    [ProducesResponseType(typeof(IReadOnlyList<CreditActionCostResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<CreditActionCostResponse>>> GetCosts(CancellationToken cancellationToken)
+    {
+        var costs = await creditsStore.GetActionCostsAsync(cancellationToken);
+
+        return Ok(costs.Select(cost => new CreditActionCostResponse
+        {
+            ActionType = cost.ActionType,
+            Cost = cost.Cost
+        }).ToList());
+    }
+    
+    /// <summary>
     /// Response DTO for credit balance query
     /// </summary>
     public sealed class CreditBalanceResponse
@@ -55,5 +73,14 @@ public sealed class CreditsController(
         public int Balance { get; init; }
         public DateTimeOffset? PeriodStartUtc { get; init; }
         public DateTimeOffset? PeriodEndUtc { get; init; }
+    }
+    
+    /// <summary>
+    /// Response DTO for credit action cost query
+    /// </summary>
+    public sealed class CreditActionCostResponse
+    {
+        public required string ActionType { get; init; }
+        public required int Cost { get; init; }
     }
 }

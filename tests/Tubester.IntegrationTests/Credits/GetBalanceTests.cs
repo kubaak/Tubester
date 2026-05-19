@@ -8,15 +8,15 @@ using Tubester.Persistence;
 using Tubester.Persistence.Credits;
 using Xunit;
 
-namespace Tubester.IntegrationTests;
+namespace Tubester.IntegrationTests.Credits;
 
 [Collection(nameof(TestCollection))]
-public sealed class CreditsControllerTests(TestFixture fixture)
+public sealed class GetBalanceTests(TestFixture fixture)
 {
     private readonly TestHelpers _helpers = new(fixture.ApiServices);
 
     [Fact]
-    public async Task GetBalance_UserHasNoWallet_ReturnsZeroBalance()
+    public async Task UserHasNoWallet_ReturnsZeroBalance()
     {
         // Arrange
         await fixture.CleanStateAsync();
@@ -35,7 +35,7 @@ public sealed class CreditsControllerTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task GetBalance_UserHasWallet_ReturnsWalletBalance()
+    public async Task UserHasWallet_ReturnsWalletBalance()
     {
         // Arrange
         await fixture.CleanStateAsync();
@@ -88,7 +88,7 @@ public sealed class CreditsControllerTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task GetBalance_AfterCreditGrant_ReturnsUpdatedBalance()
+    public async Task AfterCreditGrant_ReturnsUpdatedBalance()
     {
         // Arrange
         await fixture.CleanStateAsync();
@@ -157,7 +157,7 @@ public sealed class CreditsControllerTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task GetBalance_AfterCreditSpend_ReturnsReducedBalance()
+    public async Task AfterCreditSpend_ReturnsReducedBalance()
     {
         // Arrange
         await fixture.CleanStateAsync();
@@ -199,7 +199,7 @@ public sealed class CreditsControllerTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task GetBalance_PeriodDatesArePreserved()
+    public async Task PeriodDatesArePreserved()
     {
         // Arrange
         await fixture.CleanStateAsync();
@@ -249,7 +249,7 @@ public sealed class CreditsControllerTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task GetBalance_MultipleRequests_ReturnsConsistentResult()
+    public async Task MultipleRequests_ReturnsConsistentResult()
     {
         // Arrange
         await fixture.CleanStateAsync();

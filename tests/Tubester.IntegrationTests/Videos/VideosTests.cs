@@ -4,7 +4,7 @@ using Tubester.Application.Contracts.Videos;
 using Tubester.IntegrationTests.TestHost;
 using Xunit;
 
-namespace Tubester.IntegrationTests;
+namespace Tubester.IntegrationTests.Videos;
 
 [Collection(nameof(TestCollection))]
 public class VideosTests(TestFixture fixture)
