@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Tubester.Abstractions.Auth;
 using Tubester.Abstractions.Channels;
 using Tubester.Integration.Dtos;
+using Tubester.Integration.Exceptions;
 
 namespace Tubester.Integration;
 
@@ -445,22 +446,38 @@ public sealed class YouTubeIntegration(
         string? defaultAudioLanguage,
         CancellationToken cancellationToken)
     {
-        var youTubeService = CreateReadOnlyServiceAsync(await GetCurrentUsersAccessToken(cancellationToken));
-
-        var snippet = new VideoSnippet
+        try
         {
-            Title = title,
-            Description = description,
-            Tags = tags.ToList(),
-            CategoryId = categoryId,
-            DefaultLanguage = defaultLanguage,
-            DefaultAudioLanguage = defaultAudioLanguage
-        };
+            var accessToken = await GetCurrentUsersAccessToken(cancellationToken);
 
-        var video = new Video { Id = videoId, Snippet = snippet };
+            // Prefer a write-capable service here, not read-only.
+            var youTubeService = CreateWriteService(accessToken);
 
-        var up = youTubeService.Videos.Update(video, "snippet");
-        await up.ExecuteAsync(cancellationToken);
+            var snippet = new VideoSnippet
+            {
+                Title = title,
+                Description = description,
+                Tags = tags.ToList(),
+                CategoryId = categoryId,
+                DefaultLanguage = defaultLanguage,
+                DefaultAudioLanguage = defaultAudioLanguage
+            };
+
+            var video = new Video
+            {
+                Id = videoId,
+                Snippet = snippet
+            };
+
+            var updateRequest = youTubeService.Videos.Update(video, "snippet");
+            await updateRequest.ExecuteAsync(cancellationToken);
+        }
+        catch (GoogleApiException ex) when (ex.HttpStatusCode == HttpStatusCode.Unauthorized)
+        {
+            throw new UnauthorizedAccessException(
+                "Your Google session has expired. Please sign in again.",
+                ex);
+        }
     }
 
     public async Task AddVideoToPlaylistAsync(
@@ -590,6 +607,21 @@ public sealed class YouTubeIntegration(
         var googleCredential = GoogleCredential
             .FromAccessToken(accessToken)
             .CreateScoped(YouTubeService.Scope.YoutubeReadonly);
+
+        var initializer = new BaseClientService.Initializer
+        {
+            HttpClientInitializer = googleCredential,
+            ApplicationName = "Tubester"
+        };
+
+        return new YouTubeService(initializer);
+    }
+    
+    private static YouTubeService CreateWriteService(string accessToken)
+    {
+        var googleCredential = GoogleCredential
+            .FromAccessToken(accessToken)
+            .CreateScoped(YouTubeService.Scope.YoutubeForceSsl);
 
         var initializer = new BaseClientService.Initializer
         {

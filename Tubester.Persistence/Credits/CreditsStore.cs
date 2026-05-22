@@ -42,7 +42,7 @@ public sealed class CreditsStore(
 
         return costs;
     }
-    
+
     public async Task<CreditActionCostDto?> GetActionCostAsync(string actionType, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(actionType))
@@ -77,7 +77,8 @@ public sealed class CreditsStore(
         cache.Set(cacheKey, result, _actionCostsCacheDuration);
 
         return result;
-    }    
+    }
+
     public async Task<WalletDto?> GetWalletAsync(
         string userId,
         CancellationToken cancellationToken)
@@ -176,7 +177,7 @@ public sealed class CreditsStore(
             occurredAtUtc = occurredAtUtc.ToUniversalTime();
         }
 
-        await using var tx = await databaseContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+        await using var tx = await BeginTransactionIfNeededAsync(ct);
 
         // 1) Idempotency gate (requires UNIQUE index on IdempotencyKey)
         var delta = -cost;
@@ -193,7 +194,8 @@ public sealed class CreditsStore(
 
         if (inserted == 0)
         {
-            await tx.CommitAsync(ct);
+            await CommitIfOwnedAsync(tx, ct);
+
             logger.LogDebug("Spend duplicate detected for user {UserId}, action {ActionType}", userId, actionType);
 
             var bal = await databaseContext.Wallets
@@ -207,6 +209,7 @@ public sealed class CreditsStore(
                 Succeeded = true,
                 WasDuplicate = true,
                 NewBalance = bal,
+                FinalCost = cost,
                 FailureReason = SpendFailureReason.None
             };
         }
@@ -229,9 +232,11 @@ public sealed class CreditsStore(
         var pUser = cmd.CreateParameter();
         pUser.ParameterName = "userId";
         pUser.Value = userId;
+
         var pCost = cmd.CreateParameter();
         pCost.ParameterName = "cost";
         pCost.Value = cost;
+
         var pAt = cmd.CreateParameter();
         pAt.ParameterName = "occurredAtUtc";
         pAt.Value = occurredAtUtc;
@@ -245,21 +250,24 @@ public sealed class CreditsStore(
 
         if (newBalance is not null)
         {
-            await tx.CommitAsync(ct);
+            await CommitIfOwnedAsync(tx, ct);
+
             logger.LogInformation(
                 "Credits spent successfully for user {UserId}, action {ActionType}, cost {Cost}, new balance {NewBalance}",
                 userId, actionType, cost, newBalance);
+
             return new SpendResult
             {
                 Succeeded = true,
                 WasDuplicate = false,
                 NewBalance = newBalance,
+                FinalCost = cost,
                 FailureReason = SpendFailureReason.None
             };
         }
 
         // 3) Spend failed => rollback so the inserted ledger row disappears
-        await tx.RollbackAsync(ct);
+        await RollbackIfOwnedAsync(tx, ct);
 
         // One small read to classify reason + return current balance
         var walletState = await databaseContext.Wallets
@@ -273,11 +281,13 @@ public sealed class CreditsStore(
             logger.LogWarning(
                 "Spend failed for user {UserId}, action {ActionType}: no wallet found",
                 userId, actionType);
+
             return new SpendResult
             {
                 Succeeded = false,
                 WasDuplicate = false,
                 NewBalance = null,
+                FinalCost = cost,
                 FailureReason = SpendFailureReason.NoWallet
             };
         }
@@ -287,11 +297,13 @@ public sealed class CreditsStore(
             logger.LogWarning(
                 "Spend failed for user {UserId}, action {ActionType}: wallet expired (period ended {PeriodEndUtc})",
                 userId, actionType, walletState.PeriodEndUtc);
+
             return new SpendResult
             {
                 Succeeded = false,
                 WasDuplicate = false,
                 NewBalance = walletState.Balance,
+                FinalCost = cost,
                 FailureReason = SpendFailureReason.WalletExpired
             };
         }
@@ -299,11 +311,13 @@ public sealed class CreditsStore(
         logger.LogWarning(
             "Spend failed for user {UserId}, action {ActionType}: insufficient balance (current balance {Balance}, cost {Cost})",
             userId, actionType, walletState.Balance, cost);
+
         return new SpendResult
         {
             Succeeded = false,
             WasDuplicate = false,
             NewBalance = walletState.Balance,
+            FinalCost = cost,
             FailureReason = SpendFailureReason.InsufficientBalance
         };
     }
@@ -343,7 +357,7 @@ public sealed class CreditsStore(
             periodEndUtc = periodEndUtc.ToUniversalTime();
         }
 
-        await using var tx = await databaseContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+        await using var tx = await BeginTransactionIfNeededAsync(ct);
 
         var metadataJson =
             JsonSerializer.Serialize(new { type = "period_grant", periodStartUtc, periodEndUtc, periodCredits },
@@ -363,7 +377,8 @@ public sealed class CreditsStore(
         if (inserted == 0)
         {
             // Duplicate grant attempt
-            await tx.CommitAsync(ct);
+            await CommitIfOwnedAsync(tx, ct);
+
             logger.LogDebug(
                 "Period grant duplicate detected for user {UserId}, idempotency key {IdempotencyKey}",
                 userId, idempotencyKey);
@@ -393,7 +408,7 @@ public sealed class CreditsStore(
 
              """, ct);
 
-        await tx.CommitAsync(ct);
+        await CommitIfOwnedAsync(tx, ct);
 
         logger.LogInformation(
             "Period credits granted for user {UserId}, amount {PeriodCredits}, period {PeriodStartUtc} to {PeriodEndUtc}",
@@ -527,8 +542,7 @@ public sealed class CreditsStore(
             occurredAtUtc = occurredAtUtc.ToUniversalTime();
         }
 
-        await using var transaction =
-            await databaseContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+        await using var transaction = await BeginTransactionIfNeededAsync(ct);
 
         var originalEntry = await databaseContext.LedgerEntries
             .AsNoTracking()
@@ -540,7 +554,7 @@ public sealed class CreditsStore(
 
         if (originalEntry is null || originalEntry.Delta >= 0)
         {
-            await transaction.CommitAsync(ct);
+            await CommitIfOwnedAsync(transaction, ct);
             return;
         }
 
@@ -560,10 +574,12 @@ public sealed class CreditsStore(
 
         if (inserted == 0)
         {
-            await transaction.CommitAsync(ct);
+            await CommitIfOwnedAsync(transaction, ct);
+
             logger.LogDebug(
                 "Refund duplicate detected for user {UserId}, action {ActionType}, original idempotency key {OriginalIdempotencyKey}",
                 userId, actionType, originalIdempotencyKey);
+
             return;
         }
 
@@ -603,11 +619,11 @@ public sealed class CreditsStore(
 
         if (newBalance is null)
         {
-            await transaction.RollbackAsync(ct);
+            await RollbackIfOwnedAsync(transaction, ct);
             return;
         }
 
-        await transaction.CommitAsync(ct);
+        await CommitIfOwnedAsync(transaction, ct);
     }
 
     public async Task<GrantResult> AdminGrantCreditsAsync(
@@ -626,7 +642,7 @@ public sealed class CreditsStore(
             occurredAtUtc = occurredAtUtc.ToUniversalTime();
         }
 
-        await using var tx = await databaseContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+        await using var tx = await BeginTransactionIfNeededAsync(ct);
 
         var metadataJson =
             JsonSerializer.Serialize(new { type = "admin_grant", amount }, TubesterJsonSerializerOptions.DefaultWrite);
@@ -650,13 +666,15 @@ public sealed class CreditsStore(
                 .Select(w => new { w.Balance, w.PeriodStartUtc, w.PeriodEndUtc })
                 .SingleOrDefaultAsync(ct);
 
-            await tx.RollbackAsync(ct);
+            await RollbackIfOwnedAsync(tx, ct);
 
             if (walletDto is null)
             {
-                logger.LogError("Ledger entry already exists for idempotency key '{IdempotencyKey}', but wallet was not found", idempotencyKey);
-                throw new InvalidOperationException(
-                    $"Ledger entry already exists, but wallet was not found.");
+                logger.LogError(
+                    "Ledger entry already exists for idempotency key '{IdempotencyKey}', but wallet was not found",
+                    idempotencyKey);
+
+                throw new InvalidOperationException("Ledger entry already exists, but wallet was not found.");
             }
 
             return new GrantResult
@@ -675,7 +693,7 @@ public sealed class CreditsStore(
             occurredAtUtc,
             ct);
 
-        await tx.CommitAsync(ct);
+        await CommitIfOwnedAsync(tx, ct);
 
         logger.LogInformation(
             "Admin credits granted for user {UserId}, amount {Amount}, new balance {NewBalance}",
@@ -690,9 +708,9 @@ public sealed class CreditsStore(
     }
 
     public async Task<SubscriptionDto?> TryRenewSubscriptionAsync(
-    string userId,
-    DateTimeOffset nowUtc,
-    CancellationToken cancellationToken)
+        string userId,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
@@ -701,8 +719,7 @@ public sealed class CreditsStore(
             nowUtc = nowUtc.ToUniversalTime();
         }
 
-        await using var transaction = await databaseContext.Database
-            .BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+        await using var transaction = await BeginTransactionIfNeededAsync(cancellationToken);
 
         var subscription = await databaseContext.Subscriptions
             .FromSqlInterpolated($"""
@@ -715,7 +732,7 @@ public sealed class CreditsStore(
 
         if (subscription is null)
         {
-            await transaction.CommitAsync(cancellationToken);
+            await CommitIfOwnedAsync(transaction, cancellationToken);
             return null;
         }
 
@@ -725,13 +742,13 @@ public sealed class CreditsStore(
 
         if (subscription.Status != SubscriptionStatus.Active || !subscription.Plan.IsActive)
         {
-            await transaction.CommitAsync(cancellationToken);
+            await CommitIfOwnedAsync(transaction, cancellationToken);
             return null;
         }
 
         if (subscription.PeriodStartUtc <= nowUtc && subscription.PeriodEndUtc > nowUtc)
         {
-            await transaction.CommitAsync(cancellationToken);
+            await CommitIfOwnedAsync(transaction, cancellationToken);
             return ToSubscriptionDto(subscription);
         }
 
@@ -760,7 +777,7 @@ public sealed class CreditsStore(
         subscription.PeriodEndUtc = newPeriodEndUtc;
 
         await databaseContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
+        await CommitIfOwnedAsync(transaction, cancellationToken);
 
         logger.LogInformation(
             "Renewed subscription for user {UserId}, plan {PlanCode}, old period {OldPeriodStartUtc} to {OldPeriodEndUtc}, new period {NewPeriodStartUtc} to {NewPeriodEndUtc}",
@@ -836,9 +853,284 @@ public sealed class CreditsStore(
         cmd.Parameters.Add(pPeriodEnd);
         cmd.Parameters.Add(pAt);
 
-        var result = await cmd.ExecuteScalarAsync(ct) ?? throw new InvalidOperationException("Wallet admin grant upsert did not return a balance.");
+        var result = await cmd.ExecuteScalarAsync(ct)
+            ?? throw new InvalidOperationException("Wallet admin grant upsert did not return a balance.");
 
         return Convert.ToInt32(result);
+    }
+
+    public async Task<SpendResult> TrySpendBatchAsync(
+    BatchSpendRequest request,
+    IReadOnlyList<int> costs,
+    DateTimeOffset occurredAtUtc,
+    CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.UserId);
+
+        if (request.Actions.Count == 0)
+        {
+            throw new ArgumentException("Number of actions must not be empty.", nameof(costs));
+        }
+
+        if (request.Actions.Count != costs.Count)
+        {
+            throw new ArgumentException("Number of actions must match number of costs.", nameof(costs));
+        }
+
+        // Ensure UTC offset for Npgsql timestamptz
+        if (occurredAtUtc.Offset != TimeSpan.Zero)
+        {
+            occurredAtUtc = occurredAtUtc.ToUniversalTime();
+        }
+
+        await using var tx = await BeginTransactionIfNeededAsync(ct);
+
+        // Track if any action is a duplicate
+        var anyDuplicate = false;
+        var totalCost = 0;
+
+        // 1) Insert ledger entries for all actions (idempotency gate)
+        for (var i = 0; i < request.Actions.Count; i++)
+        {
+            var action = request.Actions[i];
+            var cost = costs[i];
+            totalCost += cost;
+
+            if (string.IsNullOrWhiteSpace(action.IdempotencyKey))
+            {
+                throw new ArgumentException("Idempotency key is required for each action.", nameof(action));
+            }
+
+            var metadataJson = action.Metadata is null
+                ? null
+                : JsonSerializer.Serialize(action.Metadata, TubesterJsonSerializerOptions.DefaultWrite);
+
+            var inserted = await databaseContext.Database.ExecuteSqlInterpolatedAsync($"""
+
+             INSERT INTO "LedgerEntries"
+                 ("UserId", "OccurredAtUtc", "ActionType", "Delta", "IdempotencyKey", "ReferenceId", "MetadataJson")
+             VALUES
+                 ({request.UserId}, {occurredAtUtc}, {action.ActionType}, {-cost}, {action.IdempotencyKey}, {action.ReferenceId}, {metadataJson}::jsonb)
+             ON CONFLICT ("UserId","IdempotencyKey") DO NOTHING;
+
+             """, ct);
+
+            if (inserted == 0)
+            {
+                anyDuplicate = true;
+            }
+        }
+
+        if (anyDuplicate)
+        {
+            // Check if ALL are duplicates (entire batch was already processed)
+            var allDuplicates = true;
+
+            for (var i = 0; i < request.Actions.Count; i++)
+            {
+                var action = request.Actions[i];
+
+                var exists = await databaseContext.LedgerEntries
+                    .AsNoTracking()
+                    .AnyAsync(
+                        entry => entry.UserId == request.UserId &&
+                                 entry.IdempotencyKey == action.IdempotencyKey,
+                        ct);
+
+                if (!exists)
+                {
+                    allDuplicates = false;
+                    break;
+                }
+            }
+
+            if (allDuplicates)
+            {
+                await CommitIfOwnedAsync(tx, ct);
+
+                logger.LogDebug("Batch spend duplicate detected for user {UserId}", request.UserId);
+
+                var bal = await databaseContext.Wallets
+                    .AsNoTracking()
+                    .Where(w => w.UserId == request.UserId)
+                    .Select(w => (int?)w.Balance)
+                    .SingleOrDefaultAsync(ct);
+
+                return new SpendResult
+                {
+                    Succeeded = true,
+                    WasDuplicate = true,
+                    NewBalance = bal,
+                    FinalCost = totalCost,
+                    FailureReason = SpendFailureReason.None
+                };
+            }
+
+            // Partial duplicates - some new, some existing
+            // Rollback the transaction so uncommitted ledger entries are removed
+            await RollbackIfOwnedAsync(tx, ct);
+
+            // Return failure - cannot process partial batch
+            logger.LogWarning(
+                "Batch spend conflict for user {UserId}: some actions already processed",
+                request.UserId);
+
+            return new SpendResult
+            {
+                Succeeded = false,
+                WasDuplicate = false,
+                NewBalance = null,
+                FinalCost = totalCost,
+                FailureReason = SpendFailureReason.Conflict
+            };
+        }
+
+        // 2) Atomic wallet update - deduct total cost
+        await using var cmd = databaseContext.Database.GetDbConnection().CreateCommand();
+
+        var currentTransaction = databaseContext.Database.CurrentTransaction
+            ?? throw new InvalidOperationException("A database transaction is required for batch credit spending.");
+
+        cmd.Transaction = currentTransaction.GetDbTransaction();
+
+        cmd.CommandText = """
+        UPDATE "Wallets"
+        SET "Balance" = "Balance" - @totalCost,
+            "UpdatedAtUtc" = @occurredAtUtc
+        WHERE "UserId" = @userId
+          AND "PeriodEndUtc" > @occurredAtUtc
+          AND "Balance" >= @totalCost
+        RETURNING "Balance"
+        """;
+
+        var pUser = cmd.CreateParameter();
+        pUser.ParameterName = "userId";
+        pUser.Value = request.UserId;
+
+        var pTotalCost = cmd.CreateParameter();
+        pTotalCost.ParameterName = "totalCost";
+        pTotalCost.Value = totalCost;
+
+        var pAt = cmd.CreateParameter();
+        pAt.ParameterName = "occurredAtUtc";
+        pAt.Value = occurredAtUtc;
+
+        cmd.Parameters.Add(pUser);
+        cmd.Parameters.Add(pTotalCost);
+        cmd.Parameters.Add(pAt);
+
+        var result = await cmd.ExecuteScalarAsync(ct);
+        var newBalance = result == null ? (int?)null : Convert.ToInt32(result);
+
+        if (newBalance is not null)
+        {
+            await CommitIfOwnedAsync(tx, ct);
+
+            logger.LogInformation(
+                "Batch credits spent successfully for user {UserId}, total cost {TotalCost}, new balance {NewBalance}",
+                request.UserId,
+                totalCost,
+                newBalance);
+
+            return new SpendResult
+            {
+                Succeeded = true,
+                WasDuplicate = false,
+                NewBalance = newBalance,
+                FinalCost = totalCost,
+                FailureReason = SpendFailureReason.None
+            };
+        }
+
+        // 3) Spend failed - rollback if this method owns the transaction.
+        // If an outer transaction owns it, caller must throw to rollback.
+        await RollbackIfOwnedAsync(tx, ct);
+
+        var walletState = await databaseContext.Wallets
+            .AsNoTracking()
+            .Where(w => w.UserId == request.UserId)
+            .Select(w => new { w.Balance, w.PeriodEndUtc })
+            .SingleOrDefaultAsync(ct);
+
+        if (walletState is null)
+        {
+            logger.LogWarning(
+                "Batch spend failed for user {UserId}: no wallet found",
+                request.UserId);
+
+            return new SpendResult
+            {
+                Succeeded = false,
+                WasDuplicate = false,
+                NewBalance = null,
+                FinalCost = totalCost,
+                FailureReason = SpendFailureReason.NoWallet
+            };
+        }
+
+        if (walletState.PeriodEndUtc <= occurredAtUtc)
+        {
+            logger.LogWarning(
+                "Batch spend failed for user {UserId}: wallet expired",
+                request.UserId);
+
+            return new SpendResult
+            {
+                Succeeded = false,
+                WasDuplicate = false,
+                NewBalance = walletState.Balance,
+                FinalCost = totalCost,
+                FailureReason = SpendFailureReason.WalletExpired
+            };
+        }
+
+        logger.LogWarning(
+            "Batch spend failed for user {UserId}: insufficient balance (current balance {Balance}, total cost {TotalCost})",
+            request.UserId,
+            walletState.Balance,
+            totalCost);
+
+        return new SpendResult
+        {
+            Succeeded = false,
+            WasDuplicate = false,
+            NewBalance = walletState.Balance,
+            FinalCost = totalCost,
+            FailureReason = SpendFailureReason.InsufficientBalance
+        };
+    }
+
+    private async Task<IDbContextTransaction?> BeginTransactionIfNeededAsync(
+        CancellationToken cancellationToken)
+    {
+        if (databaseContext.Database.CurrentTransaction is not null)
+        {
+            return null;
+        }
+
+        return await databaseContext.Database.BeginTransactionAsync(
+            IsolationLevel.ReadCommitted,
+            cancellationToken);
+    }
+
+    private static async Task CommitIfOwnedAsync(
+        IDbContextTransaction? transaction,
+        CancellationToken cancellationToken)
+    {
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+    }
+
+    private static async Task RollbackIfOwnedAsync(
+        IDbContextTransaction? transaction,
+        CancellationToken cancellationToken)
+    {
+        if (transaction is not null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+        }
     }
 
     private static SubscriptionDto ToSubscriptionDto(Subscription subscription)

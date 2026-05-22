@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Tubester.Abstractions.Credits;
 using Tubester.Application.Contracts.Videos;
@@ -30,7 +31,8 @@ public class VideoAiTemplateTests(TestFixture fixture)
         var request = new AiVideoTemplateRequest
         {
             TargetVideoId = targetVideo.VideoId,
-            PromptEnrichment = "Generate better metadata"
+            PromptEnrichment = "Generate better metadata",
+            ExpectedCreditCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost
         };
 
         // Act
@@ -135,7 +137,8 @@ public class VideoAiTemplateTests(TestFixture fixture)
         var request = new AiVideoTemplateRequest
         {
             TargetVideoId = "non-existent-video-id",
-            PromptEnrichment = "Generate metadata"
+            PromptEnrichment = "Generate metadata",
+            ExpectedCreditCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost
         };
 
         // Act
@@ -175,7 +178,8 @@ public class VideoAiTemplateTests(TestFixture fixture)
         {
             TargetVideoId = TestConstants.TargetVideoId,
             PromptEnrichment = "Generate metadata",
-            SuggestPlaylists = true
+            SuggestPlaylists = true,
+            ExpectedCreditCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost + TestConstants.AiPlaylistSuggestionEnqueuedCost
         };
 
         // Act
@@ -226,7 +230,8 @@ public class VideoAiTemplateTests(TestFixture fixture)
             GenerateTitle = false,
             GenerateDescription = false,
             GenerateTags = false,
-            SuggestPlaylists = true
+            SuggestPlaylists = true,
+            ExpectedCreditCost = TestConstants.AiPlaylistSuggestionEnqueuedCost
         };
 
         // Act
@@ -265,7 +270,8 @@ public class VideoAiTemplateTests(TestFixture fixture)
         {
             TargetVideoId = TestConstants.TargetVideoId,
             PromptEnrichment = "Generate metadata",
-            SuggestPlaylists = false
+            SuggestPlaylists = false,
+            ExpectedCreditCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost
         };
 
         // Act
@@ -333,6 +339,66 @@ public class VideoAiTemplateTests(TestFixture fixture)
     }
 
     [Fact]
+    public async Task AiTemplate_WhenBackgroundJobClientFailsToEnqueue_RollsBackTransaction()
+    {
+        // Arrange
+        await fixture.CleanStateAsync();
+        var targetVideo = TestHelpers.GetTargetVideo();
+
+        await _helpers.SeedTestDataAsync(new TestDataOptions
+        {
+            Videos = [targetVideo]
+        });
+
+        var request = new AiVideoTemplateRequest
+        {
+            TargetVideoId = targetVideo.VideoId,
+            PromptEnrichment = "Generate better metadata",
+            ExpectedCreditCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost
+        };
+
+        // Enable failure on the next enqueue attempt
+        var enqueueFailureException = new InvalidOperationException("Simulated job enqueue failure.");
+        fixture.CapturingJobClient.EnableFailure(enqueueFailureException);
+
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
+        {
+            Content = TestHelpers.CreateJsonContent(request)
+        };
+
+        requestMessage.Headers.Add("OperationId", TestHelpers.NewOperationId());
+
+        // Act
+        var response = await fixture.HttpClient.SendAsync(requestMessage);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+
+        // Verify NO jobs were enqueued (because the failure happened)
+        var capturedJobs = fixture.CapturingJobClient.GetEnqueued<AiTemplateJob>();
+        Assert.Empty(capturedJobs);
+
+        // Verify credits were NOT deducted (transaction rolled back)
+        await _helpers.AssertWalletIsNullAsync();
+
+        // Verify video is NOT marked as AI operations in progress
+        using var serviceScope = fixture.ApiServices.CreateScope();
+        var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
+        var videoInDatabase = await databaseContext.Videos.FindAsync(targetVideo.VideoId);
+
+        Assert.NotNull(videoInDatabase);
+        Assert.False(videoInDatabase.IsAiTitleInProgress);
+        Assert.False(videoInDatabase.IsAiDescriptionInProgress);
+        Assert.False(videoInDatabase.IsAiTagsInProgress);
+
+        // Verify no user events were logged
+        var userEvents = await databaseContext.UserEvents
+            .Where(e => e.VideoId == targetVideo.VideoId)
+            .ToListAsync();
+        Assert.Empty(userEvents);
+    }
+
+    [Fact]
     public async Task AiTemplateEnqueue_WithSufficientCredits_DeductsCreditsAndAppendsLedgerEntry()
     {
         // Arrange
@@ -342,7 +408,8 @@ public class VideoAiTemplateTests(TestFixture fixture)
         var request = new AiVideoTemplateRequest
         {
             TargetVideoId = TestConstants.TargetVideoId,
-            PromptEnrichment = "Generate better metadata for credits test"
+            PromptEnrichment = "Generate better metadata for credits test",
+            ExpectedCreditCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost
         };
 
         var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
@@ -357,7 +424,8 @@ public class VideoAiTemplateTests(TestFixture fixture)
 
         // Assert
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
-        await _helpers.VerifyLedgerAndWalletAfterDeductionAsync(nameof(CreditActionType.AiTemplateEnqueued),
-            TestConstants.AiTemplateCost, TestConstants.TargetVideoId);
+        await _helpers.AssertLedgerAfterBatchDeductionAsync(true, true, true, false,
+            TestConstants.TargetVideoId);
+        await _helpers.AssertWalletAsync(TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost);
     }
 }

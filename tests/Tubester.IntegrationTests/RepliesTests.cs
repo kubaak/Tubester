@@ -70,42 +70,10 @@ public class RepliesTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        fixture.ApiFactory.MockYouTubeIntegration.Reset();
-
-        const string testChannelId = "batch-approve-channel";
-        const string testUploadsPlaylistId = "PLBatchApprove";
-
-        var user = User.Create(
-            MockAuthenticationExtensions.TestSub,
-            MockAuthenticationExtensions.TestEmail,
-            MockAuthenticationExtensions.TestName,
-            MockAuthenticationExtensions.TestPicture,
-            TestFixture.TestingDateTimeOffset);
-
-        var channel = Channel.Create(testChannelId, MockAuthenticationExtensions.TestSub, "Test Channel",
-            testUploadsPlaylistId, DateTimeOffset.UtcNow);
-
-        var video = Video.Create(
-            testUploadsPlaylistId,
-            "video1",
-            "Test Video",
-            "Description",
-            TestFixture.TestingDateTimeOffset,
-            TimeSpan.FromMinutes(10),
-            VideoVisibility.Public,
-            ["test"],
-            "22",
-            "en",
-            "en",
-            null,
-            null,
-            TestFixture.TestingDateTimeOffset,
-            "etag1"
-        );
 
         var reply1 = Reply.Create(
             "comment1",
-            "video1",
+            TestConstants.TargetVideoId,
             "Test Video",
             "First comment",
             TestFixture.TestingDateTimeOffset,
@@ -114,50 +82,15 @@ public class RepliesTests(TestFixture fixture)
 
         var reply2 = Reply.Create(
             "comment2",
-            "video1",
+            TestConstants.TargetVideoId,
             "Test Video",
             "Second comment",
             TestFixture.TestingDateTimeOffset,
             TestFixture.TestingDateTimeOffset.AddDays(-1));
         reply2.SuggestText("Suggested text 2", TestFixture.TestingDateTimeOffset.AddMinutes(5));
 
-        using (var scope = fixture.ApiServices.CreateScope())
-        {
-            var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
-
-            // Add Plan first and save to get the auto-generated ID
-            var plan = new Plan
-            {
-                Code = "FreePlan",
-                Name = "Free Plan",
-                MonthlyCredits = 5,
-                IsActive = true,
-                CreatedAtUtc = TestFixture.TestingDateTimeOffset,
-                UpdatedAtUtc = TestFixture.TestingDateTimeOffset
-            };
-
-            await databaseContext.Plans.AddAsync(plan, CancellationToken.None);
-            await databaseContext.SaveChangesAsync(CancellationToken.None);
-
-            // Now add other entities
-            await databaseContext.Users.AddAsync(user, CancellationToken.None);
-            await databaseContext.Channels.AddAsync(channel, CancellationToken.None);
-            await databaseContext.Videos.AddAsync(video, CancellationToken.None);
-
-            var userSubscription = new Subscription
-            {
-                UserId = user.Id,
-                PlanId = plan.Id,
-                PeriodStartUtc = TestFixture.TestingDateTimeOffset,
-                PeriodEndUtc = TestFixture.TestingDateTimeOffset.AddMonths(1),
-                Status = SubscriptionStatus.Active
-            };
-            await databaseContext.Subscriptions.AddAsync(userSubscription, CancellationToken.None);
-
-            databaseContext.Replies.AddRange(reply1, reply2);
-
-            await databaseContext.SaveChangesAsync();
-        }
+        var options = new TestDataOptions { Replies = [reply1, reply2] };
+        await _helpers.SeedTestDataAsync(options);
 
         var decision1 = new DraftDecisionDto { CommentId = "comment1", ApprovedText = "Approved text 1" };
         var decision2 = new DraftDecisionDto { CommentId = "comment2", ApprovedText = "Approved text 2" };

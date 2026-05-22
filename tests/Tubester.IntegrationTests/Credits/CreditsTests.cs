@@ -24,6 +24,9 @@ public sealed class CreditsTests(TestFixture fixture)
 
     private const string OperationId = "credits-idempotency-operation";
 
+    private const int TotalCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost +
+                                  TestConstants.AiTagsEnqueuedCost;
+
     [Fact]
     public async Task AiTemplateEnqueue_WithInsufficientCredits_ReturnsForbidden_AndDoesNotPersistWalletOrLedger()
     {
@@ -37,7 +40,8 @@ public sealed class CreditsTests(TestFixture fixture)
         var request = new AiVideoTemplateRequest
         {
             TargetVideoId = TestConstants.TargetVideoId,
-            PromptEnrichment = "Generate better metadata for credits test"
+            PromptEnrichment = "Generate better metadata for credits test",
+            ExpectedCreditCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost
         };
 
         var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
@@ -52,7 +56,8 @@ public sealed class CreditsTests(TestFixture fixture)
 
         var responseBody = await response.Content.ReadAsStringAsync();
         Assert.Contains("Insufficient credits to enqueue AI templating.", responseBody);
-        await VerifyNoDeductionsAsync(credits);
+        await _helpers.AssertWalletIsNullAsync();
+        await _helpers.AssertEmptyLedger();
     }
 
     [Fact]
@@ -93,8 +98,8 @@ public sealed class CreditsTests(TestFixture fixture)
         var response = await fixture.HttpClient.SendAsync(requestMessage);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        await _helpers.VerifyLedgerAndWalletAfterDeductionAsync(nameof(CreditActionType.AiTemplateSubmitted),
-            TestConstants.VideoDetailsSubmitActionCost, TestConstants.TargetVideoId);
+        await _helpers.AssertLedgerAfterDeductionAsync(nameof(CreditActionType.AiTemplateSubmitted), TestConstants.AiTemplateSubmittedCost,
+            TestConstants.TargetVideoId, TestFixture.TestingDateTimeOffset);
     }
 
     [Fact]
@@ -103,7 +108,7 @@ public sealed class CreditsTests(TestFixture fixture)
         await fixture.CleanStateAsync();
         await _helpers.SeedTestDataAsync(new TestDataOptions
         {
-            MonthlyCredits = 1
+            MonthlyCredits = 0
         });
 
         var request = new UpdateVideoMetadataRequest(
@@ -126,7 +131,7 @@ public sealed class CreditsTests(TestFixture fixture)
         var responseBody = await response.Content.ReadAsStringAsync();
         Assert.Contains("Insufficient credits to submit AI template changes.", responseBody);
 
-        await VerifyNoDeductionsAsync(1);
+        await VerifyNoDeductionsAsync(0);
     }
 
     [Fact]
@@ -178,7 +183,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        await _helpers.VerifyLedgerAndWalletAfterDeductionAsync(nameof(CreditActionType.ReplyPostedToYouTube),
+        await _helpers.AssertLedgerAfterDeductionAsync(nameof(CreditActionType.ReplyPostedToYouTube),
             TestConstants.ReplyPostedActionCost, reply.CommentId);
     }
 
@@ -252,7 +257,7 @@ public sealed class CreditsTests(TestFixture fixture)
             {
                 Code = "CreditsResubscribePlan",
                 Name = "Credits Resubscribe Plan",
-                MonthlyCredits = 10,
+                MonthlyCredits = TestConstants.MonthlyCredits,
                 IsActive = true,
                 CreatedAtUtc = TestFixture.TestingDateTimeOffset,
                 UpdatedAtUtc = TestFixture.TestingDateTimeOffset
@@ -290,7 +295,8 @@ public sealed class CreditsTests(TestFixture fixture)
         var request = new AiVideoTemplateRequest
         {
             TargetVideoId = TestConstants.TargetVideoId,
-            PromptEnrichment = "Generate better metadata"
+            PromptEnrichment = "Generate better metadata",
+            ExpectedCreditCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost
         };
 
         var requestContent = TestHelpers.CreateJsonContent(request);
@@ -305,8 +311,11 @@ public sealed class CreditsTests(TestFixture fixture)
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
 
-        await _helpers.VerifyLedgerAndWalletAfterDeductionAsync(nameof(CreditActionType.AiTemplateEnqueued), TestConstants.AiTemplateCost, TestConstants.TargetVideoId);
+        await _helpers.AssertLedgerAfterBatchDeductionAsync(true, true, true, false,
+            TestConstants.TargetVideoId, TestFixture.TestingDateTimeOffset);
+        await _helpers.AssertWalletAsync(TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost);
     }
+
 
     [Fact]
     public async Task TrySpend_WhenWalletPeriodMatchesSubscription_DoesNotGrantNewCredits()
@@ -327,7 +336,7 @@ public sealed class CreditsTests(TestFixture fixture)
         {
             Code = "CreditsSamePeriodPlan",
             Name = "Credits Same Period Plan",
-            MonthlyCredits = 10,
+            MonthlyCredits = TestConstants.MonthlyCredits,
             IsActive = true,
             CreatedAtUtc = oldGrantAt,
             UpdatedAtUtc = oldGrantAt
@@ -356,7 +365,8 @@ public sealed class CreditsTests(TestFixture fixture)
         var request = new AiVideoTemplateRequest
         {
             TargetVideoId = TestConstants.TargetVideoId,
-            PromptEnrichment = "Generate better metadata"
+            PromptEnrichment = "Generate better metadata",
+            ExpectedCreditCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost
         };
 
         var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
@@ -369,8 +379,9 @@ public sealed class CreditsTests(TestFixture fixture)
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
 
-        await _helpers.VerifyLedgerAndWalletAfterDeductionAsync(nameof(CreditActionType.AiTemplateEnqueued),
-            TestConstants.AiTemplateCost, TestConstants.TargetVideoId, oldGrantAt);
+        await _helpers.AssertLedgerAfterBatchDeductionAsync(true, true, true, false,
+            TestConstants.TargetVideoId, oldGrantAt);
+        await _helpers.AssertWalletAsync(TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost);
     }
 
     [Fact]
@@ -378,7 +389,7 @@ public sealed class CreditsTests(TestFixture fixture)
     {
         await fixture.CleanStateAsync();
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Reset();
-        
+
 
         var video = TestHelpers.GetTargetVideo();
         await _helpers.SeedTestDataAsync(new TestDataOptions
@@ -416,7 +427,7 @@ public sealed class CreditsTests(TestFixture fixture)
             await commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false));
         }
 
-        await _helpers.VerifyLedgerAndWalletAfterDeductionAsync(nameof(CreditActionType.AiReplyGenerated),
+        await _helpers.AssertLedgerAfterDeductionAsync(nameof(CreditActionType.AiReplyGenerated),
             TestConstants.AiReplyGeneratedCost, commentId);
 
         using var verificationScope = fixture.WorkerServices.CreateScope();
@@ -433,8 +444,8 @@ public sealed class CreditsTests(TestFixture fixture)
     public async Task AiReplyGenerated_WhenAiTextGenerationClientFails_RefundsCredits()
     {
         await fixture.CleanStateAsync();
-        
-        
+
+
         var video = TestHelpers.GetTargetVideo();
         await _helpers.SeedTestDataAsync(new TestDataOptions
         {
@@ -506,7 +517,7 @@ public sealed class CreditsTests(TestFixture fixture)
     {
         await fixture.CleanStateAsync();
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Reset();
-        
+
 
         const string channelId = "credits-ai-reply-insufficient-channel";
         const string uploadsPlaylistId = "ULCreditsAiReplyInsufficient";
@@ -733,7 +744,8 @@ public sealed class CreditsTests(TestFixture fixture)
         var request = new AiVideoTemplateRequest
         {
             TargetVideoId = TestConstants.TargetVideoId,
-            PromptEnrichment = "Generate better metadata"
+            PromptEnrichment = "Generate better metadata",
+            ExpectedCreditCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost
         };
 
         var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
@@ -749,11 +761,11 @@ public sealed class CreditsTests(TestFixture fixture)
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
 
         // Verify that fresh credits were granted and the spend was deducted
-        await _helpers.VerifyLedgerAndWalletAfterDeductionAsync(
-            nameof(CreditActionType.AiTemplateEnqueued),
-            TestConstants.AiTemplateCost,
+        await _helpers.AssertLedgerAfterBatchDeductionAsync(
+            true, true, true, false,
             TestConstants.TargetVideoId,
             TestFixture.TestingDateTimeOffset); // Fresh grant should be at TestingDateTimeOffset
+        await _helpers.AssertWalletAsync(TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost);
 
         // Verify subscription was correctly extended and history record was inserted
         using var verificationScope = fixture.ApiServices.CreateScope();
@@ -825,7 +837,8 @@ public sealed class CreditsTests(TestFixture fixture)
         var request = new AiVideoTemplateRequest
         {
             TargetVideoId = TestConstants.TargetVideoId,
-            PromptEnrichment = "Generate better metadata"
+            PromptEnrichment = "Generate better metadata",
+            ExpectedCreditCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost
         };
 
         var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
@@ -856,7 +869,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
         Assert.Equal(TestFixture.TestingDateTimeOffset, wallet.PeriodStartUtc);
         Assert.Equal(TestFixture.TestingDateTimeOffset.AddMonths(1), wallet.PeriodEndUtc);
-        Assert.Equal(testData.Plan.MonthlyCredits - TestConstants.AiTemplateCost, wallet.Balance);
+        Assert.Equal(testData.Plan.MonthlyCredits - TotalCost, wallet.Balance);
 
         var historyRecords = await verificationContext.SubscriptionHistories
             .AsNoTracking()
@@ -1060,7 +1073,8 @@ public sealed class CreditsTests(TestFixture fixture)
         var request = new AiVideoTemplateRequest
         {
             TargetVideoId = TestConstants.TargetVideoId,
-            PromptEnrichment = "Generate better metadata"
+            PromptEnrichment = "Generate better metadata",
+            ExpectedCreditCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost
         };
 
         var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
@@ -1086,7 +1100,7 @@ public sealed class CreditsTests(TestFixture fixture)
         Assert.Equal(TestFixture.TestingDateTimeOffset.AddMonths(1), wallet.PeriodEndUtc);
 
         Assert.Equal(
-            testData.Plan!.MonthlyCredits - TestConstants.AiTemplateCost,
+            testData.Plan!.MonthlyCredits - TotalCost,
             wallet.Balance);
     }
 
@@ -1130,7 +1144,8 @@ public sealed class CreditsTests(TestFixture fixture)
         var request = new AiVideoTemplateRequest
         {
             TargetVideoId = TestConstants.TargetVideoId,
-            PromptEnrichment = "Generate better metadata"
+            PromptEnrichment = "Generate better metadata",
+            ExpectedCreditCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost
         };
 
         var requestMessage1 = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
@@ -1153,32 +1168,12 @@ public sealed class CreditsTests(TestFixture fixture)
         Assert.Equal(HttpStatusCode.Accepted, response1.StatusCode);
         Assert.Equal(HttpStatusCode.Accepted, response2.StatusCode);
 
+
+        await _helpers.AssertLedgerAfterBatchDeductionAsync(true, true, true, false,
+            TestConstants.TargetVideoId, TestFixture.TestingDateTimeOffset);
+        await _helpers.AssertWalletAsync(TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost);
         using var verificationScope = fixture.ApiServices.CreateScope();
         var verificationContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
-
-        var wallet = await verificationContext.Wallets
-            .AsNoTracking()
-            .SingleAsync(wallet => wallet.UserId == TestConstants.UserId);
-
-        Assert.Equal(
-            testData.Plan!.MonthlyCredits - TestConstants.AiTemplateCost,
-            wallet.Balance);
-
-        var spendEntries = await verificationContext.LedgerEntries
-            .AsNoTracking()
-            .Where(entry => entry.UserId == TestConstants.UserId
-                            && entry.ActionType == nameof(CreditActionType.AiTemplateEnqueued))
-            .ToListAsync();
-
-        Assert.Single(spendEntries);
-
-        var periodGrantEntries = await verificationContext.LedgerEntries
-            .AsNoTracking()
-            .Where(entry => entry.UserId == TestConstants.UserId
-                            && entry.ActionType == "PeriodGrant")
-            .ToListAsync();
-
-        Assert.Single(periodGrantEntries);
 
         var historyRecords = await verificationContext.SubscriptionHistories
             .AsNoTracking()
@@ -1244,7 +1239,8 @@ public sealed class CreditsTests(TestFixture fixture)
         var request = new AiVideoTemplateRequest
         {
             TargetVideoId = TestConstants.TargetVideoId,
-            PromptEnrichment = "Generate better metadata"
+            PromptEnrichment = "Generate better metadata",
+            ExpectedCreditCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost
         };
 
         var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
@@ -1269,7 +1265,7 @@ public sealed class CreditsTests(TestFixture fixture)
         Assert.NotNull(wallet);
         Assert.Equal(TestFixture.TestingDateTimeOffset, wallet.PeriodStartUtc);
         Assert.Equal(TestFixture.TestingDateTimeOffset.AddMonths(1), wallet.PeriodEndUtc);
-        Assert.Equal(testData.Plan!.MonthlyCredits - TestConstants.AiTemplateCost, wallet.Balance);
+        Assert.Equal(testData.Plan!.MonthlyCredits - TotalCost, wallet.Balance);
 
         var historyRecord = await verificationContext.SubscriptionHistories
             .AsNoTracking()
@@ -1322,7 +1318,8 @@ public sealed class CreditsTests(TestFixture fixture)
         var request = new AiVideoTemplateRequest
         {
             TargetVideoId = TestConstants.TargetVideoId,
-            PromptEnrichment = "Generate better metadata"
+            PromptEnrichment = "Generate better metadata",
+            ExpectedCreditCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost
         };
 
         var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
@@ -1353,7 +1350,7 @@ public sealed class CreditsTests(TestFixture fixture)
 
         Assert.Equal(activePeriodStart, wallet.PeriodStartUtc);
         Assert.Equal(activePeriodEnd, wallet.PeriodEndUtc);
-        Assert.Equal(testData.Plan!.MonthlyCredits - TestConstants.AiTemplateCost, wallet.Balance);
+        Assert.Equal(testData.Plan!.MonthlyCredits - TotalCost, wallet.Balance);
 
         Assert.Empty(await verificationContext.SubscriptionHistories
             .AsNoTracking()
@@ -1401,7 +1398,8 @@ public sealed class CreditsTests(TestFixture fixture)
         var request = new AiVideoTemplateRequest
         {
             TargetVideoId = TestConstants.TargetVideoId,
-            PromptEnrichment = "Generate better metadata"
+            PromptEnrichment = "Generate better metadata",
+            ExpectedCreditCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost
         };
 
         var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
@@ -1423,7 +1421,7 @@ public sealed class CreditsTests(TestFixture fixture)
             .AsNoTracking()
             .SingleAsync(wallet => wallet.UserId == TestConstants.UserId);
 
-        Assert.Equal(startingBalance - TestConstants.AiTemplateCost, wallet.Balance);
+        Assert.Equal(startingBalance - TotalCost, wallet.Balance);
 
         var periodGrantEntries = await verificationContext.LedgerEntries
             .AsNoTracking()

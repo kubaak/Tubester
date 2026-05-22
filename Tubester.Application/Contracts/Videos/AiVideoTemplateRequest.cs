@@ -10,6 +10,7 @@ public sealed class AiVideoTemplateRequest
     public bool GenerateDescription { get; init; } = true;
     public bool GenerateTags { get; init; } = true;
     public bool SuggestPlaylists { get; init; }
+    public int ExpectedCreditCost { get; init; }
     public AiVideoOperationFlags GetRequestedAiOperations()
     {
         var operations = AiVideoOperationFlags.None;

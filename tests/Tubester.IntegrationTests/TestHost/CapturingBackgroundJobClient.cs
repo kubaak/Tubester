@@ -12,8 +12,35 @@ public class CapturingBackgroundJobClient : IBackgroundJobClient
     private readonly ConcurrentDictionary<Type, List<CapturedJob>> _capturedJobs = new();
     private int _nextJobId = 1;
 
+    private bool _failOnCreate;
+    private Exception? _failureException;
+
+    /// <summary>
+    /// When enabled, the next call to Create will throw the configured exception.
+    /// Automatically resets after throwing once.
+    /// </summary>
+    public void EnableFailure(Exception? exception)
+    {
+        _failOnCreate = true;
+        _failureException = exception ?? new InvalidOperationException("Simulated job enqueue failure.");
+    }
+
+    public void DisableFailure()
+    {
+        _failOnCreate = false;
+        _failureException = null;
+    }
+
     public string Create(Job job, IState state)
     {
+        if (_failOnCreate)
+        {
+            _failOnCreate = false;
+            var exception = _failureException ?? new InvalidOperationException("Simulated job enqueue failure.");
+            _failureException = null;
+            throw exception;
+        }
+
         var jobId = _nextJobId++.ToString();
         var capturedJob = new CapturedJob(jobId, job, state);
 

@@ -88,4 +88,15 @@ public interface ICreditsStore
         string userId,
         DateTimeOffset nowUtc,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Attempts to spend credits for multiple actions atomically using a single transaction.
+    /// All actions must succeed or the entire batch is rolled back (all-or-nothing).
+    /// Returns the result of the first failed action if any action fails.
+    /// </summary>
+    Task<SpendResult> TrySpendBatchAsync(
+        BatchSpendRequest request,
+        IReadOnlyList<int> costs,
+        DateTimeOffset occurredAtUtc,
+        CancellationToken cancellationToken);
 }

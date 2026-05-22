@@ -53,18 +53,45 @@ public sealed class CreditsController(
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The current credit action costs</returns>
     [HttpGet("costs")]
-    [ProducesResponseType(typeof(IReadOnlyList<CreditActionCostResponse>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<IReadOnlyList<CreditActionCostResponse>>> GetCosts(CancellationToken cancellationToken)
+    [ProducesResponseType(typeof(CreditActionCosts), StatusCodes.Status200OK)]
+    public async Task<ActionResult<CreditActionCosts>> GetCosts(CancellationToken cancellationToken)
     {
         var costs = await creditsStore.GetActionCostsAsync(cancellationToken);
 
-        return Ok(costs.Select(cost => new CreditActionCostResponse
+        var costsByActionType = costs.ToDictionary(
+            c => c.ActionType,
+            c => c.Cost,
+            StringComparer.Ordinal);
+
+        var response = new CreditActionCosts
         {
-            ActionType = cost.ActionType,
-            Cost = cost.Cost
-        }).ToList());
+            CopyTemplateExecuted = GetRequiredCost(costsByActionType, CreditActionType.CopyTemplateExecuted),
+            VideoDetailsSubmitted = GetRequiredCost(costsByActionType, CreditActionType.AiTemplateSubmitted),
+            AiReplyGenerated = GetRequiredCost(costsByActionType, CreditActionType.AiReplyGenerated),
+            ReplyPostedToYouTube = GetRequiredCost(costsByActionType, CreditActionType.ReplyPostedToYouTube),
+            AiTitle = GetRequiredCost(costsByActionType, CreditActionType.AiTitleEnqueued),
+            AiDescription = GetRequiredCost(costsByActionType, CreditActionType.AiDescriptionEnqueued),
+            AiTags = GetRequiredCost(costsByActionType, CreditActionType.AiTagsEnqueued),
+            AiPlaylist = GetRequiredCost(costsByActionType, CreditActionType.AiPlaylistSuggestionEnqueued),
+        };
+
+        return Ok(response);
     }
-    
+
+    private static int GetRequiredCost(
+        IReadOnlyDictionary<string, int> costsByActionType,
+        CreditActionType actionType)
+    {
+        var actionTypeName = actionType.ToString();
+
+        if (!costsByActionType.TryGetValue(actionTypeName, out var cost))
+        {
+            throw new InvalidOperationException($"Missing credit action cost for action type '{actionTypeName}'.");
+        }
+
+        return cost;
+    }
+
     /// <summary>
     /// Response DTO for credit balance query
     /// </summary>
@@ -74,13 +101,28 @@ public sealed class CreditsController(
         public DateTimeOffset? PeriodStartUtc { get; init; }
         public DateTimeOffset? PeriodEndUtc { get; init; }
     }
-    
+
     /// <summary>
     /// Response DTO for credit action cost query
     /// </summary>
-    public sealed class CreditActionCostResponse
+    public sealed class CreditActionCosts
     {
-        public required string ActionType { get; init; }
-        public required int Cost { get; init; }
+        /// <summary>
+        /// 
+        /// </summary>
+        public required int CopyTemplateExecuted { get; init; }
+        /// <summary>
+        /// 
+        /// </summary>
+        public required int VideoDetailsSubmitted { get; init; }
+        /// <summary>
+        /// 
+        /// </summary>
+        public required int AiReplyGenerated { get; init; }
+        public required int ReplyPostedToYouTube { get; init; }
+        public required int AiTitle { get; init; }
+        public required int AiDescription { get; init; }
+        public required int AiTags { get; init; }
+        public required int AiPlaylist { get; init; }
     }
 }

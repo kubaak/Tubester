@@ -16,7 +16,7 @@ public class VideosTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
+
         var targetVideo = TestHelpers.GetTargetVideo();
         await _helpers.SeedTestDataAsync(new TestDataOptions { Videos = [targetVideo] });
 
@@ -135,7 +135,7 @@ public class VideosTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
+
         var targetVideo = TestHelpers.GetTargetVideo();
         var playlist1 = TestHelpers.GetPlaylist("PL1");
         var playlist2 = TestHelpers.GetPlaylist("PL2");
@@ -232,7 +232,7 @@ public class VideosTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
+
         var targetVideo = TestHelpers.GetTargetVideo();
         var playlist1 = TestHelpers.GetPlaylist("PL1");
         var playlist2 = TestHelpers.GetPlaylist("PL2");

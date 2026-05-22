@@ -24,33 +24,18 @@ public sealed class GetCostsTests(TestFixture fixture)
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var result = await TestHelpers.DeserializeAsync<IReadOnlyList<CreditsController.CreditActionCostResponse>>(response);
+        var result = await TestHelpers.DeserializeAsync<CreditsController.CreditActionCosts>(response);
 
         Assert.NotNull(result);
-        Assert.NotEmpty(result);
 
-        Assert.Contains(result, cost =>
-            cost.ActionType == "AiTemplateEnqueued" &&
-            cost.Cost == TestConstants.AiTemplateCost);
+        Assert.Equal(TestConstants.CopyTemplateExecutedCost, result.CopyTemplateExecuted);
+        Assert.Equal(TestConstants.AiTemplateSubmittedCost, result.VideoDetailsSubmitted);
+        Assert.Equal(TestConstants.AiReplyGeneratedCost, result.AiReplyGenerated);
+        Assert.Equal(TestConstants.ReplyPostedActionCost, result.ReplyPostedToYouTube);
 
-        Assert.Contains(result, cost =>
-            cost.ActionType == "AiPlaylistSuggestionEnqueued" &&
-            cost.Cost == TestConstants.AiPlaylistSuggestionCost);
-
-        Assert.Contains(result, cost =>
-            cost.ActionType == "AiTemplateSubmitted" &&
-            cost.Cost == TestConstants.VideoDetailsSubmitActionCost);
-
-        Assert.Contains(result, cost =>
-            cost.ActionType == "AiReplyGenerated" &&
-            cost.Cost == TestConstants.AiReplyGeneratedCost);
-
-        Assert.Contains(result, cost =>
-            cost.ActionType == "ReplyPostedToYouTube" &&
-            cost.Cost == TestConstants.ReplyPostedActionCost);
-
-        Assert.Contains(result, cost =>
-            cost.ActionType == "CopyTemplateExecuted" &&
-            cost.Cost == TestConstants.CopyTemplateExecutedCost);
+        Assert.Equal(TestConstants.AiTitleEnqueuedCost, result.AiTitle);
+        Assert.Equal(TestConstants.AiDescriptionEnqueuedCost, result.AiDescription);
+        Assert.Equal(TestConstants.AiTagsEnqueuedCost, result.AiTags);
+        Assert.Equal(TestConstants.AiPlaylistSuggestionEnqueuedCost, result.AiPlaylist);
     }
 }

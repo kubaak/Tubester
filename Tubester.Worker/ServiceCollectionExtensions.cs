@@ -8,6 +8,7 @@ using Tubester.Abstractions.Channels;
 using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Playlists;
 using Tubester.Abstractions.Replies;
+using Tubester.Abstractions.Transactions;
 using Tubester.Abstractions.Videos;
 using Tubester.Application;
 using Tubester.Application.Credits;
@@ -21,6 +22,7 @@ using Tubester.Persistence.Channels;
 using Tubester.Persistence.Credits;
 using Tubester.Persistence.Playlists;
 using Tubester.Persistence.Replies;
+using Tubester.Persistence.Transactions;
 using Tubester.Persistence.Users;
 using Tubester.Persistence.Videos;
 
@@ -78,6 +80,7 @@ public static class ServiceCollectionExtensions
 
 
         services.AddSingleton<IDateTimeOffsetProvider, DateTimeOffsetProvider>();
+        services.AddScoped<IApplicationTransactionRunner, EfApplicationTransactionRunner>();
 
         if (!addHangfireServer)
         {

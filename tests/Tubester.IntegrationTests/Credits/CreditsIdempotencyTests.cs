@@ -56,7 +56,7 @@ public sealed class CreditsIdempotencyTests(TestFixture fixture)
             .SingleOrDefaultAsync(entity => entity.UserId == TestConstants.UserId);
 
         Assert.NotNull(wallet);
-        Assert.Equal(TestConstants.MonthlyCredits - TestConstants.AiTemplateCost, wallet.Balance);
+        Assert.Equal(TestConstants.MonthlyCredits - TestConstants.AiTitleEnqueuedCost - TestConstants.AiDescriptionEnqueuedCost - TestConstants.AiTagsEnqueuedCost, wallet.Balance);
 
         var ledgerEntries = await databaseContext.LedgerEntries
             .AsNoTracking()
@@ -65,7 +65,7 @@ public sealed class CreditsIdempotencyTests(TestFixture fixture)
             .ToListAsync();
 
         // One grant + one spend only.
-        Assert.Equal(2, ledgerEntries.Count);
+        Assert.Equal(4, ledgerEntries.Count);
     }
 
     [Fact]
@@ -110,7 +110,8 @@ public sealed class CreditsIdempotencyTests(TestFixture fixture)
             .SingleOrDefaultAsync(entity => entity.UserId == TestConstants.UserId);
 
         Assert.NotNull(wallet);
-        Assert.Equal(TestConstants.MonthlyCredits - TestConstants.AiTemplateCost - TestConstants.AiTemplateCost, wallet.Balance);
+        const int totalCost = (TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost) * 2;
+        Assert.Equal(TestConstants.MonthlyCredits - totalCost, wallet.Balance);
 
         var ledgerEntries = await databaseContext.LedgerEntries
             .AsNoTracking()
@@ -119,7 +120,7 @@ public sealed class CreditsIdempotencyTests(TestFixture fixture)
             .ToListAsync();
 
         // One grant + two spends.
-        Assert.Equal(3, ledgerEntries.Count);
+        Assert.Equal(7, ledgerEntries.Count);
     }
 
     private static AiVideoTemplateRequest CreateAiTemplateRequest(string targetVideoId)
@@ -127,7 +128,8 @@ public sealed class CreditsIdempotencyTests(TestFixture fixture)
         return new AiVideoTemplateRequest
         {
             TargetVideoId = targetVideoId,
-            PromptEnrichment = "Generate better metadata"
+            PromptEnrichment = "Generate better metadata",
+            ExpectedCreditCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost
         };
     }
 }

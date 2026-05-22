@@ -34,7 +34,7 @@ public sealed class AiRuntimeOptionsService(
                 break;
         }
         var provider = await configService.GetValueAsync<string>(ApplicationConfigurationKeys.AiProvider, ct);
-        
+
 
         // Use defaults if not configured
         provider ??= AiProviders.Ollama;

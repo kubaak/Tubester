@@ -40,7 +40,7 @@ public class AiTemplateJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
+
 
         var targetVideo = TestHelpers.GetTargetVideo();
         var testData = await _helpers.SeedTestDataAsync(new TestDataOptions
@@ -95,7 +95,7 @@ public class AiTemplateJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
+
 
         var targetVideo = TestHelpers.GetTargetVideo();
         await _helpers.SeedTestDataAsync(new TestDataOptions
@@ -138,7 +138,7 @@ public class AiTemplateJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
+
 
         var targetVideo = TestHelpers.GetTargetVideo();
         await _helpers.SeedTestDataAsync(new TestDataOptions
@@ -186,7 +186,7 @@ public class AiTemplateJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
+
 
         var targetVideo = TestHelpers.GetTargetVideo();
         var originalTags = targetVideo.Tags;
@@ -230,7 +230,7 @@ public class AiTemplateJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
+
 
         var targetVideo = TestHelpers.GetTargetVideo();
         await _helpers.SeedTestDataAsync(new TestDataOptions

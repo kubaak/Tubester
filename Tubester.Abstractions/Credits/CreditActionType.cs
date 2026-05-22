@@ -39,4 +39,19 @@ public enum CreditActionType
     /// Suggesting playlists for a video.
     /// </summary>
     AiPlaylistSuggestionEnqueued = 6,
+
+    /// <summary>
+    /// Enqueuing AI title generation job.
+    /// </summary>
+    AiTitleEnqueued = 7,
+
+    /// <summary>
+    /// Enqueuing AI description generation job.
+    /// </summary>
+    AiDescriptionEnqueued = 8,
+
+    /// <summary>
+    /// Enqueuing AI tags generation job.
+    /// </summary>
+    AiTagsEnqueued = 9,
 }

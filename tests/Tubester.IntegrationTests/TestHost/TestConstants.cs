@@ -15,12 +15,14 @@ public static class TestConstants
     public const string FreePlanCode = "free";
     public const string FreePlanName = "Free";
 
-    public const int MonthlyCredits = 10;
-    public const int AiTemplateCost = 5;
-    public const int AiPlaylistSuggestionCost = 5;
-    public const int AiTemplateWithPlaylistCost = 10;
-    public const int VideoDetailsSubmitActionCost = 2;
+    public const int MonthlyCredits = 30;
+    public const int AiTitleEnqueuedCost = 2;
+    public const int AiDescriptionEnqueuedCost = 3;
+    public const int AiTagsEnqueuedCost = 2;
+    public const int AiPlaylistSuggestionEnqueuedCost = 5;
     public const int AiReplyGeneratedCost = 3;
     public const int ReplyPostedActionCost = 1;
     public const int CopyTemplateExecutedCost = 1;
+    public const int AiTemplateSubmittedCost = 1;
+    public const int ReplyPostedToYouTubeCost = 1;
 }
