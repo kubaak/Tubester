@@ -172,7 +172,8 @@ public sealed class GetBalanceTests(TestFixture fixture)
         var request = new AiVideoTemplateRequest
         {
             TargetVideoId = targetVideo.VideoId,
-            PromptEnrichment = "Generate better metadata"
+            PromptEnrichment = "Generate better metadata",
+            ExpectedCreditCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost
         };
 
         var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/ai-template")
@@ -195,7 +196,7 @@ public sealed class GetBalanceTests(TestFixture fixture)
         var result = await TestHelpers.DeserializeAsync<CreditsController.CreditBalanceResponse>(balanceResponse);
 
         Assert.NotNull(result);
-        Assert.Equal(TestConstants.MonthlyCredits - TestConstants.AiTemplateCost, result.Balance);
+        Assert.Equal(TestConstants.MonthlyCredits - TestConstants.AiTitleEnqueuedCost - TestConstants.AiDescriptionEnqueuedCost - TestConstants.AiTagsEnqueuedCost, result.Balance);
     }
 
     [Fact]

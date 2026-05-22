@@ -69,7 +69,7 @@ public sealed class AiPromptBuilder : IAiPromptBuilder
         var targetLanguage = string.IsNullOrWhiteSpace(language)
             ? "English"
             : language;
-        
+
         return $$"""
                  YouTube reply. JSON only {"reply":"text or null"}
                  Video: {{videoTitle}}

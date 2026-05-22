@@ -12,6 +12,15 @@ public interface ICreditsService
         object? metadata,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Attempts to spend credits for multiple actions atomically.
+    /// All actions must have sufficient credits or the entire batch fails (all-or-nothing).
+    /// Duplicate detection is per-action based on idempotency keys.
+    /// </summary>
+    Task<SpendResult> TrySpendBatchAsync(
+        BatchSpendRequest request,
+        CancellationToken cancellationToken);
+
     Task RefundAsync(
         string userId,
         string actionType,

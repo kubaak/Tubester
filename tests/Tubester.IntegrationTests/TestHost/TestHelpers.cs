@@ -98,6 +98,13 @@ public sealed class TestHelpers(IServiceProvider serviceProvider)
 
         await databaseContext.SaveChangesAsync(CancellationToken.None);
 
+        if (options.ActionCosts.Count > 0)
+        {
+            databaseContext.ActionCosts.AddRange(options.ActionCosts);
+        }
+
+        await databaseContext.SaveChangesAsync(CancellationToken.None);
+
         var plan = new Plan
         {
             Code = TestConstants.FreePlanCode,
@@ -345,11 +352,34 @@ public sealed class TestHelpers(IServiceProvider serviceProvider)
             CancellationToken.None);
     }
 
-    public async Task VerifyLedgerAndWalletAfterDeductionAsync(string actionType, int cost, string expectedReferenceId,
-        DateTimeOffset? expectedGrantAt = null)
+    public async Task AssertWalletIsNullAsync()
     {
-        expectedGrantAt ??= TestFixture.TestingDateTimeOffset;
+        using var verificationScope = serviceProvider.CreateScope();
+        var databaseContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
 
+        var wallet = await databaseContext.Wallets
+            .AsNoTracking()
+            .SingleOrDefaultAsync(entity => entity.UserId == TestConstants.UserId);
+
+        Assert.Null(wallet);
+    }
+    
+    public async Task AssertEmptyLedger()
+    {
+        using var verificationScope = serviceProvider.CreateScope();
+        var databaseContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
+        
+
+        var ledgerEntries = await databaseContext.LedgerEntries
+            .AsNoTracking()
+            .Where(entry => entry.UserId == TestConstants.UserId)
+            .ToListAsync();
+        Assert.NotNull(ledgerEntries);
+        Assert.Empty(ledgerEntries);
+    }
+
+    public async Task AssertWalletAsync(int cost)
+    {
         using var verificationScope = serviceProvider.CreateScope();
         var databaseContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
 
@@ -359,6 +389,15 @@ public sealed class TestHelpers(IServiceProvider serviceProvider)
 
         Assert.NotNull(wallet);
         Assert.Equal(TestConstants.MonthlyCredits - cost, wallet.Balance);
+    }
+
+    public async Task AssertLedgerAfterDeductionAsync(string actionType, int cost, string expectedReferenceId,
+        DateTimeOffset? expectedGrantAt = null)
+    {
+        expectedGrantAt ??= TestFixture.TestingDateTimeOffset;
+
+        using var verificationScope = serviceProvider.CreateScope();
+        var databaseContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
 
         var ledgerEntries = await databaseContext.LedgerEntries
             .AsNoTracking()
@@ -367,6 +406,8 @@ public sealed class TestHelpers(IServiceProvider serviceProvider)
             .ToListAsync();
 
         Assert.Equal(2, ledgerEntries.Count);
+
+        await AssertWalletAsync(cost);
 
         var grantEntry = Assert.Single(ledgerEntries, entry => entry.Delta > 0);
         Assert.Equal("PeriodGrant", grantEntry.ActionType);
@@ -377,6 +418,59 @@ public sealed class TestHelpers(IServiceProvider serviceProvider)
         Assert.Equal(actionType, spendEntry.ActionType);
         Assert.Equal(-cost, spendEntry.Delta);
         Assert.Equal(expectedReferenceId, spendEntry.ReferenceId);
+    }
+
+    public async Task AssertLedgerAfterBatchDeductionAsync(bool title, bool description, bool tags, bool playlist,
+        string expectedReferenceId, DateTimeOffset? expectedGrantAt = null)
+    {
+        expectedGrantAt ??= TestFixture.TestingDateTimeOffset;
+
+        using var verificationScope = serviceProvider.CreateScope();
+        var databaseContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        var ledgerEntries = await databaseContext.LedgerEntries
+            .AsNoTracking()
+            .Where(entry => entry.UserId == TestConstants.UserId)
+            .OrderBy(entry => entry.OccurredAtUtc)
+            .ToListAsync();
+
+        var grantEntry = Assert.Single(ledgerEntries, entry => entry.Delta > 0);
+        Assert.Equal("PeriodGrant", grantEntry.ActionType);
+        Assert.Equal(expectedGrantAt, grantEntry.OccurredAtUtc);
+        Assert.Equal(TestConstants.MonthlyCredits, grantEntry.Delta);
+
+        var expectedLedgerEntries = 1;
+        if (title)
+        {
+            ++expectedLedgerEntries;
+            var spendEntry = Assert.Single(ledgerEntries, entry => entry is { Delta: < 0, ActionType: nameof(CreditActionType.AiTitleEnqueued) });
+            Assert.Equal(-TestConstants.AiTitleEnqueuedCost, spendEntry.Delta);
+            Assert.Equal(expectedReferenceId, spendEntry.ReferenceId);
+        }
+        if (description)
+        {
+            ++expectedLedgerEntries;
+            var spendEntry = Assert.Single(ledgerEntries, entry => entry is { Delta: < 0, ActionType: nameof(CreditActionType.AiDescriptionEnqueued) });
+            Assert.Equal(-TestConstants.AiDescriptionEnqueuedCost, spendEntry.Delta);
+            Assert.Equal(expectedReferenceId, spendEntry.ReferenceId);
+        }
+        if (tags)
+        {
+            ++expectedLedgerEntries;
+            var spendEntry = Assert.Single(ledgerEntries, entry => entry is { Delta: < 0, ActionType: nameof(CreditActionType.AiTagsEnqueued) });
+            Assert.Equal(-TestConstants.AiTagsEnqueuedCost, spendEntry.Delta);
+            Assert.Equal(expectedReferenceId, spendEntry.ReferenceId);
+        }
+        if (playlist)
+        {
+            ++expectedLedgerEntries;
+            var spendEntry = Assert.Single(ledgerEntries, entry => entry is { Delta: < 0, ActionType: nameof(CreditActionType.AiPlaylistSuggestionEnqueued) });
+            Assert.Equal(-TestConstants.AiTitleEnqueuedCost, spendEntry.Delta);
+            Assert.Equal(expectedReferenceId, spendEntry.ReferenceId);
+        }
+
+        Assert.Equal(expectedLedgerEntries, ledgerEntries.Count);
+
     }
 
     public static void SetProperty<TValue>(object target, string propertyName, TValue? value)
@@ -409,7 +503,7 @@ public sealed class TestHelpers(IServiceProvider serviceProvider)
                 Temperature: 0.7,
                 Duration: TimeSpan.FromMilliseconds(500)));
     }
-    
+
     public async Task ResetDbAsync()
     {
         using var scope = serviceProvider.CreateScope();

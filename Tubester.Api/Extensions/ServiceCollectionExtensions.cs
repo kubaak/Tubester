@@ -198,7 +198,7 @@ public static class ServiceCollectionExtensions
             OnRemoteFailure = _onRemoteFailure
         };
     }
-    
+
     private static OAuthEvents CreateWriteOAuthEvents()
     {
         return new OAuthEvents
@@ -243,7 +243,7 @@ public static class ServiceCollectionExtensions
             OnRemoteFailure = _onRemoteFailure
         };
     }
-    
+
     private static readonly Func<RemoteFailureContext, Task> _onRemoteFailure = context =>
     {
         var loggerFactory = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>();
@@ -254,7 +254,7 @@ public static class ServiceCollectionExtensions
             "External login failed. Scheme={Scheme}, Path={Path}",
             context.Scheme.Name,
             context.Request.Path);
-        
+
         context.HandleResponse();
 
         foreach (var cookie in context.Request.Cookies.Keys)

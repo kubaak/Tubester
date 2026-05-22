@@ -362,10 +362,10 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
         var suggestedList = suggestedIds.ToList();
 
         Assert.NotEmpty(suggestedList);
-        Assert.Contains(suggestedList, id => id == "PLTravelVlogs" );
+        Assert.Contains(suggestedList, id => id == "PLTravelVlogs");
         Assert.Contains(suggestedList, id => id == "PLColombia");
     }
-    
+
     [Fact(Skip = "Dev")]
     public async Task SuggestPlaylistIdsAsync_WithRealData()
     {
@@ -377,7 +377,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
         await _helpers.SeedTestDataAsync();
         using var scope = _factory.TestHost.Services.CreateScope();
         var aiClient = scope.ServiceProvider.GetRequiredService<IAiClient>();
-        
+
         var playlists = new List<PlaylistCandidateDto>
         {
             new() { PlaylistId = "PLkF34pCo5F9txUy-Bd7h3hEXUlzaMLn-O", Name = "Jízda" },
@@ -440,7 +440,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
             CancellationToken.None);
 
         var suggestedList = suggestedIds.ToList();
-        
+
         Assert.Contains(suggestedList, id =>
             id is "PLkF34pCo5F9vfJ5ZEUBjllKtIgrG60ds5"); // Travel 🌎
         Assert.Contains(suggestedList, id =>
@@ -448,7 +448,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
 
         // Assert.True(suggestedList.Count <= 2);
     }
-    
+
     [Fact(Skip = "Dev")]
     public async Task SuggestReplyAsync_WithValidComment_ReturnsReply()
     {

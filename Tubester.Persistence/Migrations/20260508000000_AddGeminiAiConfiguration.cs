@@ -21,7 +21,7 @@ namespace Tubester.Persistence.Migrations
                 keyValue: "Ai.Provider",
                 column: "Key",
                 value: "Ai:Provider");
-            
+
             migrationBuilder.UpdateData(
                 table: "ApplicationConfigurations",
                 keyColumn: "Key",
@@ -35,7 +35,7 @@ namespace Tubester.Persistence.Migrations
                 keyValue: "Ai.Model",
                 column: "Key",
                 value: "Ai:Model");
-            
+
             migrationBuilder.UpdateData(
                 table: "ApplicationConfigurations",
                 keyColumn: "Key",
@@ -67,7 +67,7 @@ namespace Tubester.Persistence.Migrations
                 keyValue: "Ai:Provider",
                 column: "Key",
                 value: "Ai.Provider");
-            
+
             migrationBuilder.UpdateData(
                 table: "ApplicationConfigurations",
                 keyColumn: "Key",
@@ -81,7 +81,7 @@ namespace Tubester.Persistence.Migrations
                 keyValue: "Ai:Model",
                 column: "Key",
                 value: "Ai.Model");
-            
+
             migrationBuilder.UpdateData(
                 table: "ApplicationConfigurations",
                 keyColumn: "Key",

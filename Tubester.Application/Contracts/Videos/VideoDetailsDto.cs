@@ -58,4 +58,8 @@ public sealed record VideoDetailsDto
     /// Default audio language of the video content.
     /// </summary>
     public string? DefaultAudioLanguage { get; init; }
+    /// <summary>
+    /// Video thumbnail URL.
+    /// </summary>
+    public required string ThumbnailUrl { get; init; }
 }

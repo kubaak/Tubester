@@ -133,7 +133,8 @@ public class VideoService(
             Playlists = [.. playlists.Select(p => new PlaylistDto { Id = p.PlaylistId, Name = p.Title })],
             Category = video.CategoryId is { } catId ? new CategoryDto(catId, null) : null,
             DefaultLanguage = video.DefaultLanguage,
-            DefaultAudioLanguage = video.DefaultAudioLanguage
+            DefaultAudioLanguage = video.DefaultAudioLanguage,
+            ThumbnailUrl = video.ThumbnailUrl
         };
     }
 
@@ -363,7 +364,8 @@ public class VideoService(
             Playlists = [.. aiTemplatePlaylists.Select(p => new PlaylistDto { Id = p.PlaylistId, Name = p.Title })],
             Category = video.CategoryId is { } aiTemplateCatId ? new CategoryDto(aiTemplateCatId, null) : null,
             DefaultLanguage = video.DefaultLanguage,
-            DefaultAudioLanguage = video.DefaultAudioLanguage
+            DefaultAudioLanguage = video.DefaultAudioLanguage,
+            ThumbnailUrl = video.ThumbnailUrl
         };
     }
 
@@ -433,7 +435,8 @@ public class VideoService(
             Playlists = [.. draftPlaylists.Select(p => new PlaylistDto { Id = p.PlaylistId, Name = p.Title })],
             Category = video.CategoryId is { } draftCatId ? new CategoryDto(draftCatId, null) : null,
             DefaultLanguage = video.DefaultLanguage,
-            DefaultAudioLanguage = video.DefaultAudioLanguage
+            DefaultAudioLanguage = video.DefaultAudioLanguage,
+            ThumbnailUrl = video.ThumbnailUrl
         };
     }
 
@@ -558,7 +561,8 @@ public class VideoService(
             Playlists = [.. playlists.Select(p => new PlaylistDto { Id = p.PlaylistId, Name = p.Title })],
             Category = video.CategoryId is { } catId ? new CategoryDto(catId, null) : null,
             DefaultLanguage = video.DefaultLanguage,
-            DefaultAudioLanguage = video.DefaultAudioLanguage
+            DefaultAudioLanguage = video.DefaultAudioLanguage,
+            ThumbnailUrl = video.ThumbnailUrl
         };
     }
 }

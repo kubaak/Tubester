@@ -16,7 +16,7 @@ public class VideoUpdateTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
+
 
         var targetVideo = TestHelpers.GetTargetVideo();
         await _helpers.SeedTestDataAsync(new TestDataOptions { Videos = [targetVideo] });

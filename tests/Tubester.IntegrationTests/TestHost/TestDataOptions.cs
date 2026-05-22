@@ -1,4 +1,5 @@
 ﻿using Tubester.Abstractions.ApplicationConfiguration;
+using Tubester.Abstractions.Credits;
 using Tubester.Domain;
 using Tubester.Persistence.Credits;
 
@@ -16,7 +17,66 @@ public sealed record TestDataOptions
     public IReadOnlyCollection<VideoPlaylist> VideoPlaylists { get; init; } = [];
     public IReadOnlyCollection<Plan> Plans { get; init; } = [];
     public IReadOnlyCollection<Reply> Replies { get; init; } = [];
-    public List<ApplicationConfiguration> ApplicationConfigurations { get; init; } = 
+    public IReadOnlyCollection<ActionCost> ActionCosts { get; init; } =
+    [
+        new()
+        {
+            ActionType = nameof(CreditActionType.AiTitleEnqueued),
+            Cost = TestConstants.AiTitleEnqueuedCost,
+            IsEnabled = true,
+            UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+        },
+        new()
+        {
+            ActionType = nameof(CreditActionType.AiDescriptionEnqueued),
+            Cost = TestConstants.AiDescriptionEnqueuedCost,
+            IsEnabled = true,
+            UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+        },
+        new()
+        {
+            ActionType = nameof(CreditActionType.AiTagsEnqueued),
+            Cost = TestConstants.AiTagsEnqueuedCost,
+            IsEnabled = true,
+            UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+        },
+        new()
+        {
+            ActionType = nameof(CreditActionType.AiPlaylistSuggestionEnqueued),
+            Cost = TestConstants.AiPlaylistSuggestionEnqueuedCost,
+            IsEnabled = true,
+            UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+        },
+        new()
+        {
+            ActionType = nameof(CreditActionType.AiReplyGenerated),
+            Cost = TestConstants.AiReplyGeneratedCost,
+            IsEnabled = true,
+            UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+        },
+        new()
+        {
+            ActionType = nameof(CreditActionType.CopyTemplateExecuted),
+            Cost = TestConstants.CopyTemplateExecutedCost,
+            IsEnabled = true,
+            UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+        },
+        new()
+        {
+            ActionType = nameof(CreditActionType.AiTemplateSubmitted),
+            Cost = TestConstants.AiTemplateSubmittedCost,
+            IsEnabled = true,
+            UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+        },
+        new()
+        {
+            ActionType = nameof(CreditActionType.ReplyPostedToYouTube),
+            Cost = TestConstants.ReplyPostedToYouTubeCost,
+            IsEnabled = true,
+            UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+        }
+    ];
+    public List<ApplicationConfiguration> ApplicationConfigurations { get; init; } =
     [
         ApplicationConfiguration.Create(ApplicationConfigurationKeys.AiProvider, AiProviders.Ollama, ConfigurationValueType.String, "", true, TestFixture.TestingDateTimeOffset)
     ];

@@ -63,8 +63,8 @@ public class CommentScanJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
-        
+
+
 
         var targetVideo = TestHelpers.GetTargetVideo();
         await _helpers.SeedTestDataAsync(new TestDataOptions
@@ -142,7 +142,7 @@ public class CommentScanJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
+
 
         // Act
         using var jobScope = fixture.WorkerServices.CreateScope();
@@ -163,7 +163,7 @@ public class CommentScanJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
+
 
         var targetVideo = TestHelpers.GetTargetVideo();
         await _helpers.SeedTestDataAsync(new TestDataOptions
@@ -191,8 +191,8 @@ public class CommentScanJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
-        
+
+
 
         var targetVideo = TestHelpers.GetTargetVideo();
         var testData = await _helpers.SeedTestDataAsync(new TestDataOptions
@@ -246,8 +246,8 @@ public class CommentScanJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
-        
+
+
 
         var testData = await _helpers.SeedTestDataAsync();
 
@@ -290,8 +290,8 @@ public class CommentScanJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
-        
+
+
 
         var targetVideo = TestHelpers.GetTargetVideo();
         await _helpers.SeedTestDataAsync(new TestDataOptions
@@ -376,8 +376,8 @@ public class CommentScanJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
-        
+
+
 
         var targetVideo = TestHelpers.GetTargetVideo();
         await _helpers.SeedTestDataAsync(new TestDataOptions
@@ -461,8 +461,8 @@ public class CommentScanJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
-        
+
+
 
         var targetVideo = TestHelpers.GetTargetVideo();
         await _helpers.SeedTestDataAsync(new TestDataOptions
@@ -531,8 +531,8 @@ public class CommentScanJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
-        
+
+
 
         var publicVideo = TestHelpers.GetTargetVideo(visibility: VideoVisibility.Public);
         var privateVideo = TestHelpers.GetTargetVideo("private-video-id", VideoVisibility.Private);
@@ -597,8 +597,8 @@ public class CommentScanJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
-        
+
+
 
         var targetVideo = TestHelpers.GetTargetVideo();
         await _helpers.SeedTestDataAsync(new TestDataOptions

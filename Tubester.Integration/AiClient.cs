@@ -122,7 +122,7 @@ public sealed partial class AiClient(
             AiOperation.PlaylistSuggestion,
             prompt,
             cancellationToken);
-        
+
         logger.LogDebug("Playlist suggestion result: {Text}", result.Text);
 
         LogUsage(result.Usage, AiOperation.PlaylistSuggestion);

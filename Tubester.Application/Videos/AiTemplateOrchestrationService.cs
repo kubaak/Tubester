@@ -2,6 +2,7 @@ using Hangfire;
 using Tubester.Abstractions.Analytics;
 using Tubester.Abstractions.Channels;
 using Tubester.Abstractions.Credits;
+using Tubester.Abstractions.Transactions;
 using Tubester.Abstractions.Videos;
 using Tubester.Application.Common;
 using Tubester.Application.Contracts.Videos;
@@ -15,7 +16,8 @@ public class AiTemplateOrchestrationService(
     IVideoRepository videoRepository,
     IBackgroundJobClient backgroundJobClient,
     IUserEventLogger userEventLogger,
-    ICreditsService creditsService) : IAiTemplateOrchestrationService
+    ICreditsService creditsService,
+    IApplicationTransactionRunner transactionRunner) : IAiTemplateOrchestrationService
 {
     public async Task EnqueueAiTemplateAsync(
         string userId,
@@ -26,37 +28,51 @@ public class AiTemplateOrchestrationService(
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         ArgumentException.ThrowIfNullOrWhiteSpace(operationId);
 
-        var shouldGenerateMetadata =
-            request.GenerateTitle || request.GenerateDescription || request.GenerateTags;
+        var shouldGenerateMetadata = false;
+        var actions = new List<BatchSpendAction>();
 
-        var shouldSuggestPlaylists = request.SuggestPlaylists;
-
-        string creditAction;
-        string keyBase;
-        switch (shouldGenerateMetadata)
+        if (request.GenerateTitle)
         {
-            case true when shouldSuggestPlaylists:
-                creditAction = nameof(CreditActionType.AiTemplateWithPlaylistEnqueued);
-                keyBase = "ai-template-playlist-enqueue";
-                break;
-            case true:
-                creditAction = nameof(CreditActionType.AiTemplateEnqueued);
-                keyBase = "ai-template-enqueue";
-                break;
-            default:
-                {
-                    if (shouldSuggestPlaylists)
-                    {
-                        creditAction = nameof(CreditActionType.AiPlaylistSuggestionEnqueued);
-                        keyBase = "ai-playlist-enqueue";
-                    }
-                    else
-                    {
-                        throw new BadRequestException("At least one AI template action must be requested.");
-                    }
+            shouldGenerateMetadata = true;
+            actions.Add(new BatchSpendAction(
+                nameof(CreditActionType.AiTitleEnqueued),
+                $"ai-title-enqueue:{userId}:{request.TargetVideoId}:{operationId}",
+                request.TargetVideoId,
+                new { operationId }));
+        }
 
-                    break;
-                }
+        if (request.GenerateDescription)
+        {
+            shouldGenerateMetadata = true;
+            actions.Add(new BatchSpendAction(
+                nameof(CreditActionType.AiDescriptionEnqueued),
+                $"ai-description-enqueue:{userId}:{request.TargetVideoId}:{operationId}",
+                request.TargetVideoId,
+                new { operationId }));
+        }
+
+        if (request.GenerateTags)
+        {
+            shouldGenerateMetadata = true;
+            actions.Add(new BatchSpendAction(
+                nameof(CreditActionType.AiTagsEnqueued),
+                $"ai-tags-enqueue:{userId}:{request.TargetVideoId}:{operationId}",
+                request.TargetVideoId,
+                new { operationId }));
+        }
+
+        if (request.SuggestPlaylists)
+        {
+            actions.Add(new BatchSpendAction(
+                nameof(CreditActionType.AiPlaylistSuggestionEnqueued),
+                $"ai-playlist-enqueue:{userId}:{request.TargetVideoId}:{operationId}",
+                request.TargetVideoId,
+                new { operationId }));
+        }
+
+        if (actions.Count == 0)
+        {
+            throw new BadRequestException("At least one AI template action must be requested.");
         }
 
         var uploadPlaylistId = channelContext.GetRequiredUploadPlaylistId();
@@ -64,30 +80,25 @@ public class AiTemplateOrchestrationService(
 
         var operations = request.GetRequestedAiOperations();
 
-        var marked = false;
-
-        try
+        await transactionRunner.ExecuteAsync(async ct =>
         {
-            var aiTemplateEnqueueIdempotencyKey =
-                $"{keyBase}:{userId}:{request.TargetVideoId}:{operationId}";
+            var batchRequest = new BatchSpendRequest
+            {
+                UserId = userId,
+                Actions = actions
+            };
 
-            var spendResult = await creditsService.TrySpendAsync(
-                userId,
-                creditAction,
-                aiTemplateEnqueueIdempotencyKey,
-                request.TargetVideoId,
-                new
-                {
-                    generateTitle = request.GenerateTitle,
-                    generateDescription = request.GenerateDescription,
-                    generateTags = request.GenerateTags,
-                    suggestPlaylists = request.SuggestPlaylists
-                },
-                cancellationToken);
+            var spendResult = await creditsService.TrySpendBatchAsync(batchRequest, ct);
 
             if (!spendResult.Succeeded)
             {
                 throw new PaymentRequiredException("Insufficient credits to enqueue AI templating.");
+            }
+
+            if (request.ExpectedCreditCost != spendResult.FinalCost)
+            {
+                throw new ConflictException(
+                    $"Expected credit cost {request.ExpectedCreditCost} does not match actual cost {spendResult.FinalCost}.");
             }
 
             if (spendResult.WasDuplicate)
@@ -95,20 +106,17 @@ public class AiTemplateOrchestrationService(
                 return;
             }
 
-            marked = await videoRepository.TryAddAiOperationsInProgressAsync(
+            var marked = await videoRepository.TryAddAiOperationsInProgressAsync(
                 uploadPlaylistId,
                 request.TargetVideoId,
                 operations,
-                cancellationToken);
+                ct);
 
             if (!marked)
             {
                 throw new ConflictException(
                     $"Target video {request.TargetVideoId} not found for current channel or one of the requested AI operations is already in progress.");
             }
-
-            string? detailsJobId = null;
-            string? playlistSuggestionJobId = null;
 
             if (shouldGenerateMetadata)
             {
@@ -120,9 +128,9 @@ public class AiTemplateOrchestrationService(
                     request.GenerateTitle,
                     request.GenerateDescription,
                     request.GenerateTags,
-                    request.SuggestPlaylists
-                );
-                detailsJobId = backgroundJobClient.Enqueue<AiTemplateJob>(
+                    request.SuggestPlaylists);
+
+                var detailsJobId = backgroundJobClient.Enqueue<AiTemplateJob>(
                     job => job.Run(detailsRequest, JobCancellationToken.Null));
 
                 await userEventLogger.LogAsync(
@@ -136,7 +144,7 @@ public class AiTemplateOrchestrationService(
                         generateDescription = request.GenerateDescription,
                         generateTags = request.GenerateTags
                     },
-                    cancellationToken);
+                    ct);
 
                 backgroundJobClient.ContinueJobWith<AiTemplateFinalizeJob>(
                     detailsJobId,
@@ -144,10 +152,15 @@ public class AiTemplateOrchestrationService(
                     JobContinuationOptions.OnAnyFinishedState);
             }
 
-            if (shouldSuggestPlaylists)
+            if (request.SuggestPlaylists)
             {
-                var playlistSuggestionRequest = new PlaylistSuggestionRequest(channelId, uploadPlaylistId, request.TargetVideoId, request.PromptEnrichment);
-                playlistSuggestionJobId = backgroundJobClient.Enqueue<AiPlaylistSuggestionJob>(
+                var playlistSuggestionRequest = new PlaylistSuggestionRequest(
+                    channelId,
+                    uploadPlaylistId,
+                    request.TargetVideoId,
+                    request.PromptEnrichment);
+
+                var playlistSuggestionJobId = backgroundJobClient.Enqueue<AiPlaylistSuggestionJob>(
                     job => job.Run(playlistSuggestionRequest, JobCancellationToken.Null));
 
                 await userEventLogger.LogAsync(
@@ -163,26 +176,13 @@ public class AiTemplateOrchestrationService(
                         generateDescription = request.GenerateDescription,
                         generateTags = request.GenerateTags
                     },
-                    cancellationToken);
+                    ct);
 
                 backgroundJobClient.ContinueJobWith<AiPlaylistSuggestionFinalizeJob>(
                     playlistSuggestionJobId,
                     job => job.Run(uploadPlaylistId, request.TargetVideoId, JobCancellationToken.Null),
                     JobContinuationOptions.OnAnyFinishedState);
             }
-        }
-        catch
-        {
-            if (marked)
-            {
-                await videoRepository.TryClearAiOperationsInProgressAsync(
-                    uploadPlaylistId,
-                    request.TargetVideoId,
-                    operations,
-                    cancellationToken);
-            }
-
-            throw;
-        }
+        }, cancellationToken);
     }
 }

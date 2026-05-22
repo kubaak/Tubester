@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Npgsql;
 using Tubester.Abstractions;
 using Tubester.Abstractions.Credits;
+using Tubester.Abstractions.Exceptions;
 using Tubester.Application.Common;
 
 namespace Tubester.Application.Credits;
@@ -54,13 +55,84 @@ public sealed class CreditsService(
             return new SpendResult { NewBalance = 0, Succeeded = false, WasDuplicate = false, FailureReason = SpendFailureReason.NoWallet };
         }
 
-        var spendResult = await creditsStore.TrySpendAsync(
-            userId,
-            actionType,
-            actionCost.Cost,
-            idempotencyKey,
-            referenceId,
-            SerializeMetadata(metadata),
+        try
+        {
+            return await creditsStore.TrySpendAsync(
+                userId,
+                actionType,
+                actionCost.Cost,
+                idempotencyKey,
+                referenceId,
+                SerializeMetadata(metadata),
+                nowUtc,
+                cancellationToken);
+        }
+        catch (InsufficientBalanceException ex)
+        {
+            logger.LogWarning(
+                "Spend failed for user {UserId}, action {ActionType}: insufficient balance",
+                userId, actionType);
+
+            return new SpendResult
+            {
+                Succeeded = false,
+                WasDuplicate = false,
+                NewBalance = ex.CurrentBalance,
+                FinalCost = actionCost.Cost,
+                FailureReason = SpendFailureReason.InsufficientBalance
+            };
+        }
+    }
+
+    public async Task<SpendResult> TrySpendBatchAsync(
+        BatchSpendRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.UserId);
+
+        if (request.Actions.Count == 0)
+        {
+            throw new BadRequestException("At least one action is required.");
+        }
+
+        var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
+
+        var subscription = await TryEnsureActiveSubscriptionAsync(
+            request.UserId,
+            nowUtc,
+            cancellationToken);
+
+        if (subscription is null)
+        {
+            logger.LogWarning(
+                "User {UserId} has no active or renewable subscription; cannot spend credits",
+                request.UserId);
+
+            return new SpendResult { NewBalance = 0, Succeeded = false, WasDuplicate = false, FailureReason = SpendFailureReason.NoWallet };
+        }
+
+        var walletReady = await EnsureWalletForSubscriptionPeriodAsync(
+            request.UserId,
+            subscription,
+            nowUtc,
+            cancellationToken);
+
+        if (!walletReady)
+        {
+            return new SpendResult { NewBalance = 0, Succeeded = false, WasDuplicate = false, FailureReason = SpendFailureReason.NoWallet };
+        }
+
+        // Fetch costs for all action types
+        var costs = new List<int>(request.Actions.Count);
+        foreach (var action in request.Actions)
+        {
+            var actionCost = await GetEnabledActionCostAsync(action.ActionType, cancellationToken);
+            costs.Add(actionCost.Cost);
+        }
+
+        var spendResult = await creditsStore.TrySpendBatchAsync(
+            request,
+            costs,
             nowUtc,
             cancellationToken);
 

@@ -121,7 +121,7 @@ public class AiPlaylistSuggestionJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
+
 
         var targetVideo = TestHelpers.GetTargetVideo();
         var playlist1 = TestHelpers.GetPlaylist(PlaylistId1);
@@ -169,7 +169,7 @@ public class AiPlaylistSuggestionJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
+
 
         var targetVideo = TestHelpers.GetTargetVideo();
         var playlist1 = TestHelpers.GetPlaylist(PlaylistId1);
@@ -211,7 +211,7 @@ public class AiPlaylistSuggestionJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
+
 
         var targetVideo = TestHelpers.GetTargetVideo();
         var playlists = new List<Playlist>
@@ -261,7 +261,7 @@ public class AiPlaylistSuggestionJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
+
 
         var targetVideo = TestHelpers.GetTargetVideo();
         var playlist1 = TestHelpers.GetPlaylist(PlaylistId1);
@@ -304,7 +304,7 @@ public class AiPlaylistSuggestionJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        
+
 
         var targetVideo = TestHelpers.GetTargetVideo();
         var playlist1 = TestHelpers.GetPlaylist(PlaylistId1);

@@ -17,35 +17,6 @@ services:
       retries: 10
     restart: unless-stopped
 
-  api:
-    build:
-      context: ..
-      dockerfile: Tubester.Api/Dockerfile
-    env_file:
-      - ./.env
-    ports:
-      - "5000:5000"
-    restart: unless-stopped
-
-  client:
-    build:
-      context: ../../Tubester-Client
-      dockerfile: Dockerfile
-    ports:
-      - "8081:80"
-    restart: unless-stopped
-
-  nginx:
-    image: nginx:alpine
-    depends_on:
-      - api
-      - client
-    ports:
-      - "8080:80"
-    volumes:
-      - ./nginx/local/default.conf:/etc/nginx/conf.d/default.conf:ro
-    restart: unless-stopped
-
 volumes:
   youtubester_pgdata:
     external: true
