@@ -11,15 +11,15 @@ using Tubester.Integration.Exceptions;
 
 namespace Tubester.Integration;
 
-public class BackgroundYoutubeIntegration() : IBackgroundYoutubeIntegration
+public sealed class BackgroundYoutubeIntegration : IBackgroundYoutubeIntegration
 {
     private readonly YouTubeService _youTubeService;
     private readonly ILogger<BackgroundYoutubeIntegration> _logger;
 
-    public BackgroundYoutubeIntegration(IOptions<YouTubeApiOptions> apiOptions,
-        ILogger<BackgroundYoutubeIntegration> logger) : this()
+    public BackgroundYoutubeIntegration(
+        IOptions<YouTubeApiOptions> apiOptions,
+        ILogger<BackgroundYoutubeIntegration> logger)
     {
-        _logger = logger;
         var apiKey = apiOptions.Value.ApiKey;
         if (string.IsNullOrWhiteSpace(apiKey))
         {
@@ -32,6 +32,7 @@ public class BackgroundYoutubeIntegration() : IBackgroundYoutubeIntegration
             ApiKey = apiKey,
             ApplicationName = "Tubester"
         });
+        _logger = logger;
     }
 
     public async IAsyncEnumerable<CommentThreadDto> GetUnansweredTopLevelCommentsAsync(

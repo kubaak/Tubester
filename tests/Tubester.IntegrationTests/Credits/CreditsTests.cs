@@ -64,18 +64,14 @@ public sealed class CreditsTests(TestFixture fixture)
     public async Task VideoDetailsSubmit_WithSufficientCredits_DeductsCreditsAndAppendsLedgerEntry()
     {
         await fixture.CleanStateAsync();
-        await _helpers.SeedTestDataAsync();
-
-        const string newTitle = "Updated Title";
-        const string newDescription = "Updated Description";
-        var newTags = new[] { "new-tag" };
+        var testData = await _helpers.SeedTestDataAsync();
 
         fixture.ApiFactory.MockYouTubeIntegration
             .Setup(youTubeIntegration => youTubeIntegration.UpdateVideoAsync(
                 TestConstants.TargetVideoId,
-                newTitle,
-                newDescription,
-                It.Is<IReadOnlyList<string>>(tags => tags.SequenceEqual(newTags)),
+                testData.Video!.Title!,
+                testData.Video!.Description!,
+                It.Is<IReadOnlyList<string>>(tags => tags.SequenceEqual(testData.Video!.Tags!)),
                 TestConstants.TargetVideoCategoryId,
                 TestConstants.DefaultLanguage,
                 TestConstants.DefaultAudioLanguage,
@@ -83,11 +79,7 @@ public sealed class CreditsTests(TestFixture fixture)
             .Returns(Task.CompletedTask);
 
         var request = new UpdateVideoMetadataRequest(
-            TestConstants.TargetVideoId,
-            newTitle,
-            newDescription,
-            newTags,
-            null);
+            TestConstants.TargetVideoId);
 
         var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/update")
         {
@@ -112,11 +104,7 @@ public sealed class CreditsTests(TestFixture fixture)
         });
 
         var request = new UpdateVideoMetadataRequest(
-            TestConstants.TargetVideoId,
-            "Updated Title",
-            "Updated Description",
-            ["new-tag"],
-            null);
+            TestConstants.TargetVideoId);
 
         var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/videos/update")
         {
@@ -537,8 +525,6 @@ public sealed class CreditsTests(TestFixture fixture)
             "22",
             "en",
             "en",
-            null,
-            null,
             TestFixture.TestingDateTimeOffset,
             "etag-ai-reply-insufficient",
             true

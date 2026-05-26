@@ -25,21 +25,75 @@ public sealed class VideoRepository(TubesterDb db, IDateTimeOffsetProvider dateT
             .FirstOrDefaultAsync(video => video.UploadsPlaylistId == uploadPlaylistId && video.VideoId == videoId, cancellationToken);
     }
 
-    public async Task<(int inserted, int updated)> UpsertAsync(
+    public async Task<int> UpdateExistingAsync(
+        string uploadPlaylistId,
+        IEnumerable<Video> videos,
+        Func<Video, Video, DateTimeOffset, bool> applyUpdate,
+        CancellationToken cancellationToken)
+    {
+        var videoList = videos.ToList();
+
+        if (videoList.Count == 0)
+        {
+            return 0;
+        }
+
+        var videoIds = videoList
+            .Select(video => video.VideoId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var existingVideosById = await db.Videos
+            .Where(video =>
+                video.UploadsPlaylistId == uploadPlaylistId &&
+                videoIds.Contains(video.VideoId))
+            .ToDictionaryAsync(video => video.VideoId, video => video, cancellationToken);
+
+        var currentTimeUtc = dateTimeProvider.GetUtcNowDateTimeOffset();
+        var updated = 0;
+
+        foreach (var video in videoList)
+        {
+            if (!existingVideosById.TryGetValue(video.VideoId, out var existingVideo))
+            {
+                continue;
+            }
+
+            var changed = applyUpdate(existingVideo, video, currentTimeUtc);
+
+            existingVideo.TransferEventsFrom(video);
+
+            if (changed)
+            {
+                updated++;
+            }
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        return updated;
+    }
+
+    public async Task<(int inserted, int updated, HashSet<string> syncedVideoIds)> UpsertRemoteSyncAsync(
         string uploadPlaylistId,
         IEnumerable<Video> videos,
         CancellationToken cancellationToken)
     {
         var videoList = videos.ToList();
+        var syncedVideoIds = new HashSet<string>(StringComparer.Ordinal);
+
         if (videoList.Count == 0)
         {
-            return (0, 0);
+            return (0, 0, syncedVideoIds);
         }
 
-        var videoIds = videoList.Select(video => video.VideoId).ToHashSet();
+        var videoIds = videoList
+            .Select(video => video.VideoId)
+            .ToHashSet(StringComparer.Ordinal);
 
         var existingVideosById = await db.Videos
-            .Where(video => video.UploadsPlaylistId == uploadPlaylistId && videoIds.Contains(video.VideoId))
+            .Where(video =>
+                video.UploadsPlaylistId == uploadPlaylistId &&
+                videoIds.Contains(video.VideoId))
             .ToDictionaryAsync(video => video.VideoId, video => video, cancellationToken);
 
         var currentTimeUtc = dateTimeProvider.GetUtcNowDateTimeOffset();
@@ -52,25 +106,41 @@ public sealed class VideoRepository(TubesterDb db, IDateTimeOffsetProvider dateT
             {
                 db.Add(video);
                 inserted++;
+                syncedVideoIds.Add(video.VideoId);
+                continue;
             }
-            else
+
+            if (existingVideo.IsDirty)
             {
-                var changed = existingVideo.ApplyDetails(
-                    video.Title, video.Description, video.PublishedAt, video.Duration,
-                    video.Visibility, video.Tags, video.CategoryId, video.DefaultLanguage,
-                    video.DefaultAudioLanguage, currentTimeUtc, video.ETag,
-                    video.CommentsAllowed
-                );
-                existingVideo.TransferEventsFrom(video);
-                if (changed)
-                {
-                    updated++;
-                }
+                continue;
+            }
+
+            var changed = existingVideo.SyncFromRemote(
+                video.Title,
+                video.Description,
+                video.PublishedAt,
+                video.Duration,
+                video.Visibility,
+                video.Tags,
+                video.CategoryId,
+                video.DefaultLanguage,
+                video.DefaultAudioLanguage,
+                currentTimeUtc,
+                video.ETag,
+                video.CommentsAllowed);
+
+            existingVideo.TransferEventsFrom(video);
+            syncedVideoIds.Add(video.VideoId);
+
+            if (changed)
+            {
+                updated++;
             }
         }
 
         await db.SaveChangesAsync(cancellationToken);
-        return (inserted, updated);
+
+        return (inserted, updated, syncedVideoIds);
     }
 
     public async Task<List<Video>> GetVideosPageAsync(

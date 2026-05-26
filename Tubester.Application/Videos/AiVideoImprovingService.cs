@@ -91,7 +91,7 @@ public sealed class AiVideoImprovingService(
 
             var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
 
-            targetVideo.ApplyDetails(
+            targetVideo.ApplyLocalChanges(
                 newTitle,
                 newDescription,
                 targetVideo.PublishedAt,
@@ -105,7 +105,21 @@ public sealed class AiVideoImprovingService(
                 null,
                 targetVideo.CommentsAllowed);
 
-            await videoRepository.UpsertAsync(uploadPlaylistId, [targetVideo], cancellationToken);
+            await videoRepository.UpdateExistingAsync(uploadPlaylistId, [targetVideo],
+                static (existingVideo, incomingVideo, nowUtc) => existingVideo.ApplyLocalChanges(
+                    incomingVideo.Title,
+                    incomingVideo.Description,
+                    incomingVideo.PublishedAt,
+                    incomingVideo.Duration,
+                    incomingVideo.Visibility,
+                    incomingVideo.Tags,
+                    incomingVideo.CategoryId,
+                    incomingVideo.DefaultLanguage,
+                    incomingVideo.DefaultAudioLanguage,
+                    nowUtc,
+                    incomingVideo.ETag,
+                    incomingVideo.CommentsAllowed),
+                cancellationToken);
         }
         catch (Exception ex)
         {
@@ -153,6 +167,8 @@ public sealed class AiVideoImprovingService(
             { LoggingConstants.UploadPlaylistId, uploadPlaylistId },
             { LoggingConstants.VideoId, targetVideoId }
         });
+
+        var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
 
         try
         {
@@ -224,6 +240,8 @@ public sealed class AiVideoImprovingService(
                     targetVideo.VideoId,
                     allSuggestedPlaylistIds,
                     cancellationToken);
+
+                targetVideo.MarkAsDirty(nowUtc);
 
                 logger.LogInformation(
                     "Assigned video to {PlaylistCount} playlists",

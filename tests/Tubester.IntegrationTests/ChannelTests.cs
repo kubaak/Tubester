@@ -20,7 +20,7 @@ public class ChannelTests(TestFixture fixture)
     private readonly TestHelpers _helpers = new(fixture.ApiServices);
 
     [Fact]
-    public async Task Sync_WithDummyChannelAndMockedYouTubeData_UpdatesDatabaseCorrectly()
+    public async Task Sync_UpdatesDatabaseCorrectly()
     {
         // Arrange
         await fixture.CleanStateAsync();
@@ -46,8 +46,6 @@ public class ChannelTests(TestFixture fixture)
                 "22",
                 "en",
                 "en",
-                null,
-                null,
                 "etag-video123",
                 null
             ),
@@ -63,8 +61,6 @@ public class ChannelTests(TestFixture fixture)
                 "23",
                 "en",
                 "en",
-                null,
-                null,
                 "etag-video456",
                 null
             )
@@ -86,22 +82,22 @@ public class ChannelTests(TestFixture fixture)
         fixture.ApiFactory.MockYouTubeIntegration
             .Setup(x => x.GetAllVideosAsync(TestConstants.UploadsPlaylistId,
                 It.IsAny<DateTimeOffset?>(), It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncEnumerable(mockVideos));
+            .Returns(TestHelpers.CreateAsyncEnumerable(mockVideos));
 
         fixture.ApiFactory.MockYouTubeIntegration
             .Setup(x => x.GetPlaylistsAsync(TestConstants.ChannelId,
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncEnumerable(mockPlaylistData));
+            .Returns(TestHelpers.CreateAsyncEnumerable(mockPlaylistData));
 
         fixture.ApiFactory.MockYouTubeIntegration
             .Setup(x => x.GetPlaylistVideoIdsAsync("playlist123",
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncEnumerable(mockPlaylistVideoIds["playlist123"]));
+            .Returns(TestHelpers.CreateAsyncEnumerable(mockPlaylistVideoIds["playlist123"]));
 
         fixture.ApiFactory.MockYouTubeIntegration
             .Setup(x => x.GetPlaylistVideoIdsAsync("playlist456",
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncEnumerable(mockPlaylistVideoIds["playlist456"]));
+            .Returns(TestHelpers.CreateAsyncEnumerable(mockPlaylistVideoIds["playlist456"]));
 
         fixture.ApiFactory.MockYouTubeIntegration
             .Setup(x => x.GetVideosAsync(It.IsAny<IEnumerable<string>>(),
@@ -136,16 +132,56 @@ public class ChannelTests(TestFixture fixture)
         Assert.Equal(2, createdVideos.Count);
 
         var firstVideo = createdVideos.First(v => v.VideoId == video1);
+        Assert.Equal(TestConstants.UploadsPlaylistId, firstVideo.UploadsPlaylistId);
+        Assert.Equal(video1, firstVideo.VideoId);
         Assert.Equal("Test Video 1", firstVideo.Title);
+        Assert.Equal("Test Description 1", firstVideo.Description);
+        Assert.Equal(new List<string> { "tag1", "tag2" }, firstVideo.Tags);
         Assert.Equal(TimeSpan.FromMinutes(5), firstVideo.Duration);
         Assert.Equal(VideoVisibility.Public, firstVideo.Visibility);
         Assert.Equal(new DateTimeOffset(2024, 1, 1, 12, 0, 0, TimeSpan.Zero), firstVideo.PublishedAt);
+        Assert.Equal("22", firstVideo.CategoryId);
+        Assert.Equal("en", firstVideo.DefaultLanguage);
+        Assert.Equal("en", firstVideo.DefaultAudioLanguage);
+        Assert.Equal("etag-video123", firstVideo.ETag);
+        Assert.Null(firstVideo.CommentsAllowed);
+        Assert.Equal(TestFixture.TestingDateTimeOffset, firstVideo.CachedAt);
+        Assert.Equal(TestFixture.TestingDateTimeOffset, firstVideo.UpdatedAt);
+        Assert.False(firstVideo.IsDirty);
+        Assert.Equal(AiVideoOperationFlags.None, firstVideo.AiOperationsInProgress);
+        Assert.False(firstVideo.IsAiTitleInProgress);
+        Assert.False(firstVideo.IsAiDescriptionInProgress);
+        Assert.False(firstVideo.IsAiTagsInProgress);
+        Assert.False(firstVideo.IsAiPlaylistSuggestionInProgress);
+        Assert.False(firstVideo.IsShort);
+        Assert.Equal($"https://www.youtube.com/watch?v={video1}", firstVideo.Url);
+        Assert.Equal($"https://i.ytimg.com/vi/{video1}/sddefault.jpg", firstVideo.ThumbnailUrl);
 
         var secondVideo = createdVideos.First(v => v.VideoId == video2);
+        Assert.Equal(TestConstants.UploadsPlaylistId, secondVideo.UploadsPlaylistId);
+        Assert.Equal(video2, secondVideo.VideoId);
         Assert.Equal("Test Video 2", secondVideo.Title);
+        Assert.Equal("Test Description 2", secondVideo.Description);
+        Assert.Equal(new List<string> { "tag3", "tag4" }, secondVideo.Tags);
         Assert.Equal(TimeSpan.FromMinutes(10), secondVideo.Duration);
         Assert.Equal(VideoVisibility.Unlisted, secondVideo.Visibility);
         Assert.Equal(new DateTimeOffset(2024, 1, 2, 12, 0, 0, TimeSpan.Zero), secondVideo.PublishedAt);
+        Assert.Equal("23", secondVideo.CategoryId);
+        Assert.Equal("en", secondVideo.DefaultLanguage);
+        Assert.Equal("en", secondVideo.DefaultAudioLanguage);
+        Assert.Equal("etag-video456", secondVideo.ETag);
+        Assert.Null(secondVideo.CommentsAllowed);
+        Assert.Equal(TestFixture.TestingDateTimeOffset, secondVideo.CachedAt);
+        Assert.Equal(TestFixture.TestingDateTimeOffset, secondVideo.UpdatedAt);
+        Assert.False(secondVideo.IsDirty);
+        Assert.Equal(AiVideoOperationFlags.None, secondVideo.AiOperationsInProgress);
+        Assert.False(secondVideo.IsAiTitleInProgress);
+        Assert.False(secondVideo.IsAiDescriptionInProgress);
+        Assert.False(secondVideo.IsAiTagsInProgress);
+        Assert.False(secondVideo.IsAiPlaylistSuggestionInProgress);
+        Assert.False(secondVideo.IsShort);
+        Assert.Equal($"https://www.youtube.com/watch?v={video2}", secondVideo.Url);
+        Assert.Equal($"https://i.ytimg.com/vi/{video2}/sddefault.jpg", secondVideo.ThumbnailUrl);
 
         // Verify playlists were created
         var createdPlaylists = await verificationDatabaseContext.Playlists
@@ -208,8 +244,6 @@ public class ChannelTests(TestFixture fixture)
                 "22",
                 "en",
                 "en",
-                null,
-                null,
                 "etag-video789-v1",
                 null
             )
@@ -229,8 +263,6 @@ public class ChannelTests(TestFixture fixture)
                 "22",
                 "en",
                 "en",
-                null,
-                null,
                 "etag-video789-v2",
                 null
             )
@@ -245,18 +277,18 @@ public class ChannelTests(TestFixture fixture)
             .SetupSequence(x =>
                 x.GetAllVideosAsync(TestConstants.UploadsPlaylistId,
                     It.IsAny<DateTimeOffset?>(), It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncEnumerable(mockVideosFirstCall))
-            .Returns(CreateAsyncEnumerable(mockVideosSecondCall));
+            .Returns(TestHelpers.CreateAsyncEnumerable(mockVideosFirstCall))
+            .Returns(TestHelpers.CreateAsyncEnumerable(mockVideosSecondCall));
 
         fixture.ApiFactory.MockYouTubeIntegration
             .Setup(x => x.GetPlaylistsAsync(TestConstants.ChannelId,
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncEnumerable(mockPlaylistData));
+            .Returns(TestHelpers.CreateAsyncEnumerable(mockPlaylistData));
 
         fixture.ApiFactory.MockYouTubeIntegration
             .Setup(x => x.GetPlaylistVideoIdsAsync("playlist789",
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncEnumerable(mockPlaylistVideoIds["playlist789"]));
+            .Returns(TestHelpers.CreateAsyncEnumerable(mockPlaylistVideoIds["playlist789"]));
 
         fixture.ApiFactory.MockYouTubeIntegration
             .SetupSequence(x =>
@@ -487,26 +519,190 @@ public class ChannelTests(TestFixture fixture)
         Assert.Empty(ledgerEntries);
     }
 
+    [Fact]
+    public async Task Sync_Current_DoesNotOverrideCurrentVideoTitleDescriptionTagsAndPlaylist()
+    {
+        // Arrange
+        await fixture.CleanStateAsync();
+
+        var video = TestHelpers.GetTargetVideo();
+        video.MarkAsDirty(TestFixture.TestingDateTimeOffset);
+        var currentPlaylist = TestHelpers.GetPlaylist("current-playlist");
+
+        var testData = await _helpers.SeedTestDataAsync(new TestDataOptions
+        {
+            Videos = [video],
+            Playlists = [currentPlaylist],
+            VideoPlaylists =
+            [
+                VideoPlaylist.Create(TestConstants.TargetVideoId, currentPlaylist.PlaylistId)
+            ]
+        });
+
+        var remoteVideo = new VideoDto(
+            testData.Video!.VideoId,
+            "Remote Title",
+            "Remote Description",
+            ["remote-tag-1", "remote-tag-2"],
+            TimeSpan.FromMinutes(3),
+            "public",
+            false,
+            TestFixture.TestingDateTimeOffset.AddDays(-2),
+            TestConstants.TargetVideoCategoryId,
+            TestConstants.DefaultLanguage,
+            TestConstants.DefaultAudioLanguage,
+            "remote-etag",
+            null
+        );
+        var remoteVideos = new List<VideoDto>
+        {
+            remoteVideo
+        };
+
+        var remotePlaylist = new DetailedPlaylistDto("remote-playlist-id",
+            "remote-playlist-title",
+            "remote-playlist-description",
+            "public",
+            "remote-playlist-etag");
+        var remotePlaylists = new List<DetailedPlaylistDto>
+        {
+            remotePlaylist
+        };
+
+        fixture.ApiFactory.MockYouTubeIntegration
+            .Setup(x => x.GetAllVideosAsync(
+                TestConstants.UploadsPlaylistId,
+                It.IsAny<DateTimeOffset?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(TestHelpers.CreateAsyncEnumerable(remoteVideos));
+
+        fixture.ApiFactory.MockYouTubeIntegration
+            .Setup(x => x.GetPlaylistsAsync(
+                TestConstants.ChannelId,
+                It.IsAny<CancellationToken>()))
+            .Returns(TestHelpers.CreateAsyncEnumerable(remotePlaylists));
+
+        fixture.ApiFactory.MockYouTubeIntegration
+            .Setup(x => x.GetPlaylistVideoIdsAsync(
+                currentPlaylist.PlaylistId,
+                It.IsAny<CancellationToken>()))
+            .Returns(TestHelpers.CreateAsyncEnumerable(Array.Empty<string>()));
+
+        fixture.ApiFactory.MockYouTubeIntegration
+            .Setup(x => x.GetPlaylistVideoIdsAsync(
+                remotePlaylist.Id,
+                It.IsAny<CancellationToken>()))
+            .Returns(TestHelpers.CreateAsyncEnumerable(remoteVideos.Select(v => v.VideoId)));
+
+        // Act
+        var response = await fixture.HttpClient.PostAsync("/api/channels/sync/current", null);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await _helpers.AssertVideoAsync(testData.Video!);
+        await _helpers.AssertVideoPlaylistsAsync(testData.Video!.VideoId, currentPlaylist.PlaylistId);
+    }
+
+    [Fact]
+    public async Task Sync_Current_WithDirtyVideoFilteredOutByUploadsCutoff_DoesNotModifyDetailsOrPlaylists()
+    {
+        // Arrange
+        await fixture.CleanStateAsync();
+
+        var cutoff = TestFixture.TestingDateTimeOffset;
+        var video = TestHelpers.GetTargetVideo();
+        video.MarkAsDirty(TestFixture.TestingDateTimeOffset);
+        var currentPlaylist = TestHelpers.GetPlaylist("current-playlist");
+
+        var testData = await _helpers.SeedTestDataAsync(new TestDataOptions
+        {
+            Videos = [video],
+            Playlists = [currentPlaylist],
+            VideoPlaylists =
+            [
+                VideoPlaylist.Create(TestConstants.TargetVideoId, currentPlaylist.PlaylistId)
+            ]
+        });
+
+        using (var setupScope = fixture.ApiServices.CreateScope())
+        {
+            var databaseContext = setupScope.ServiceProvider.GetRequiredService<TubesterDb>();
+            var channel = await databaseContext.Channels
+                .SingleAsync(c => c.ChannelId == TestConstants.ChannelId);
+
+            channel.AdvanceUploadsCutoff(cutoff, TestFixture.TestingDateTimeOffset);
+            await databaseContext.SaveChangesAsync();
+        }
+
+        var remotePlaylist = new DetailedPlaylistDto(
+            "remote-playlist-id",
+            "remote-playlist-title",
+            "remote-playlist-description",
+            "public",
+            "remote-playlist-etag");
+
+        fixture.ApiFactory.MockYouTubeIntegration
+            .Setup(x => x.GetAllVideosAsync(
+                TestConstants.UploadsPlaylistId,
+                cutoff,
+                It.IsAny<CancellationToken>()))
+            .Returns(TestHelpers.CreateAsyncEnumerable(Array.Empty<VideoDto>()));
+
+        fixture.ApiFactory.MockYouTubeIntegration
+            .Setup(x => x.GetPlaylistsAsync(
+                TestConstants.ChannelId,
+                It.IsAny<CancellationToken>()))
+            .Returns(TestHelpers.CreateAsyncEnumerable([remotePlaylist]));
+
+        fixture.ApiFactory.MockYouTubeIntegration
+            .Setup(x => x.GetPlaylistVideoIdsAsync(
+                remotePlaylist.Id,
+                It.IsAny<CancellationToken>()))
+            .Returns(TestHelpers.CreateAsyncEnumerable([TestConstants.TargetVideoId]));
+
+        // Act
+        var response = await fixture.HttpClient.PostAsync("/api/channels/sync/current", null);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var syncResult = await TestHelpers.DeserializeAsync<ChannelSyncResult>(response);
+        Assert.NotNull(syncResult);
+        Assert.Equal(0, syncResult.VideosInserted);
+        Assert.Equal(0, syncResult.VideosUpdated);
+        Assert.Equal(0, syncResult.PlaylistsInserted);
+        Assert.Equal(0, syncResult.PlaylistsUpdated);
+        Assert.Equal(0, syncResult.MembershipsAdded);
+        Assert.Equal(0, syncResult.MembershipsRemoved);
+
+        await _helpers.AssertVideoAsync(testData.Video!);
+        await _helpers.AssertVideoPlaylistsAsync(testData.Video!.VideoId, currentPlaylist.PlaylistId);
+
+        using var verificationScope = fixture.ApiServices.CreateScope();
+        var verificationDatabaseContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        var playlists = await verificationDatabaseContext.Playlists
+            .AsNoTracking()
+            .Where(p => p.ChannelId == TestConstants.ChannelId)
+            .ToListAsync();
+
+        var playlist = Assert.Single(playlists);
+        Assert.Equal(currentPlaylist.PlaylistId, playlist.PlaylistId);
+        Assert.Equal(currentPlaylist.Title, playlist.Title);
+        Assert.Equal(currentPlaylist.Description, playlist.Description);
+        Assert.Equal(currentPlaylist.Visibility, playlist.Visibility);
+    }
+
     private void SetupMinimalSyncMocks(string channelId = TestConstants.ChannelId, string uploadsPlaylistId = TestConstants.UploadsPlaylistId)
     {
         fixture.ApiFactory.MockYouTubeIntegration
             .Setup(x => x.GetAllVideosAsync(uploadsPlaylistId,
                 It.IsAny<DateTimeOffset?>(), It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncEnumerable(Array.Empty<VideoDto>()));
+            .Returns(TestHelpers.CreateAsyncEnumerable(Array.Empty<VideoDto>()));
 
         fixture.ApiFactory.MockYouTubeIntegration
             .Setup(x => x.GetPlaylistsAsync(channelId,
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncEnumerable(Array.Empty<DetailedPlaylistDto>()));
-    }
-
-    private static async IAsyncEnumerable<T> CreateAsyncEnumerable<T>(IEnumerable<T> items)
-    {
-        foreach (var item in items)
-        {
-            yield return item;
-        }
-
-        await Task.CompletedTask;
+            .Returns(TestHelpers.CreateAsyncEnumerable(Array.Empty<DetailedPlaylistDto>()));
     }
 }

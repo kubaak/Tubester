@@ -26,7 +26,8 @@ public class VideoService(
     ILogger<VideoService> videoLogger,
     IUserEventLogger userEventLogger,
     ICreditsService creditsService,
-    IDateTimeOffsetProvider dateTimeOffsetProvider) : IVideoService
+    IDateTimeOffsetProvider dateTimeOffsetProvider,
+    ILogger<VideoService> logger) : IVideoService
 {
     public async Task<PagedResult<VideoListItemDto>> GetVideosAsync(GetVideosRequest request, CancellationToken ct)
     {
@@ -160,8 +161,8 @@ public class VideoService(
             ?? throw new ArgumentException($"Target video {request.TargetVideoId} not found in cache.");
 
         // Build effective metadata starting from source
-        var newTitle = request.CopyTitle ? (sourceVideo.Title ?? string.Empty) : targetVideo.Title;
-        var newDescription = request.CopyDescription ? (sourceVideo.Description ?? string.Empty) : targetVideo.Description;
+        var newTitle = request.CopyTitle ? (sourceVideo.Title ?? string.Empty) : (targetVideo.Title ?? string.Empty);
+        var newDescription = request.CopyDescription ? (sourceVideo.Description ?? string.Empty) : (targetVideo.Description ?? string.Empty);
         var newTags = request.CopyTags ? SanitizeTags(sourceVideo.Tags) : targetVideo.Tags;
         var categoryId = request.CopyCategory ? sourceVideo.CategoryId : targetVideo.CategoryId;
         var defaultLanguage =
@@ -172,7 +173,7 @@ public class VideoService(
 
         // Persist changes to DB
         var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
-        targetVideo.ApplyDetails(
+        targetVideo.ApplyLocalChanges(
             newTitle,
             newDescription,
             targetVideo.PublishedAt,
@@ -187,7 +188,21 @@ public class VideoService(
             targetVideo.CommentsAllowed
         );
 
-        await videoRepository.UpsertAsync(uploadPlaylistId, [targetVideo], cancellationToken);
+        await videoRepository.UpdateExistingAsync(uploadPlaylistId, [targetVideo],
+            static (existingVideo, incomingVideo, nowUtc) => existingVideo.ApplyLocalChanges(
+                incomingVideo.Title,
+                incomingVideo.Description,
+                incomingVideo.PublishedAt,
+                incomingVideo.Duration,
+                incomingVideo.Visibility,
+                incomingVideo.Tags,
+                incomingVideo.CategoryId,
+                incomingVideo.DefaultLanguage,
+                incomingVideo.DefaultAudioLanguage,
+                nowUtc,
+                incomingVideo.ETag,
+                incomingVideo.CommentsAllowed),
+            cancellationToken);
 
         await userEventLogger.LogAsync(
             userId,
@@ -244,131 +259,6 @@ public class VideoService(
         );
     }
 
-    public async Task<VideoDetailsDto?> UpdateVideoMetadataAsync(
-        string userId,
-        string operationId,
-        UpdateVideoMetadataRequest request,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(userId))
-        {
-            throw new ArgumentException("User id is required.", nameof(userId));
-        }
-
-        if (string.IsNullOrWhiteSpace(request.VideoId))
-        {
-            return null;
-        }
-
-        var uploadPlaylistId = channelContext.GetRequiredUploadPlaylistId();
-        var video = await videoRepository.GetVideoByIdAsync(uploadPlaylistId, request.VideoId, cancellationToken);
-
-        if (video is null)
-        {
-            return null;
-        }
-
-        var title = request.Title?.Trim() ?? string.Empty;
-        var description = request.Description ?? string.Empty;
-        var tags = SanitizeTags(request.Tags ?? Array.Empty<string>());
-
-        var aiTemplateSubmittedIdempotencyKey =
-            $"ai-template-submitted:{userId}:{request.VideoId}:{operationId}";
-
-        var spendResult = await creditsService.TrySpendAsync(
-            userId,
-            nameof(CreditActionType.AiTemplateSubmitted),
-            aiTemplateSubmittedIdempotencyKey,
-            request.VideoId,
-            new
-            {
-                generateTitle = !string.IsNullOrWhiteSpace(request.Title),
-                generateDescription = request.Description is not null,
-                generateTags = request.Tags is not null
-            },
-            cancellationToken);
-
-        if (!spendResult.Succeeded)
-        {
-            throw new ForbiddenException(
-                "Insufficient credits to submit AI template changes.");
-        }
-
-        await youTubeIntegration.UpdateVideoAsync(
-            video.VideoId,
-            title,
-            description,
-            tags,
-            video.CategoryId,
-            video.DefaultLanguage,
-            video.DefaultAudioLanguage,
-            cancellationToken);
-
-        if (request.PlaylistIds is not null)
-        {
-            var playlistIdSet = request.PlaylistIds.ToHashSet(StringComparer.Ordinal);
-            var tasks = playlistIdSet.Select(p => youTubeIntegration.AddVideoToPlaylistAsync(p, video.VideoId, cancellationToken));
-            await Task.WhenAll(tasks);
-        }
-
-        var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
-        video.ApplyDetails(
-            title,
-            description,
-            video.PublishedAt,
-            video.Duration,
-            video.Visibility,
-            tags,
-            video.CategoryId,
-            video.DefaultLanguage,
-            video.DefaultAudioLanguage,
-            nowUtc,
-            null,
-            video.CommentsAllowed
-        );
-
-        await videoRepository.UpsertAsync(uploadPlaylistId, [video], cancellationToken);
-
-        await userEventLogger.LogAsync(
-            userId,
-            UserEventType.AiTemplateSubmitted,
-            request.VideoId,
-            null,
-            new
-            {
-                generateTitle = !string.IsNullOrWhiteSpace(request.Title),
-                generateDescription = request.Description is not null,
-                generateTags = request.Tags is not null,
-                updatePlaylists = request.PlaylistIds is not null
-            },
-            cancellationToken);
-
-        // Update video playlist memberships if playlistIds provided
-        if (request.PlaylistIds is not null)
-        {
-            var playlistIdSet = request.PlaylistIds.ToHashSet(StringComparer.Ordinal);
-            await playlistRepository.SetMembershipsToPlaylistsAsync(video.VideoId, playlistIdSet, cancellationToken);
-        }
-
-        var aiTemplatePlaylists = await playlistRepository.GetPlaylistsByVideoAsync(request.VideoId, cancellationToken);
-
-        return new VideoDetailsDto
-        {
-            Title = title,
-            Description = description,
-            Tags = tags.ToArray(),
-            IsAiTitleInProgress = video.IsAiTitleInProgress,
-            IsAiDescriptionInProgress = video.IsAiDescriptionInProgress,
-            IsAiTagsInProgress = video.IsAiTagsInProgress,
-            IsAiPlaylistSuggestionInProgress = video.IsAiPlaylistSuggestionInProgress,
-            Playlists = [.. aiTemplatePlaylists.Select(p => new PlaylistDto { Id = p.PlaylistId, Name = p.Title })],
-            Category = video.CategoryId is { } aiTemplateCatId ? new CategoryDto(aiTemplateCatId, null) : null,
-            DefaultLanguage = video.DefaultLanguage,
-            DefaultAudioLanguage = video.DefaultAudioLanguage,
-            ThumbnailUrl = video.ThumbnailUrl
-        };
-    }
-
     public async Task<VideoDetailsDto?> SaveDraftMetadataAsync(
         string userId,
         SaveVideoDraftRequest request,
@@ -397,7 +287,8 @@ public class VideoService(
         var tags = SanitizeTags(request.Tags ?? Array.Empty<string>());
 
         var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
-        video.ApplyDetails(
+
+        video.ApplyLocalChanges(
             title,
             description,
             video.PublishedAt,
@@ -412,7 +303,21 @@ public class VideoService(
             video.CommentsAllowed
         );
 
-        await videoRepository.UpsertAsync(uploadPlaylistId, [video], cancellationToken);
+        await videoRepository.UpdateExistingAsync(uploadPlaylistId, [video],
+            static (existingVideo, incomingVideo, nowUtc) => existingVideo.ApplyLocalChanges(
+                incomingVideo.Title,
+                incomingVideo.Description,
+                incomingVideo.PublishedAt,
+                incomingVideo.Duration,
+                incomingVideo.Visibility,
+                incomingVideo.Tags,
+                incomingVideo.CategoryId,
+                incomingVideo.DefaultLanguage,
+                incomingVideo.DefaultAudioLanguage,
+                nowUtc,
+                incomingVideo.ETag,
+                incomingVideo.CommentsAllowed),
+            cancellationToken);
 
         // Update video playlist memberships if playlistIds provided
         if (request.PlaylistIds is not null)
@@ -465,17 +370,104 @@ public class VideoService(
         return result.ToArray();
     }
 
+    public async Task<VideoDetailsDto?> UpdateVideoAsync(
+    string userId,
+    string operationId,
+    UpdateVideoMetadataRequest request,
+    CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new ArgumentException("User id is required.", nameof(userId));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.VideoId))
+        {
+            return null;
+        }
+
+        var uploadPlaylistId = channelContext.GetRequiredUploadPlaylistId();
+        var video = await videoRepository.GetVideoByIdAsync(uploadPlaylistId, request.VideoId, cancellationToken);
+
+        if (video is null)
+        {
+            return null;
+        }
+
+        var aiTemplateSubmittedIdempotencyKey =
+            $"ai-template-submitted:{userId}:{request.VideoId}:{operationId}";
+
+        var spendResult = await creditsService.TrySpendAsync(
+            userId,
+            nameof(CreditActionType.AiTemplateSubmitted),
+            aiTemplateSubmittedIdempotencyKey,
+            request.VideoId,
+            new
+            {
+                generateTitle = false,
+                generateDescription = false,
+                generateTags = false
+            },
+            cancellationToken);
+
+        if (!spendResult.Succeeded)
+        {
+            throw new ForbiddenException(
+                "Insufficient credits to submit AI template changes.");
+        }
+
+        var playlists = await playlistRepository.GetPlaylistsByVideoAsync(request.VideoId, cancellationToken);
+
+        await youTubeIntegration.UpdateVideoAsync(
+            video.VideoId,
+            video.Title ?? string.Empty,
+            video.Description ?? string.Empty,
+            video.Tags,
+            video.CategoryId,
+            video.DefaultLanguage,
+            video.DefaultAudioLanguage,
+            cancellationToken);
+
+        if (playlists.Count > 0)
+        {
+            var tasks = playlists.Select(p => youTubeIntegration.AddVideoToPlaylistAsync(p.PlaylistId, video.VideoId, cancellationToken));
+            await Task.WhenAll(tasks);
+        }
+
+        return new VideoDetailsDto
+        {
+            Title = video.Title,
+            Description = video.Description,
+            Tags = video.Tags,
+            IsAiTitleInProgress = video.IsAiTitleInProgress,
+            IsAiDescriptionInProgress = video.IsAiDescriptionInProgress,
+            IsAiTagsInProgress = video.IsAiTagsInProgress,
+            IsAiPlaylistSuggestionInProgress = video.IsAiPlaylistSuggestionInProgress,
+            Playlists = [.. playlists.Select(p => new PlaylistDto { Id = p.PlaylistId, Name = p.Title })],
+            Category = video.CategoryId is { } catId ? new CategoryDto(catId, null) : null,
+            DefaultLanguage = video.DefaultLanguage,
+            DefaultAudioLanguage = video.DefaultAudioLanguage,
+            ThumbnailUrl = video.ThumbnailUrl
+        };
+    }
+
     public async Task<VideoDetailsDto?> ResyncVideoAsync(
         string videoId,
         CancellationToken cancellationToken)
     {
-
         if (string.IsNullOrWhiteSpace(videoId))
         {
             return null;
         }
 
         var uploadPlaylistId = channelContext.GetRequiredUploadPlaylistId();
+        using var scope = logger.BeginScope(new Dictionary<string, object?>
+        {
+            { LoggingConstants.ChannelId, channelContext.GetRequiredChannelId() },
+            { LoggingConstants.UploadPlaylistId, uploadPlaylistId },
+            { LoggingConstants.VideoId, videoId },
+        });
+        
         var video = await videoRepository.GetVideoByIdAsync(uploadPlaylistId, videoId, cancellationToken);
 
         if (video is null)
@@ -505,7 +497,7 @@ public class VideoService(
         };
 
         // Update video details
-        video.ApplyDetails(
+        video.OverrideFromRemote(
             videoDto.Title,
             videoDto.Description,
             videoDto.PublishedAt,
@@ -520,7 +512,21 @@ public class VideoService(
             videoDto.CommentsAllowed
         );
 
-        await videoRepository.UpsertAsync(uploadPlaylistId, [video], cancellationToken);
+        await videoRepository.UpdateExistingAsync(uploadPlaylistId, [video],
+            static (existingVideo, incomingVideo, nowUtc) => existingVideo.OverrideFromRemote(
+                incomingVideo.Title,
+                incomingVideo.Description,
+                incomingVideo.PublishedAt,
+                incomingVideo.Duration,
+                incomingVideo.Visibility,
+                incomingVideo.Tags,
+                incomingVideo.CategoryId,
+                incomingVideo.DefaultLanguage,
+                incomingVideo.DefaultAudioLanguage,
+                nowUtc,
+                incomingVideo.ETag,
+                incomingVideo.CommentsAllowed),
+            cancellationToken);
 
         // Resync playlists for this video
         var channelId = channelContext.GetRequiredChannelId();
@@ -529,6 +535,10 @@ public class VideoService(
 
         foreach (var playlist in channelPlaylists)
         {
+            using var playlistScope = logger.BeginScope(new Dictionary<string, object?>
+            {
+                { LoggingConstants.PlaylistId, playlist.PlaylistId }
+            });
             var playlistVideoIds = youTubeIntegration.GetPlaylistVideoIdsAsync(
                 playlist.PlaylistId,
                 cancellationToken);

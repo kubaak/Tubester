@@ -232,9 +232,10 @@ public sealed class TestHelpers(IServiceProvider serviceProvider)
         Assert.True(problemDetails.Extensions.ContainsKey("traceId"));
     }
 
-    public static Video GetTargetVideo(string videoId = TestConstants.TargetVideoId, VideoVisibility visibility = VideoVisibility.Public, bool iscommentable = true)
+    public static Video GetTargetVideo(string videoId = TestConstants.TargetVideoId, VideoVisibility visibility = VideoVisibility.Public
+        , bool isCommentable = true)
     {
-        return Video.Create(
+        var video = Video.Create(
             TestConstants.UploadsPlaylistId,
             videoId,
             $"Target Video Title {videoId}",
@@ -246,12 +247,11 @@ public sealed class TestHelpers(IServiceProvider serviceProvider)
             TestConstants.TargetVideoCategoryId,
             TestConstants.DefaultLanguage,
             TestConstants.DefaultAudioLanguage,
-            null,
-            null,
             TestFixture.TestingDateTimeOffset.AddDays(-1),
             "etag-target",
-            iscommentable
+            isCommentable
         );
+        return video;
     }
 
     public static Video GetSourceVideo()
@@ -268,8 +268,6 @@ public sealed class TestHelpers(IServiceProvider serviceProvider)
             "22",
             "en",
             "en",
-            new GeoLocation(37.7749, -122.4194),
-            "San Francisco, CA",
             TestFixture.TestingDateTimeOffset,
             "etag-source",
             true
@@ -363,12 +361,12 @@ public sealed class TestHelpers(IServiceProvider serviceProvider)
 
         Assert.Null(wallet);
     }
-    
+
     public async Task AssertEmptyLedger()
     {
         using var verificationScope = serviceProvider.CreateScope();
         var databaseContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
-        
+
 
         var ledgerEntries = await databaseContext.LedgerEntries
             .AsNoTracking()
@@ -509,6 +507,16 @@ public sealed class TestHelpers(IServiceProvider serviceProvider)
         using var scope = serviceProvider.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
         await PostgresCleaner.CleanAsync(dbContext.Database.GetDbConnection());
+    }
+
+    public static async IAsyncEnumerable<T> CreateAsyncEnumerable<T>(IEnumerable<T> items)
+    {
+        foreach (var item in items)
+        {
+            yield return item;
+        }
+
+        await Task.CompletedTask;
     }
 }
 

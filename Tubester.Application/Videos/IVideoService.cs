@@ -22,12 +22,6 @@ public interface IVideoService
         CopyVideoTemplateRequest request,
         CancellationToken cancellationToken);
 
-    Task<VideoDetailsDto?> UpdateVideoMetadataAsync(
-        string userId,
-        string operationId,
-        UpdateVideoMetadataRequest request,
-        CancellationToken cancellationToken);
-
     Task<VideoDetailsDto?> SaveDraftMetadataAsync(
         string userId,
         SaveVideoDraftRequest request,
@@ -35,5 +29,11 @@ public interface IVideoService
 
     Task<VideoDetailsDto?> ResyncVideoAsync(
         string videoId,
+        CancellationToken cancellationToken);
+
+    Task<VideoDetailsDto?> UpdateVideoAsync(
+        string userId,
+        string operationId,
+        UpdateVideoMetadataRequest request,
         CancellationToken cancellationToken);
 }

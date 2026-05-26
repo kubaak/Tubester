@@ -215,8 +215,6 @@ public class RepliesTests(TestFixture fixture)
             "22",
             "en",
             "en",
-            null,
-            null,
             TestFixture.TestingDateTimeOffset,
             "etag1"
         );
@@ -339,8 +337,6 @@ public class RepliesTests(TestFixture fixture)
             "22",
             "en",
             "en",
-            null,
-            null,
             TestFixture.TestingDateTimeOffset,
             "etag1"
         );

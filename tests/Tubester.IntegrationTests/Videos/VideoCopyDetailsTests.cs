@@ -48,6 +48,7 @@ public class VideoCopyDetailsTests(TestFixture fixture)
 
         TestHelpers.SetProperty(targetVideo, nameof(targetVideo.CategoryId), sourceVideo.CategoryId); //TODO implement category copy option
         TestHelpers.SetVideoProperties(targetVideo, sourceVideo.Title!, targetVideo.Description!, sourceVideo.Tags.ToArray());
+        TestHelpers.SetProperty(targetVideo, nameof(targetVideo.IsDirty), true);
         await _helpers.AssertVideoAsync(targetVideo);
         await _helpers.AssertUserEventAsync(CreditActionType.CopyTemplateExecuted, TestConstants.UserId, targetVideo.VideoId);
     }

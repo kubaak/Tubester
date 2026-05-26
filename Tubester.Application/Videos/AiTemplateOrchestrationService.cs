@@ -146,7 +146,7 @@ public class AiTemplateOrchestrationService(
                     },
                     ct);
 
-                backgroundJobClient.ContinueJobWith<AiTemplateFinalizeJob>(
+                _ = backgroundJobClient.ContinueJobWith<AiTemplateFinalizeJob>(
                     detailsJobId,
                     job => job.Run(uploadPlaylistId, request, JobCancellationToken.Null),
                     JobContinuationOptions.OnAnyFinishedState);
@@ -178,7 +178,7 @@ public class AiTemplateOrchestrationService(
                     },
                     ct);
 
-                backgroundJobClient.ContinueJobWith<AiPlaylistSuggestionFinalizeJob>(
+                _ = backgroundJobClient.ContinueJobWith<AiPlaylistSuggestionFinalizeJob>(
                     playlistSuggestionJobId,
                     job => job.Run(uploadPlaylistId, request.TargetVideoId, JobCancellationToken.Null),
                     JobContinuationOptions.OnAnyFinishedState);

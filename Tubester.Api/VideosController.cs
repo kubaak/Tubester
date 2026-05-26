@@ -164,9 +164,9 @@ public sealed class VideosController(
     }
 
     /// <summary>
-    /// Updates a video's editable metadata (title, description, tags).
+    /// Updates a video's metadata on YouTube using the current state from the database.
     /// </summary>
-    /// <param name="request"></param>
+    /// <param name="request">Request containing the video ID.</param>
     /// <param name="cancellationToken"></param>
     [HttpPost("update")]
     [Authorize(Policy = "RequiresYouTubeWrite")]
@@ -189,18 +189,13 @@ public sealed class VideosController(
             return BadRequest(new { error = "VideoId is required and cannot be empty." });
         }
 
-        if (string.IsNullOrWhiteSpace(request.Title))
-        {
-            return BadRequest(new { error = "Title is required and cannot be empty." });
-        }
-
         var userId = currentUserContext.UserId;
         if (string.IsNullOrWhiteSpace(userId))
         {
             return Unauthorized();
         }
 
-        var updatedVideoDetails = await videoService.UpdateVideoMetadataAsync(userId, operationId, request, cancellationToken);
+        var updatedVideoDetails = await videoService.UpdateVideoAsync(userId, operationId, request, cancellationToken);
 
         if (updatedVideoDetails is null)
         {

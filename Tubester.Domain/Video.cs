@@ -33,15 +33,38 @@ public sealed class Video : Entity
     public string? CategoryId { get; private set; }
     public string? DefaultLanguage { get; private set; }
     public string? DefaultAudioLanguage { get; private set; }
-    public GeoLocation? Location { get; private set; }
-    public string? LocationDescription { get; private set; }
     public string? ETag { get; private set; }
     public bool? CommentsAllowed { get; private set; }
     public DateTimeOffset CachedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
+    // Indicates if video metadata has been modified by AI or draft operations
+    public bool IsDirty { get; private set; }
 
     // Bitmask for AI operations in progress
     public AiVideoOperationFlags AiOperationsInProgress { get; private set; }
+
+    public bool MarkAsDirty(DateTimeOffset nowUtc)
+    {
+        if (IsDirty)
+        {
+            return false;
+        }
+
+        IsDirty = true;
+        UpdatedAt = nowUtc;
+        return true;
+    }
+
+    public void MarkAsClean(DateTimeOffset nowUtc)
+    {
+        if (!IsDirty)
+        {
+            return;
+        }
+
+        IsDirty = false;
+        UpdatedAt = nowUtc;
+    }
 
     // Computed compatibility properties for API/DTO exposure
     public bool IsAiTitleInProgress => AiOperationsInProgress.HasFlag(AiVideoOperationFlags.Title);
@@ -66,8 +89,6 @@ public sealed class Video : Entity
         string? categoryId,
         string? defaultLanguage,
         string? defaultAudioLanguage,
-        GeoLocation? location,
-        string? locationDescription,
         DateTimeOffset nowUtc,
         string? etag = null,
         bool? commentsAllowed = null)
@@ -85,8 +106,6 @@ public sealed class Video : Entity
             CategoryId = categoryId,
             DefaultLanguage = defaultLanguage,
             DefaultAudioLanguage = defaultAudioLanguage,
-            Location = location,
-            LocationDescription = locationDescription,
             ETag = etag,
             CommentsAllowed = commentsAllowed,
             CachedAt = nowUtc,
@@ -95,24 +114,43 @@ public sealed class Video : Entity
         };
     }
 
-    public bool Synchronize(string? title,
-        string? description,
-        DateTimeOffset publishedAt,
-        TimeSpan duration,
-        VideoVisibility visibility,
-        IEnumerable<string>? tags,
-        string? categoryId,
-        string? defaultLanguage,
-        string? defaultAudioLanguage,
-        DateTimeOffset nowUtc,
-        string? etag,
-        bool? commentsAllowed = null)
+    public bool ApplyLocalChanges(
+    string? title,
+    string? description,
+    DateTimeOffset publishedAt,
+    TimeSpan duration,
+    VideoVisibility visibility,
+    IEnumerable<string>? tags,
+    string? categoryId,
+    string? defaultLanguage,
+    string? defaultAudioLanguage,
+    DateTimeOffset nowUtc,
+    string? etag,
+    bool? commentsAllowed = null)
     {
-        CachedAt = nowUtc;
-        return ApplyDetails(title, description, publishedAt, duration, visibility, tags, categoryId, defaultLanguage, defaultAudioLanguage, nowUtc, etag, commentsAllowed);
+        var changed = ApplyDetailsCore(
+            title,
+            description,
+            publishedAt,
+            duration,
+            visibility,
+            tags,
+            categoryId,
+            defaultLanguage,
+            defaultAudioLanguage,
+            nowUtc,
+            etag,
+            commentsAllowed);
+
+        if (changed)
+        {
+            IsDirty = true;
+        }
+
+        return changed;
     }
 
-    public bool ApplyDetails(
+    public bool OverrideFromRemote(
         string? title,
         string? description,
         DateTimeOffset publishedAt,
@@ -126,31 +164,86 @@ public sealed class Video : Entity
         string? etag,
         bool? commentsAllowed = null)
     {
-        // ---------- ETag fast-path ----------
-        // If caller fetched with the same `part` set and the ETag is unchanged,
-        // the video metadata we care about hasn't changed.
-        if (!string.IsNullOrEmpty(etag) && StringComparer.Ordinal.Equals(ETag, etag))
+        var wasDirty = IsDirty;
+        CachedAt = nowUtc;
+        var changed = ApplyDetailsCore(
+            title,
+            description,
+            publishedAt,
+            duration,
+            visibility,
+            tags,
+            categoryId,
+            defaultLanguage,
+            defaultAudioLanguage,
+            nowUtc,
+            etag,
+            commentsAllowed);
+
+        if (wasDirty)
         {
-            var dirtyFast = false;
-
-            // We still allow updates to CommentsAllowed (since you may probe it separately),
-            // without touching other fields.
-            if (CommentsAllowed != commentsAllowed)
-            {
-                CommentsAllowed = commentsAllowed;
-                dirtyFast = true;
-            }
-
-            CachedAt = nowUtc;
-            if (dirtyFast)
-            {
-                UpdatedAt = nowUtc;
-            }
-
-            return dirtyFast;
+            IsDirty = false;
+            UpdatedAt = nowUtc;
         }
 
-        // ---------- Full field-by-field comparison ----------
+        return changed || wasDirty;
+    }
+
+    public bool SyncFromRemote(
+        string? title,
+        string? description,
+        DateTimeOffset publishedAt,
+        TimeSpan duration,
+        VideoVisibility visibility,
+        IEnumerable<string>? tags,
+        string? categoryId,
+        string? defaultLanguage,
+        string? defaultAudioLanguage,
+        DateTimeOffset nowUtc,
+        string? etag,
+        bool? commentsAllowed = null)
+    {
+        if (HasSameEtag(etag))
+        {
+            CachedAt = nowUtc;
+            return false;
+        }
+
+        return ApplyDetailsCore(
+            title,
+            description,
+            publishedAt,
+            duration,
+            visibility,
+            tags,
+            categoryId,
+            defaultLanguage,
+            defaultAudioLanguage,
+            nowUtc,
+            etag,
+            commentsAllowed);
+    }
+
+    private bool HasSameEtag(string? etag)
+    {
+        return !string.IsNullOrEmpty(etag)
+               && StringComparer.Ordinal.Equals(ETag, etag);
+    }
+
+    private bool ApplyDetailsCore(
+        string? title,
+        string? description,
+        DateTimeOffset publishedAt,
+        TimeSpan duration,
+        VideoVisibility visibility,
+        IEnumerable<string>? tags,
+        string? categoryId,
+        string? defaultLanguage,
+        string? defaultAudioLanguage,
+        DateTimeOffset nowUtc,
+        string? etag,
+        bool? commentsAllowed = null)
+    {
         var dirty = false;
 
         if (!StringComparer.Ordinal.Equals(Title, title))
@@ -182,15 +275,14 @@ public sealed class Video : Entity
             Visibility = visibility;
             dirty = true;
         }
+        
 
-        if (tags is not null)
+        var newTags = (tags ?? []).ToArray();
+
+        if (!Tags.SequenceEqual(newTags, StringComparer.Ordinal))
         {
-            var newTags = tags.ToArray();
-            if (!Tags.SequenceEqual(newTags, StringComparer.Ordinal))
-            {
-                Tags = newTags;
-                dirty = true;
-            }
+            Tags = newTags;
+            dirty = true;
         }
 
         if (!StringComparer.Ordinal.Equals(CategoryId, categoryId))

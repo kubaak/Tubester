@@ -15,10 +15,31 @@ public interface IVideoRepository
     /// <returns>The video if found, null otherwise.</returns>
     Task<Video?> GetVideoByIdAsync(string uploadPlaylistId, string videoId, CancellationToken cancellationToken);
 
-    Task<(int inserted, int updated)> UpsertAsync(
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="uploadPlaylistId"></param>
+    /// <param name="videos"></param>
+    /// <param name="applyUpdate"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    Task<int> UpdateExistingAsync(
         string uploadPlaylistId,
         IEnumerable<Video> videos,
-        CancellationToken cancellationToken = default);
+        Func<Video, Video, DateTimeOffset, bool> applyUpdate,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Upserts a list of videos with data from YouTube.
+    /// </summary>
+    /// <param name="uploadPlaylistId"></param>
+    /// <param name="videos"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    Task<(int inserted, int updated, HashSet<string> syncedVideoIds)> UpsertRemoteSyncAsync(
+        string uploadPlaylistId,
+        IEnumerable<Video> videos,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Gets a page of videos with optional title filtering and cursor-based pagination for a specific channel.

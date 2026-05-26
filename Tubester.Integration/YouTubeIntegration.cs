@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Xml;
 using Google;
 using Google.Apis.Auth.OAuth2;
+using Google.Apis.Requests;
 using Google.Apis.Services;
 using Google.Apis.YouTube.v3;
 using Google.Apis.YouTube.v3.Data;
@@ -10,7 +11,6 @@ using Microsoft.Extensions.Logging;
 using Tubester.Abstractions.Auth;
 using Tubester.Abstractions.Channels;
 using Tubester.Integration.Dtos;
-using Tubester.Integration.Exceptions;
 
 namespace Tubester.Integration;
 
@@ -18,186 +18,99 @@ public sealed class YouTubeIntegration(
     ICurrentUserTokenAccessor currentUserTokenAccessor,
     ILogger<YouTubeIntegration> logger) : IYouTubeIntegration
 {
-    public async Task<ChannelDto?> GetChannelAsync(string channelId, CancellationToken cancellationToken)
+    public Task<ChannelDto?> GetChannelAsync(string channelId, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(channelId))
         {
-            return null;
+            return Task.FromResult<ChannelDto?>(null);
         }
 
-        try
-        {
-            var youTubeService = CreateReadOnlyServiceAsync(await GetCurrentUsersAccessToken(cancellationToken));
-
-            // Fetch channel details by id to get uploads playlist + title + ETag
-            var channelRequest = youTubeService.Channels.List("snippet,contentDetails");
-            channelRequest.Id = channelId;
-
-            var channelResponse = await channelRequest.ExecuteAsync(cancellationToken);
-            var channel = channelResponse.Items?.FirstOrDefault();
-            if (channel is null)
+        return ExecuteOrDefaultAsync(
+            async () =>
             {
-                logger.LogWarning("Channel id '{ChannelId}' not found when fetching details", channelId);
-                return null;
-            }
+                var youTubeService = await CreateReadOnlyServiceAsync(cancellationToken);
 
-            var uploadsPlaylistId = channel.ContentDetails?.RelatedPlaylists?.Uploads;
-            if (string.IsNullOrWhiteSpace(uploadsPlaylistId))
-            {
-                logger.LogWarning("Channel '{ChannelId}' has no uploads playlist", channelId);
-                return null;
-            }
+                var channelRequest = youTubeService.Channels.List("snippet,contentDetails");
+                channelRequest.Id = channelId;
 
-            var title = channel.Snippet?.Title ?? channelId;
-            var etag = channel.ETag;
+                var channelResponse = await ExecuteYouTubeRequestAsync(
+                    channelRequest,
+                    new YouTubeRequestLogContext(
+                        Operation: "Channels.List",
+                        ChannelId: channelId),
+                    cancellationToken);
 
-            return new ChannelDto(
-                channel.Id!,
-                title,
-                uploadsPlaylistId,
-                etag
-            );
-        }
-        catch (GoogleApiException ex)
-        {
-            logger.LogError(ex, "YouTube API error while getting channel for id '{ChannelId}'", channelId);
-            return null;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Unexpected error while getting channel for id '{ChannelId}'", channelId);
-            return null;
-        }
+                var channel = channelResponse.Items?.FirstOrDefault();
+
+                if (channel is null)
+                {
+                    logger.LogWarning("Channel id '{ChannelId}' not found when fetching details", channelId);
+                    return null;
+                }
+
+                var uploadsPlaylistId = channel.ContentDetails?.RelatedPlaylists?.Uploads;
+                if (string.IsNullOrWhiteSpace(uploadsPlaylistId))
+                {
+                    logger.LogWarning("Channel '{ChannelId}' has no uploads playlist", channelId);
+                    return null;
+                }
+
+                return new ChannelDto(
+                    channel.Id!,
+                    channel.Snippet?.Title ?? channelId,
+                    uploadsPlaylistId,
+                    channel.ETag);
+            },
+            fallbackValue: null,
+            "Error while getting channel.");
     }
 
-    public async Task<UserChannelDto?> GetCurrentChannelAsync(string accessToken, CancellationToken cancellationToken)
+    public Task<UserChannelDto?> GetCurrentChannelAsync(
+        string accessToken,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(accessToken))
         {
-            return null;
+            throw new UnauthorizedAccessException(
+                "No Google access token is available for the current user. Please sign in again.");
         }
 
-        try
-        {
-            var youTubeService = CreateReadOnlyServiceAsync(accessToken);
-
-            var channelsRequest = youTubeService.Channels.List("snippet,contentDetails");
-            channelsRequest.Mine = true;
-            channelsRequest.MaxResults = 1;
-
-            var channelsResponse = await channelsRequest.ExecuteAsync(cancellationToken);
-            var channel = channelsResponse.Items?.FirstOrDefault();
-            if (channel is null || string.IsNullOrWhiteSpace(channel.Id))
+        return ExecuteOrDefaultAsync(
+            async () =>
             {
-                logger.LogInformation(
-                    "No current channel found for authenticated user when discovering channel from token.");
-                return null;
-            }
+                var youTubeService = CreateService(accessToken, YouTubeService.Scope.YoutubeReadonly);
 
-            var title = channel.Snippet?.Title ?? channel.Id;
-
-            string? picture = null;
-            var thumbnails = channel.Snippet?.Thumbnails;
-            if (thumbnails is not null)
-            {
-                var thumbnailCandidates = new[]
-                {
-                    thumbnails.Maxres, thumbnails.Standard, thumbnails.High, thumbnails.Medium, thumbnails.Default__
-                };
-
-                foreach (var thumbnail in thumbnailCandidates)
-                {
-                    if (!string.IsNullOrWhiteSpace(thumbnail?.Url))
-                    {
-                        picture = thumbnail.Url;
-                        break;
-                    }
-                }
-            }
-
-            var uploadsPlaylistId = channel.ContentDetails?.RelatedPlaylists?.Uploads;
-
-            return new UserChannelDto(
-                channel.Id,
-                title,
-                picture,
-                uploadsPlaylistId
-            );
-        }
-        catch (GoogleApiException ex)
-        {
-            logger.LogError(ex, "YouTube API error while discovering current channel from access token.");
-            return null;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Unexpected error while discovering current channel from access token.");
-            return null;
-        }
-    }
-
-    public async Task<IReadOnlyList<ChannelDto>> GetUserChannelsAsync(
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var youTubeService = CreateReadOnlyServiceAsync(await GetCurrentUsersAccessToken(cancellationToken));
-
-            var channels = new List<ChannelDto>();
-            string? pageToken = null;
-
-            do
-            {
                 var channelsRequest = youTubeService.Channels.List("snippet,contentDetails");
                 channelsRequest.Mine = true;
-                channelsRequest.MaxResults = 50;
-                channelsRequest.PageToken = pageToken;
+                channelsRequest.MaxResults = 1;
 
-                var channelsResponse = await channelsRequest.ExecuteAsync(cancellationToken);
-                if (channelsResponse.Items is null || channelsResponse.Items.Count == 0)
+                var channelsResponse = await ExecuteYouTubeRequestAsync(
+                    channelsRequest,
+                    new YouTubeRequestLogContext(
+                        Operation: "Channels.List.Mine"),
+                    cancellationToken);
+
+                var channel = channelsResponse.Items?.FirstOrDefault();
+
+                if (channel is null || string.IsNullOrWhiteSpace(channel.Id))
                 {
-                    break;
+                    logger.LogInformation(
+                        "No current channel found for authenticated user when discovering channel from token");
+                    return null;
                 }
 
-                foreach (var channel in channelsResponse.Items)
-                {
-                    if (string.IsNullOrWhiteSpace(channel.Id))
-                    {
-                        continue;
-                    }
+                var title = channel.Snippet?.Title ?? channel.Id;
+                var picture = GetBestThumbnailUrl(channel.Snippet?.Thumbnails);
+                var uploadsPlaylistId = channel.ContentDetails?.RelatedPlaylists?.Uploads;
 
-                    var uploadsPlaylistId = channel.ContentDetails?.RelatedPlaylists?.Uploads;
-                    if (string.IsNullOrWhiteSpace(uploadsPlaylistId))
-                    {
-                        continue;
-                    }
-
-                    var title = channel.Snippet?.Title ?? channel.Id;
-                    var etag = channel.ETag;
-
-                    channels.Add(new ChannelDto(
-                        channel.Id,
-                        title,
-                        uploadsPlaylistId,
-                        etag
-                    ));
-                }
-
-                pageToken = channelsResponse.NextPageToken;
-            } while (!string.IsNullOrEmpty(pageToken));
-
-            return channels;
-        }
-        catch (GoogleApiException ex)
-        {
-            logger.LogError(ex, "YouTube API error while getting channels for current user.");
-            return Array.Empty<ChannelDto>();
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Unexpected error while getting channels for current user");
-            return Array.Empty<ChannelDto>();
-        }
+                return new UserChannelDto(
+                    channel.Id,
+                    title,
+                    picture,
+                    uploadsPlaylistId);
+            },
+            fallbackValue: null,
+            "Error while discovering current channel from access token.");
     }
 
     public async IAsyncEnumerable<VideoDto> GetAllVideosAsync(
@@ -205,7 +118,7 @@ public sealed class YouTubeIntegration(
         DateTimeOffset? publishedAfter,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var youTubeService = CreateReadOnlyServiceAsync(await GetCurrentUsersAccessToken(cancellationToken));
+        var youTubeService = await CreateReadOnlyServiceAsync(cancellationToken);
 
         string? page = null;
 
@@ -216,27 +129,27 @@ public sealed class YouTubeIntegration(
             playlistRequest.MaxResults = 50;
             playlistRequest.PageToken = page;
 
-            var playlistResponse = await playlistRequest.ExecuteAsync(cancellationToken);
+            var playlistResponse = await ExecuteYouTubeRequestAsync(
+                playlistRequest,
+                new YouTubeRequestLogContext(
+                    Operation: "PlaylistItems.List.Uploads",
+                    UploadPlaylistId: uploadsPlaylistId,
+                    PlaylistId: uploadsPlaylistId),
+                cancellationToken);
+
             if (playlistResponse.Items is null || playlistResponse.Items.Count == 0)
             {
                 yield break;
             }
 
-            if (publishedAfter.HasValue)
+            if (publishedAfter.HasValue && PageIsNotNewerThan(playlistResponse.Items, publishedAfter.Value))
             {
-                var firstItem = playlistResponse.Items.First();
-                var newest = firstItem.ContentDetails?.VideoPublishedAtDateTimeOffset ??
-                             firstItem.Snippet?.PublishedAtDateTimeOffset;
-                if (newest.HasValue && newest.Value <= publishedAfter.Value)
-                {
-                    yield break;
-                }
+                yield break;
             }
 
             var videoIds = new List<string>(playlistResponse.Items.Count);
-            var metaDictionary =
-                new Dictionary<string, (string? Title, string? Description, DateTimeOffset? PublishedAt)>(StringComparer
-                    .Ordinal);
+            var playlistMetadataByVideoId =
+                new Dictionary<string, PlaylistVideoMetadata>(StringComparer.Ordinal);
 
             foreach (var item in playlistResponse.Items)
             {
@@ -247,11 +160,11 @@ public sealed class YouTubeIntegration(
                 }
 
                 videoIds.Add(videoId);
-                metaDictionary[videoId] = (
+                playlistMetadataByVideoId[videoId] = new PlaylistVideoMetadata(
                     item.Snippet?.Title,
                     item.Snippet?.Description,
-                    item.Snippet?.PublishedAtDateTimeOffset ?? item.ContentDetails?.VideoPublishedAtDateTimeOffset
-                );
+                    item.Snippet?.PublishedAtDateTimeOffset ??
+                    item.ContentDetails?.VideoPublishedAtDateTimeOffset);
             }
 
             if (videoIds.Count == 0)
@@ -262,9 +175,17 @@ public sealed class YouTubeIntegration(
 
             var videoListRequest = youTubeService.Videos.List("snippet,contentDetails,status,recordingDetails");
             videoListRequest.Id = string.Join(",", videoIds);
-            var videoResponse = await videoListRequest.ExecuteAsync(cancellationToken);
 
-            foreach (var video in videoResponse.Items)
+            var videoResponse = await ExecuteYouTubeRequestAsync(
+                videoListRequest,
+                new YouTubeRequestLogContext(
+                    Operation: "Videos.List.FromUploads",
+                    VideoId: string.Join(",", videoIds),
+                    UploadPlaylistId: uploadsPlaylistId,
+                    PlaylistId: uploadsPlaylistId),
+                cancellationToken);
+
+            foreach (var video in videoResponse.Items ?? [])
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -273,98 +194,90 @@ public sealed class YouTubeIntegration(
                     continue;
                 }
 
-                var (metaTitle, metaDescription, metaPublishedAt) = metaDictionary[video.Id];
-                if (publishedAfter.HasValue && metaPublishedAt.HasValue &&
-                    metaPublishedAt.Value <= publishedAfter.Value)
+                var metadata = playlistMetadataByVideoId[video.Id];
+
+                if (publishedAfter.HasValue &&
+                    metadata.PublishedAt.HasValue &&
+                    metadata.PublishedAt.Value <= publishedAfter.Value)
                 {
                     yield break;
                 }
 
-                var title = metaTitle ?? video.Snippet.Title ?? string.Empty;
-                var description = metaDescription ?? video.Snippet.Title ?? string.Empty;
-
-                var tags = video.Snippet?.Tags?
-                    .Where(t => !string.IsNullOrWhiteSpace(t));
-
-                var iso = video.ContentDetails?.Duration ?? "PT0S";
-                var duration = XmlConvert.ToTimeSpan(iso);
-
-                var privacy = video.Status?.PrivacyStatus ?? "private";
-                var publishAt = video.Status?.PublishAtDateTimeOffset;
-                var isScheduled = string.Equals(privacy, "private", StringComparison.OrdinalIgnoreCase)
-                                  && publishAt.HasValue
-                                  && publishAt.Value > DateTimeOffset.UtcNow;
-
-                var privacyStatus = isScheduled ? "scheduled" : privacy;
-
-                var geoPoint = video.RecordingDetails?.Location;
-                var latitude = geoPoint?.Latitude;
-                var longitude = geoPoint?.Longitude;
-                ValueTuple<double, double>? location = null;
-                if (latitude is not null && longitude is not null)
-                {
-                    location = new ValueTuple<double, double>(latitude.Value, longitude.Value);
-                }
-
-                yield return new VideoDto(
-                    video.Id, title, description, tags, duration, privacyStatus,
-                    duration <= TimeSpan.FromSeconds(60), metaPublishedAt ?? DateTimeOffset.MinValue,
-                    video.Snippet?.CategoryId, video.Snippet?.DefaultLanguage, video.Snippet?.DefaultAudioLanguage,
-                    location, video.RecordingDetails?.LocationDescription,
-                    video.ETag, null // CommentsAllowed will be determined separately
-                );
+                yield return ToVideoDto(
+                    video,
+                    titleOverride: metadata.Title,
+                    descriptionOverride: metadata.Description,
+                    publishedAtOverride: metadata.PublishedAt);
             }
 
             page = playlistResponse.NextPageToken;
         } while (!string.IsNullOrEmpty(page));
     }
 
-    public async Task<bool?> CheckCommentsAllowedAsync(string videoId,
+    public async Task<bool?> CheckCommentsAllowedAsync(
+        string videoId,
         CancellationToken cancellationToken)
     {
         try
         {
-            var youTubeService = CreateReadOnlyServiceAsync(await GetCurrentUsersAccessToken(cancellationToken));
+            var youTubeService = await CreateReadOnlyServiceAsync(cancellationToken);
 
-            // First check if video is made for kids (short-circuit)
             var videoRequest = youTubeService.Videos.List("status");
             videoRequest.Id = videoId;
-            var videoResponse = await videoRequest.ExecuteAsync(cancellationToken);
+
+            var videoResponse = await ExecuteYouTubeRequestAsync(
+                videoRequest,
+                new YouTubeRequestLogContext(
+                    Operation: "Videos.List.Status",
+                    VideoId: videoId),
+                cancellationToken,
+                logGoogleApiErrors: false);
+
             var video = videoResponse.Items?.FirstOrDefault();
 
-            if (video?.Status != null)
-            {
-                if (video.Status.MadeForKids == true || video.Status.SelfDeclaredMadeForKids == true)
-                {
-                    return false; // Comments disabled for kids content
-                }
-            }
-
-            // Check comments by attempting to list them
-            var commentsRequest = youTubeService.CommentThreads.List("id");
-            commentsRequest.VideoId = videoId;
-            commentsRequest.MaxResults = 1;
-
-            await commentsRequest.ExecuteAsync(cancellationToken);
-            return true; // Comments allowed if request succeeds
-        }
-        catch (GoogleApiException ex)
-        {
-            // Check if the error is specifically about comments being disabled
-            if (ex.HttpStatusCode == HttpStatusCode.Forbidden &&
-                ex.Error?.Errors?.Any(e => e.Reason == "commentsDisabled") == true)
+            if (video?.Status?.MadeForKids == true ||
+                video?.Status?.SelfDeclaredMadeForKids == true)
             {
                 return false;
             }
 
-            logger.LogWarning(ex, "GoogleApiException Checking comments allowed for video {VideoId}", videoId);
-            // For other errors, return null to indicate unknown status
+            var commentsRequest = youTubeService.CommentThreads.List("id");
+            commentsRequest.VideoId = videoId;
+            commentsRequest.MaxResults = 1;
+
+            await ExecuteYouTubeRequestAsync(
+                commentsRequest,
+                new YouTubeRequestLogContext(
+                    Operation: "CommentThreads.List.CheckCommentsAllowed",
+                    VideoId: videoId),
+                cancellationToken,
+                logGoogleApiErrors: false);
+
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            throw;
+        }
+        catch (GoogleApiException ex) when (IsCommentsDisabled(ex))
+        {
+            return false;
+        }
+        catch (GoogleApiException ex)
+        {
+            logger.LogWarning(
+                ex,
+                "GoogleApiException checking comments allowed for video {VideoId}. HttpStatusCode={HttpStatusCode}, GoogleReason={GoogleReason}, GoogleLocation={GoogleLocation}",
+                videoId,
+                ex.HttpStatusCode,
+                GetGoogleReason(ex),
+                GetGoogleLocation(ex));
+
             return null;
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Checking comments allowed for video {VideoId}", videoId);
-            // For any other exceptions, return null to indicate unknown status
+            logger.LogWarning(ex, "Unexpected error checking comments allowed for video {VideoId}", videoId);
             return null;
         }
     }
@@ -379,61 +292,46 @@ public sealed class YouTubeIntegration(
             return Array.Empty<VideoDto>();
         }
 
-        var youTubeService = CreateReadOnlyServiceAsync(await GetCurrentUsersAccessToken(cancellationToken));
+        var youTubeService = await CreateReadOnlyServiceAsync(cancellationToken);
 
         var videoRequest = youTubeService.Videos.List("snippet,contentDetails,status,recordingDetails");
         videoRequest.Id = string.Join(",", videoIdsList);
 
-        var videoResponse = await videoRequest.ExecuteAsync(cancellationToken);
-        var result = new List<VideoDto>();
+        var videoResponse = await ExecuteYouTubeRequestAsync(
+            videoRequest,
+            new YouTubeRequestLogContext(
+                Operation: "Videos.List",
+                VideoId: string.Join(",", videoIdsList)),
+            cancellationToken);
 
-        foreach (var video in videoResponse.Items)
-        {
-            if (string.IsNullOrWhiteSpace(video.Id))
-            {
-                continue;
-            }
-
-            var title = video.Snippet?.Title ?? string.Empty;
-            var description = video.Snippet?.Description ?? string.Empty;
-            var tags = video.Snippet?.Tags?.Where(t => !string.IsNullOrWhiteSpace(t));
-            var iso = video.ContentDetails?.Duration ?? "PT0S";
-            var duration = XmlConvert.ToTimeSpan(iso);
-            var privacy = video.Status?.PrivacyStatus ?? "private";
-            var publishAt = video.Status?.PublishAtDateTimeOffset;
-            var isScheduled = string.Equals(privacy, "private", StringComparison.OrdinalIgnoreCase)
-                              && publishAt.HasValue
-                              && publishAt.Value > DateTimeOffset.UtcNow;
-            var privacyStatus = isScheduled ? "scheduled" : privacy;
-            var geoPoint = video.RecordingDetails?.Location;
-            var latitude = geoPoint?.Latitude;
-            var longitude = geoPoint?.Longitude;
-            ValueTuple<double, double>? location = null;
-            if (latitude is not null && longitude is not null)
-            {
-                location = new ValueTuple<double, double>(latitude.Value, longitude.Value);
-            }
-
-            result.Add(new VideoDto(
-                video.Id, title, description, tags, duration, privacyStatus,
-                duration <= TimeSpan.FromSeconds(60),
-                video.Snippet?.PublishedAtDateTimeOffset ?? DateTimeOffset.MinValue,
-                video.Snippet?.CategoryId, video.Snippet?.DefaultLanguage, video.Snippet?.DefaultAudioLanguage,
-                location, video.RecordingDetails?.LocationDescription,
-                video.ETag, null // CommentsAllowed determined during comment scanning
-            ));
-        }
-
-        return result;
+        return videoResponse.Items?
+            .Where(video => !string.IsNullOrWhiteSpace(video.Id))
+            .Select(video => ToVideoDto(video))
+            .ToList() ?? [];
     }
 
-    public async Task ReplyAsync(string parentCommentId, string text,
+    public async Task ReplyAsync(
+        string parentCommentId,
+        string text,
         CancellationToken cancellationToken)
     {
-        var youTubeService = CreateReadOnlyServiceAsync(await GetCurrentUsersAccessToken(cancellationToken));
-        var comment = new Comment { Snippet = new CommentSnippet { ParentId = parentCommentId, TextOriginal = text } };
+        var youTubeService = await CreateWriteServiceAsync(cancellationToken);
 
-        await youTubeService.Comments.Insert(comment, "snippet").ExecuteAsync(cancellationToken);
+        var comment = new Comment
+        {
+            Snippet = new CommentSnippet
+            {
+                ParentId = parentCommentId,
+                TextOriginal = text
+            }
+        };
+
+        await ExecuteYouTubeRequestAsync(
+            youTubeService.Comments.Insert(comment, "snippet"),
+            new YouTubeRequestLogContext(
+                Operation: "Comments.Insert",
+                ParentCommentId: parentCommentId),
+            cancellationToken);
     }
 
     public async Task UpdateVideoAsync(
@@ -446,14 +344,12 @@ public sealed class YouTubeIntegration(
         string? defaultAudioLanguage,
         CancellationToken cancellationToken)
     {
-        try
+        var youTubeService = await CreateWriteServiceAsync(cancellationToken);
+
+        var video = new Video
         {
-            var accessToken = await GetCurrentUsersAccessToken(cancellationToken);
-
-            // Prefer a write-capable service here, not read-only.
-            var youTubeService = CreateWriteService(accessToken);
-
-            var snippet = new VideoSnippet
+            Id = videoId,
+            Snippet = new VideoSnippet
             {
                 Title = title,
                 Description = description,
@@ -461,23 +357,15 @@ public sealed class YouTubeIntegration(
                 CategoryId = categoryId,
                 DefaultLanguage = defaultLanguage,
                 DefaultAudioLanguage = defaultAudioLanguage
-            };
+            }
+        };
 
-            var video = new Video
-            {
-                Id = videoId,
-                Snippet = snippet
-            };
-
-            var updateRequest = youTubeService.Videos.Update(video, "snippet");
-            await updateRequest.ExecuteAsync(cancellationToken);
-        }
-        catch (GoogleApiException ex) when (ex.HttpStatusCode == HttpStatusCode.Unauthorized)
-        {
-            throw new UnauthorizedAccessException(
-                "Your Google session has expired. Please sign in again.",
-                ex);
-        }
+        await ExecuteYouTubeRequestAsync(
+            youTubeService.Videos.Update(video, "snippet"),
+            new YouTubeRequestLogContext(
+                Operation: "Videos.Update",
+                VideoId: videoId),
+            cancellationToken);
     }
 
     public async Task AddVideoToPlaylistAsync(
@@ -485,47 +373,64 @@ public sealed class YouTubeIntegration(
         string videoId,
         CancellationToken cancellationToken)
     {
-        var youTubeService = CreateReadOnlyServiceAsync(await GetCurrentUsersAccessToken(cancellationToken));
+        var youTubeService = await CreateWriteServiceAsync(cancellationToken);
 
-        //todo avoid checking to save the calls?
-        // Check if already present to avoid duplicates
         string? page = null;
         do
         {
-            var list = youTubeService.PlaylistItems.List("contentDetails");
-            list.PlaylistId = playlistId;
-            list.MaxResults = 50;
-            list.PageToken = page;
-            var res = await list.ExecuteAsync(cancellationToken);
+            var listRequest = youTubeService.PlaylistItems.List("contentDetails");
+            listRequest.PlaylistId = playlistId;
+            listRequest.MaxResults = 50;
+            listRequest.PageToken = page;
 
-            if (res.Items.Any(i => i.ContentDetails?.VideoId == videoId))
+            var playlistItemsResponse = await ExecuteYouTubeRequestAsync(
+                listRequest,
+                new YouTubeRequestLogContext(
+                    Operation: "PlaylistItems.List.BeforeInsert",
+                    VideoId: videoId,
+                    PlaylistId: playlistId),
+                cancellationToken);
+
+            if (playlistItemsResponse.Items?.Any(item => item.ContentDetails?.VideoId == videoId) == true)
             {
-                return; // already there
+                return;
             }
 
-            page = res.NextPageToken;
-        } while (page is not null);
+            page = playlistItemsResponse.NextPageToken;
+        } while (!string.IsNullOrEmpty(page));
 
-        var insert = youTubeService.PlaylistItems.Insert(
+        var insertRequest = youTubeService.PlaylistItems.Insert(
             new PlaylistItem
             {
                 Snippet = new PlaylistItemSnippet
                 {
                     PlaylistId = playlistId,
-                    ResourceId = new ResourceId { Kind = "youtube#video", VideoId = videoId }
+                    ResourceId = new ResourceId
+                    {
+                        Kind = "youtube#video",
+                        VideoId = videoId
+                    }
                 }
-            }, "snippet");
+            },
+            "snippet");
 
-        await insert.ExecuteAsync(cancellationToken);
+        await ExecuteYouTubeRequestAsync(
+            insertRequest,
+            new YouTubeRequestLogContext(
+                Operation: "PlaylistItems.Insert",
+                VideoId: videoId,
+                PlaylistId: playlistId),
+            cancellationToken);
     }
 
     public async IAsyncEnumerable<DetailedPlaylistDto> GetPlaylistsAsync(
         string channelId,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var youTubeService = CreateReadOnlyServiceAsync(await GetCurrentUsersAccessToken(cancellationToken));
+        var youTubeService = await CreateReadOnlyServiceAsync(cancellationToken);
 
         string? page = null;
+
         do
         {
             var playlistRequest = youTubeService.Playlists.List("id,snippet,status");
@@ -533,7 +438,12 @@ public sealed class YouTubeIntegration(
             playlistRequest.MaxResults = 50;
             playlistRequest.PageToken = page;
 
-            var playlistResponse = await playlistRequest.ExecuteAsync(cancellationToken);
+            var playlistResponse = await ExecuteYouTubeRequestAsync(
+                playlistRequest,
+                new YouTubeRequestLogContext(
+                    Operation: "Playlists.List",
+                    ChannelId: channelId),
+                cancellationToken);
 
             if (playlistResponse.Items is null || playlistResponse.Items.Count == 0)
             {
@@ -544,11 +454,17 @@ public sealed class YouTubeIntegration(
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (!string.IsNullOrWhiteSpace(playlist.Id))
+                if (string.IsNullOrWhiteSpace(playlist.Id))
                 {
-                    var visibility = playlist.Status?.PrivacyStatus ?? "private";
-                    yield return new DetailedPlaylistDto(playlist.Id!, playlist.Snippet.Title, playlist.Snippet.Description, visibility, playlist.Snippet.ETag);
+                    continue;
                 }
+
+                yield return new DetailedPlaylistDto(
+                    playlist.Id,
+                    playlist.Snippet.Title,
+                    playlist.Snippet.Description,
+                    playlist.Status?.PrivacyStatus ?? "private",
+                    playlist.Snippet.ETag);
             }
 
             page = playlistResponse.NextPageToken;
@@ -559,9 +475,10 @@ public sealed class YouTubeIntegration(
         string playlistId,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var youTubeService = CreateReadOnlyServiceAsync(await GetCurrentUsersAccessToken(cancellationToken));
+        var youTubeService = await CreateReadOnlyServiceAsync(cancellationToken);
 
         string? page = null;
+
         do
         {
             var itemsRequest = youTubeService.PlaylistItems.List("contentDetails");
@@ -569,7 +486,30 @@ public sealed class YouTubeIntegration(
             itemsRequest.MaxResults = 50;
             itemsRequest.PageToken = page;
 
-            var itemsResponse = await itemsRequest.ExecuteAsync(cancellationToken);
+            PlaylistItemListResponse itemsResponse;
+
+            try
+            {
+                itemsResponse = await ExecuteYouTubeRequestAsync(
+                    itemsRequest,
+                    new YouTubeRequestLogContext(
+                        Operation: "PlaylistItems.List.VideoIds",
+                        PlaylistId: playlistId),
+                    cancellationToken,
+                    logGoogleApiErrors: false);
+            }
+            catch (GoogleApiException ex) when (IsPlaylistNotFound(ex))
+            {
+                logger.LogWarning(
+                    ex,
+                    "YouTube playlist was not found when loading playlist video ids. Treating it as empty. PlaylistId={PlaylistId}, HttpStatusCode={HttpStatusCode}, GoogleReason={GoogleReason}, GoogleLocation={GoogleLocation}",
+                    playlistId,
+                    ex.HttpStatusCode,
+                    GetGoogleReason(ex),
+                    GetGoogleLocation(ex));
+
+                yield break;
+            }
 
             if (itemsResponse.Items is null || itemsResponse.Items.Count == 0)
             {
@@ -590,45 +530,239 @@ public sealed class YouTubeIntegration(
             page = itemsResponse.NextPageToken;
         } while (!string.IsNullOrEmpty(page));
     }
+    
+    private static bool IsPlaylistNotFound(GoogleApiException ex)
+    {
+        return ex.HttpStatusCode == HttpStatusCode.NotFound &&
+               ex.Error?.Errors?.Any(error =>
+                   string.Equals(error.Reason, "playlistNotFound", StringComparison.OrdinalIgnoreCase)) == true;
+    }
+
+    private async Task<YouTubeService> CreateReadOnlyServiceAsync(CancellationToken cancellationToken)
+    {
+        return CreateService(
+            await GetCurrentUsersAccessToken(cancellationToken),
+            YouTubeService.Scope.YoutubeReadonly);
+    }
+
+    private async Task<YouTubeService> CreateWriteServiceAsync(CancellationToken cancellationToken)
+    {
+        return CreateService(
+            await GetCurrentUsersAccessToken(cancellationToken),
+            YouTubeService.Scope.YoutubeForceSsl);
+    }
 
     private async Task<string> GetCurrentUsersAccessToken(CancellationToken cancellationToken)
     {
         var accessToken = await currentUserTokenAccessor.GetAccessTokenAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(accessToken))
         {
-            throw new InvalidOperationException("No access token is available for the current user.");
+            throw new UnauthorizedAccessException(
+                "No Google access token is available for the current user. Please sign in again.");
         }
 
         return accessToken;
     }
 
-    private static YouTubeService CreateReadOnlyServiceAsync(string accessToken)
+    private async Task<T> ExecuteOrDefaultAsync<T>(
+        Func<Task<T>> action,
+        T fallbackValue,
+        string errorMessage)
+    {
+        try
+        {
+            return await action();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            throw;
+        }
+        catch (GoogleApiException)
+        {
+            return fallbackValue;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Unexpected YouTube integration error. {ErrorMessage}", errorMessage);
+            return fallbackValue;
+        }
+    }
+
+    private async Task<TResponse> ExecuteYouTubeRequestAsync<TResponse>(
+        ClientServiceRequest<TResponse> request,
+        YouTubeRequestLogContext context,
+        CancellationToken cancellationToken,
+        bool logGoogleApiErrors = true)
+    {
+        try
+        {
+            return await request.ExecuteAsync(cancellationToken);
+        }
+        catch (GoogleApiException ex) when (IsUnauthorized(ex))
+        {
+            logger.LogWarning(
+                ex,
+                "Unauthorized YouTube API request while executing {YouTubeOperation}. ChannelId={ChannelId}, VideoId={VideoId}, UploadPlaylistId={UploadPlaylistId}, PlaylistId={PlaylistId}, ParentCommentId={ParentCommentId}, HttpStatusCode={HttpStatusCode}, GoogleReason={GoogleReason}, GoogleLocation={GoogleLocation}",
+                context.Operation,
+                context.ChannelId,
+                context.VideoId,
+                context.UploadPlaylistId,
+                context.PlaylistId,
+                context.ParentCommentId,
+                ex.HttpStatusCode,
+                GetGoogleReason(ex),
+                GetGoogleLocation(ex));
+
+            throw new UnauthorizedAccessException(
+                "Your Google session has expired. Please sign in again.",
+                ex);
+        }
+        catch (GoogleApiException ex) when (logGoogleApiErrors)
+        {
+            logger.LogError(
+                ex,
+                "YouTube API error while executing {YouTubeOperation}. ChannelId={ChannelId}, VideoId={VideoId}, UploadPlaylistId={UploadPlaylistId}, PlaylistId={PlaylistId}, ParentCommentId={ParentCommentId}, HttpStatusCode={HttpStatusCode}, GoogleReason={GoogleReason}, GoogleLocation={GoogleLocation}",
+                context.Operation,
+                context.ChannelId,
+                context.VideoId,
+                context.UploadPlaylistId,
+                context.PlaylistId,
+                context.ParentCommentId,
+                ex.HttpStatusCode,
+                GetGoogleReason(ex),
+                GetGoogleLocation(ex));
+
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(
+                ex,
+                "Unexpected YouTube integration error while executing {YouTubeOperation}. ChannelId={ChannelId}, VideoId={VideoId}, UploadPlaylistId={UploadPlaylistId}, PlaylistId={PlaylistId}, ParentCommentId={ParentCommentId}",
+                context.Operation,
+                context.ChannelId,
+                context.VideoId,
+                context.UploadPlaylistId,
+                context.PlaylistId,
+                context.ParentCommentId);
+
+            throw;
+        }
+    }
+
+    private static YouTubeService CreateService(string accessToken, string scope)
     {
         var googleCredential = GoogleCredential
             .FromAccessToken(accessToken)
-            .CreateScoped(YouTubeService.Scope.YoutubeReadonly);
+            .CreateScoped(scope);
 
-        var initializer = new BaseClientService.Initializer
+        return new YouTubeService(new BaseClientService.Initializer
         {
             HttpClientInitializer = googleCredential,
             ApplicationName = "Tubester"
-        };
-
-        return new YouTubeService(initializer);
+        });
     }
-    
-    private static YouTubeService CreateWriteService(string accessToken)
+
+    private static VideoDto ToVideoDto(
+        Video video,
+        string? titleOverride = null,
+        string? descriptionOverride = null,
+        DateTimeOffset? publishedAtOverride = null)
     {
-        var googleCredential = GoogleCredential
-            .FromAccessToken(accessToken)
-            .CreateScoped(YouTubeService.Scope.YoutubeForceSsl);
+        var duration = XmlConvert.ToTimeSpan(video.ContentDetails?.Duration ?? "PT0S");
+        var privacyStatus = GetPrivacyStatus(video.Status);
 
-        var initializer = new BaseClientService.Initializer
+        return new VideoDto(
+            video.Id!,
+            titleOverride ?? video.Snippet?.Title ?? string.Empty,
+            descriptionOverride ?? video.Snippet?.Description ?? string.Empty,
+            video.Snippet?.Tags?.Where(tag => !string.IsNullOrWhiteSpace(tag)),
+            duration,
+            privacyStatus,
+            duration <= TimeSpan.FromSeconds(60),
+            publishedAtOverride ?? video.Snippet?.PublishedAtDateTimeOffset ?? DateTimeOffset.MinValue,
+            video.Snippet?.CategoryId,
+            video.Snippet?.DefaultLanguage,
+            video.Snippet?.DefaultAudioLanguage,
+            video.ETag,
+            null);
+    }
+
+    private static string GetPrivacyStatus(VideoStatus? status)
+    {
+        var privacy = status?.PrivacyStatus ?? "private";
+        var publishAt = status?.PublishAtDateTimeOffset;
+
+        var isScheduled = string.Equals(privacy, "private", StringComparison.OrdinalIgnoreCase)
+                          && publishAt.HasValue
+                          && publishAt.Value > DateTimeOffset.UtcNow;
+
+        return isScheduled ? "scheduled" : privacy;
+    }
+
+    private static string? GetBestThumbnailUrl(ThumbnailDetails? thumbnails)
+    {
+        if (thumbnails is null)
         {
-            HttpClientInitializer = googleCredential,
-            ApplicationName = "Tubester"
+            return null;
+        }
+
+        var candidates = new[]
+        {
+            thumbnails.Maxres,
+            thumbnails.Standard,
+            thumbnails.High,
+            thumbnails.Medium,
+            thumbnails.Default__
         };
 
-        return new YouTubeService(initializer);
+        return candidates
+            .Select(thumbnail => thumbnail?.Url)
+            .FirstOrDefault(url => !string.IsNullOrWhiteSpace(url));
     }
+
+    private static bool PageIsNotNewerThan(
+        IList<PlaylistItem> items,
+        DateTimeOffset publishedAfter)
+    {
+        var firstItem = items.FirstOrDefault();
+        var newest = firstItem?.ContentDetails?.VideoPublishedAtDateTimeOffset ??
+                     firstItem?.Snippet?.PublishedAtDateTimeOffset;
+
+        return newest.HasValue && newest.Value <= publishedAfter;
+    }
+
+    private static bool IsUnauthorized(GoogleApiException ex)
+    {
+        return ex.HttpStatusCode == HttpStatusCode.Unauthorized;
+    }
+
+    private static bool IsCommentsDisabled(GoogleApiException ex)
+    {
+        return ex.HttpStatusCode == HttpStatusCode.Forbidden &&
+               ex.Error?.Errors?.Any(error => error.Reason == "commentsDisabled") == true;
+    }
+
+    private static string? GetGoogleReason(GoogleApiException ex)
+    {
+        return ex.Error?.Errors?.FirstOrDefault()?.Reason;
+    }
+
+    private static string? GetGoogleLocation(GoogleApiException ex)
+    {
+        return ex.Error?.Errors?.FirstOrDefault()?.Location;
+    }
+
+    private sealed record YouTubeRequestLogContext(
+        string Operation,
+        string? ChannelId = null,
+        string? VideoId = null,
+        string? UploadPlaylistId = null,
+        string? PlaylistId = null,
+        string? ParentCommentId = null);
+
+    private sealed record PlaylistVideoMetadata(
+        string? Title,
+        string? Description,
+        DateTimeOffset? PublishedAt);
 }

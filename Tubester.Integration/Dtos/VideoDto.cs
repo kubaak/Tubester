@@ -12,8 +12,6 @@ public sealed record VideoDto(
     string? CategoryId,
     string? DefaultLanguage,
     string? DefaultAudioLanguage,
-    (double lat, double lng)? Location,
-    string? LocationDescription,
     string? ETag,
     bool? CommentsAllowed
 );
