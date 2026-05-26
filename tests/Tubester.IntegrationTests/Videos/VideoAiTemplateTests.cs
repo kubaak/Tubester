@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Tubester.Abstractions.Credits;
 using Tubester.Application.Contracts.Videos;
 using Tubester.Application.Jobs;
+using Tubester.Domain;
 using Tubester.IntegrationTests.TestHost;
 using Tubester.Persistence;
 using Xunit;
@@ -21,16 +22,16 @@ public class VideoAiTemplateTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        var targetVideo = TestHelpers.GetTargetVideo();
+        var video = TestHelpers.GetTargetVideo();
 
         await _helpers.SeedTestDataAsync(new TestDataOptions
         {
-            Videos = [targetVideo]
+            Videos = [video]
         });
 
         var request = new AiVideoTemplateRequest
         {
-            TargetVideoId = targetVideo.VideoId,
+            TargetVideoId = video.VideoId,
             PromptEnrichment = "Generate better metadata",
             ExpectedCreditCost = TestConstants.AiTitleEnqueuedCost + TestConstants.AiDescriptionEnqueuedCost + TestConstants.AiTagsEnqueuedCost
         };
@@ -63,15 +64,22 @@ public class VideoAiTemplateTests(TestFixture fixture)
 
         using var serviceScope = fixture.ApiServices.CreateScope();
         var databaseContext = serviceScope.ServiceProvider.GetRequiredService<TubesterDb>();
-        var videoInDatabase = await databaseContext.Videos.FindAsync(targetVideo.VideoId);
+        var videoInDatabase = await databaseContext.Videos.FindAsync(video.VideoId);
 
         Assert.NotNull(videoInDatabase);
-        Assert.True(
-            videoInDatabase.IsAiTitleInProgress ||
-            videoInDatabase.IsAiDescriptionInProgress ||
-            videoInDatabase.IsAiTagsInProgress);
+        Assert.Equal(
+            AiVideoOperationFlags.Title | AiVideoOperationFlags.Description | AiVideoOperationFlags.Tags,
+            videoInDatabase.AiOperationsInProgress);
 
-        await _helpers.AssertUserEventAsync(CreditActionType.AiTemplateEnqueued, TestConstants.UserId, targetVideo.VideoId);
+        await _helpers.AssertUserEventAsync(CreditActionType.AiTemplateEnqueued, TestConstants.UserId, video.VideoId);
+        TestHelpers.SetProperty(
+            video,
+            nameof(Video.AiOperationsInProgress),
+            AiVideoOperationFlags.Title |
+            AiVideoOperationFlags.Description |
+            AiVideoOperationFlags.Tags);
+
+        await _helpers.AssertVideoAsync(video);
     }
 
     [Fact]
@@ -168,7 +176,7 @@ public class VideoAiTemplateTests(TestFixture fixture)
         await fixture.CleanStateAsync();
         var playlist1 = TestHelpers.GetPlaylist("PL1");
         var playlist2 = TestHelpers.GetPlaylist("PL2");
-        await _helpers.SeedTestDataAsync(new TestDataOptions
+        var testData = await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Playlists = [playlist1, playlist2]
         });
@@ -208,6 +216,16 @@ public class VideoAiTemplateTests(TestFixture fixture)
         Assert.Equal(TestConstants.ChannelId, suggestionRequest.ChannelId);
         Assert.Equal(TestConstants.UploadsPlaylistId, suggestionRequest.UploadPlaylistId);
         Assert.Equal(request.PromptEnrichment, suggestionRequest.PromptEnrichment);
+
+        TestHelpers.SetProperty(
+            testData.Video!,
+            nameof(Video.AiOperationsInProgress),
+            AiVideoOperationFlags.Title |
+            AiVideoOperationFlags.Description |
+            AiVideoOperationFlags.Tags |
+            AiVideoOperationFlags.PlaylistSuggestion);
+
+        await _helpers.AssertVideoAsync(testData.Video!);
     }
 
     [Fact]

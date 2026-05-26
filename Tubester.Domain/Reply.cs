@@ -7,10 +7,10 @@ public enum ReplyStatus { Pulled = 0, Suggested = 1, Approved = 2, Posted = 3, I
 
 public class Reply : Entity
 {
-    public string CommentId { get; private set; }
-    public string VideoId { get; private set; }
-    public string VideoTitle { get; private set; }
-    public string CommentText { get; private set; }
+    public string CommentId { get; private init; } = null!;
+    public string VideoId { get; private init; } = null!;
+    public string VideoTitle { get; private init; } = null!;
+    public string CommentText { get; private init; } = null!;
     public ReplyStatus Status { get; private set; }
     public string? SuggestedText { get; private set; }
     public string? FinalText { get; private set; }

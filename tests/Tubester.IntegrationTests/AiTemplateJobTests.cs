@@ -80,6 +80,7 @@ public class AiTemplateJobTests(TestFixture fixture)
 
         // Assert
         TestHelpers.SetVideoProperties(targetVideo, SuggestedTitle, SuggestedDescription, suggestedTags.ToArray());
+        TestHelpers.SetProperty(targetVideo, nameof(targetVideo.IsDirty), true);
         await _helpers.AssertVideoAsync(targetVideo);
 
         fixture.WorkerFactory.MockAiTextGenerationClient.Verify(
@@ -130,6 +131,7 @@ public class AiTemplateJobTests(TestFixture fixture)
 
         // Assert
         TestHelpers.SetVideoProperties(targetVideo, targetVideo.Title!, SuggestedDescription, suggestedTags.ToArray());
+        TestHelpers.SetProperty(targetVideo, nameof(targetVideo.IsDirty), true);
         await _helpers.AssertVideoAsync(targetVideo);
     }
 
@@ -178,6 +180,7 @@ public class AiTemplateJobTests(TestFixture fixture)
             targetVideo.Description!,
             suggestedTags.ToArray());
 
+        TestHelpers.SetProperty(targetVideo, nameof(targetVideo.IsDirty), true);
         await _helpers.AssertVideoAsync(targetVideo);
     }
 
@@ -222,6 +225,7 @@ public class AiTemplateJobTests(TestFixture fixture)
 
         // Assert
         TestHelpers.SetVideoProperties(targetVideo, AlternativeSuggestedTitle, AlternativeSuggestedDescription, originalTags);
+        TestHelpers.SetProperty(targetVideo, nameof(targetVideo.IsDirty), true);
         await _helpers.AssertVideoAsync(targetVideo);
     }
 
@@ -263,5 +267,6 @@ public class AiTemplateJobTests(TestFixture fixture)
             aiTemplateJob.Run(request, new Hangfire.JobCancellationToken(false)));
 
         Assert.Equal(SimulatedAiTextGenerationClientFailureMessage, exception.Message);
+        await _helpers.AssertVideoAsync(targetVideo);
     }
 }

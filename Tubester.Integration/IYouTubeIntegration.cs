@@ -7,8 +7,6 @@ public interface IYouTubeIntegration
 {
     Task<ChannelDto?> GetChannelAsync(string channelId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<ChannelDto>> GetUserChannelsAsync(CancellationToken cancellationToken);
-
     Task<UserChannelDto?> GetCurrentChannelAsync(string accessToken, CancellationToken cancellationToken);
 
     IAsyncEnumerable<VideoDto> GetAllVideosAsync(
@@ -37,8 +35,6 @@ public interface IYouTubeIntegration
     IAsyncEnumerable<string> GetPlaylistVideoIdsAsync(
         string playlistId,
         CancellationToken cancellationToken);
-
-    Task<bool?> CheckCommentsAllowedAsync(string videoId, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<VideoDto>> GetVideosAsync(
         IEnumerable<string> videoIds,

@@ -125,14 +125,8 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
         b.Entity<Video>().Property(video => video.Visibility).HasConversion<string>().HasMaxLength(10).IsRequired();
         // AI operations in progress as integer bitmask
         b.Entity<Video>().Property(video => video.AiOperationsInProgress);
-
-        b.Entity<Video>()
-            .OwnsOne(video => video.Location, ownedNavigationBuilder =>
-            {
-                ownedNavigationBuilder.Property(location => location.Latitude);
-                ownedNavigationBuilder.Property(location => location.Longitude);
-                ownedNavigationBuilder.WithOwner();
-            });
+        // IsDirty flag for tracking AI or draft modifications
+        b.Entity<Video>().Property(video => video.IsDirty);
 
         b.Entity<Playlist>().HasKey(playlist => playlist.PlaylistId);
         b.Entity<Playlist>().HasIndex(playlist => playlist.ChannelId);

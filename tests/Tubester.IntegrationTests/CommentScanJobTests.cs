@@ -536,7 +536,7 @@ public class CommentScanJobTests(TestFixture fixture)
 
         var publicVideo = TestHelpers.GetTargetVideo(visibility: VideoVisibility.Public);
         var privateVideo = TestHelpers.GetTargetVideo("private-video-id", VideoVisibility.Private);
-        var nonCommentableVideo = TestHelpers.GetTargetVideo("non-commentable-video-id", iscommentable: false);
+        var nonCommentableVideo = TestHelpers.GetTargetVideo("non-commentable-video-id", isCommentable: false);
 
         await _helpers.SeedTestDataAsync(new TestDataOptions
         {
