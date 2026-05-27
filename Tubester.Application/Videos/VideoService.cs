@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tubester.Abstractions;
@@ -452,127 +453,142 @@ public class VideoService(
     }
 
     public async Task<VideoDetailsDto?> ResyncVideoAsync(
-        string videoId,
-        CancellationToken cancellationToken)
+    string videoId,
+    CancellationToken cancellationToken)
+{
+    if (string.IsNullOrWhiteSpace(videoId))
     {
-        if (string.IsNullOrWhiteSpace(videoId))
-        {
-            return null;
-        }
+        return null;
+    }
 
-        var uploadPlaylistId = channelContext.GetRequiredUploadPlaylistId();
-        using var scope = logger.BeginScope(new Dictionary<string, object?>
-        {
-            { LoggingConstants.ChannelId, channelContext.GetRequiredChannelId() },
-            { LoggingConstants.UploadPlaylistId, uploadPlaylistId },
-            { LoggingConstants.VideoId, videoId },
-        });
-        
-        var video = await videoRepository.GetVideoByIdAsync(uploadPlaylistId, videoId, cancellationToken);
+    var uploadPlaylistId = channelContext.GetRequiredUploadPlaylistId();
+    var channelId = channelContext.GetRequiredChannelId();
 
-        if (video is null)
-        {
-            return null;
-        }
+    using var scope = logger.BeginScope(new Dictionary<string, object?>
+    {
+        { LoggingConstants.ChannelId, channelId },
+        { LoggingConstants.UploadPlaylistId, uploadPlaylistId },
+        { LoggingConstants.VideoId, videoId },
+    });
 
-        // Fetch fresh video details from YouTube
-        var videoDtos = await youTubeIntegration.GetVideosAsync([videoId], cancellationToken);
-        var videoDto = videoDtos.ToList().FirstOrDefault();
+    var video = await videoRepository.GetVideoByIdAsync(
+        uploadPlaylistId,
+        videoId,
+        cancellationToken);
 
-        if (videoDto is null)
-        {
-            return null;
-        }
+    if (video is null)
+    {
+        return null;
+    }
 
-        var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
+    var channelPlaylistsTask = playlistRepository.GetByChannelAsync(
+        channelId,
+        cancellationToken);
 
-        // Convert privacy status string to VideoVisibility enum
-        var visibility = videoDto.PrivacyStatus.ToLowerInvariant() switch
-        {
-            "public" => VideoVisibility.Public,
-            "unlisted" => VideoVisibility.Unlisted,
-            "private" => VideoVisibility.Private,
-            "scheduled" => VideoVisibility.Scheduled,
-            _ => VideoVisibility.Private
-        };
+    var videoDtos = await youTubeIntegration.GetVideosAsync([videoId], cancellationToken);
+    var videoDto = videoDtos.FirstOrDefault();
 
-        // Update video details
-        video.OverrideFromRemote(
-            videoDto.Title,
-            videoDto.Description,
-            videoDto.PublishedAt,
-            videoDto.Duration,
-            visibility,
-            videoDto.Tags,
-            videoDto.CategoryId,
-            videoDto.DefaultLanguage,
-            videoDto.DefaultAudioLanguage,
+    if (videoDto is null)
+    {
+        return null;
+    }
+
+    var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
+
+    var visibility = videoDto.PrivacyStatus.ToLowerInvariant() switch
+    {
+        "public" => VideoVisibility.Public,
+        "unlisted" => VideoVisibility.Unlisted,
+        "private" => VideoVisibility.Private,
+        "scheduled" => VideoVisibility.Scheduled,
+        _ => VideoVisibility.Private
+    };
+
+    video.OverrideFromRemote(
+        videoDto.Title,
+        videoDto.Description,
+        videoDto.PublishedAt,
+        videoDto.Duration,
+        visibility,
+        videoDto.Tags,
+        videoDto.CategoryId,
+        videoDto.DefaultLanguage,
+        videoDto.DefaultAudioLanguage,
+        nowUtc,
+        videoDto.ETag,
+        videoDto.CommentsAllowed);
+
+    await videoRepository.UpdateExistingAsync(
+        uploadPlaylistId,
+        [video],
+        static (existingVideo, incomingVideo, nowUtc) => existingVideo.OverrideFromRemote(
+            incomingVideo.Title,
+            incomingVideo.Description,
+            incomingVideo.PublishedAt,
+            incomingVideo.Duration,
+            incomingVideo.Visibility,
+            incomingVideo.Tags,
+            incomingVideo.CategoryId,
+            incomingVideo.DefaultLanguage,
+            incomingVideo.DefaultAudioLanguage,
             nowUtc,
-            videoDto.ETag,
-            videoDto.CommentsAllowed
-        );
+            incomingVideo.ETag,
+            incomingVideo.CommentsAllowed),
+        cancellationToken);
 
-        await videoRepository.UpdateExistingAsync(uploadPlaylistId, [video],
-            static (existingVideo, incomingVideo, nowUtc) => existingVideo.OverrideFromRemote(
-                incomingVideo.Title,
-                incomingVideo.Description,
-                incomingVideo.PublishedAt,
-                incomingVideo.Duration,
-                incomingVideo.Visibility,
-                incomingVideo.Tags,
-                incomingVideo.CategoryId,
-                incomingVideo.DefaultLanguage,
-                incomingVideo.DefaultAudioLanguage,
-                nowUtc,
-                incomingVideo.ETag,
-                incomingVideo.CommentsAllowed),
+    var channelPlaylists = await channelPlaylistsTask;
+
+    var playlistMembershipTasks = channelPlaylists.Select(async playlist =>
+    {
+        using var playlistScope = logger.BeginScope(new Dictionary<string, object?>
+        {
+            { LoggingConstants.PlaylistId, playlist.PlaylistId }
+        });
+
+        var containsVideo = await youTubeIntegration.PlaylistContainsVideoAsync(
+            playlist.PlaylistId,
+            videoId,
             cancellationToken);
 
-        // Resync playlists for this video
-        var channelId = channelContext.GetRequiredChannelId();
-        var channelPlaylists = await playlistRepository.GetByChannelAsync(channelId, cancellationToken);
-        var updatedPlaylistIds = new HashSet<string>(StringComparer.Ordinal);
+        return containsVideo ? playlist.PlaylistId : null;
+    });
 
-        foreach (var playlist in channelPlaylists)
-        {
-            using var playlistScope = logger.BeginScope(new Dictionary<string, object?>
+    var playlistIds = await Task.WhenAll(playlistMembershipTasks);
+
+    var updatedPlaylistIds = playlistIds
+        .OfType<string>()
+        .ToHashSet(StringComparer.Ordinal);
+
+    await playlistRepository.SetMembershipsToPlaylistsAsync(
+        videoId,
+        updatedPlaylistIds,
+        cancellationToken);
+
+    var playlists = await playlistRepository.GetPlaylistsByVideoAsync(
+        videoId,
+        cancellationToken);
+
+    return new VideoDetailsDto
+    {
+        Title = video.Title,
+        Description = video.Description,
+        Tags = video.Tags,
+        IsAiTitleInProgress = video.IsAiTitleInProgress,
+        IsAiDescriptionInProgress = video.IsAiDescriptionInProgress,
+        IsAiTagsInProgress = video.IsAiTagsInProgress,
+        IsAiPlaylistSuggestionInProgress = video.IsAiPlaylistSuggestionInProgress,
+        Playlists =
+        [
+            ..playlists.Select(p => new PlaylistDto
             {
-                { LoggingConstants.PlaylistId, playlist.PlaylistId }
-            });
-            var playlistVideoIds = youTubeIntegration.GetPlaylistVideoIdsAsync(
-                playlist.PlaylistId,
-                cancellationToken);
-
-            await foreach (var pid in playlistVideoIds)
-            {
-                if (string.Equals(pid, videoId, StringComparison.Ordinal))
-                {
-                    updatedPlaylistIds.Add(playlist.PlaylistId);
-                    break;
-                }
-            }
-        }
-
-        // Update playlist memberships
-        await playlistRepository.SetMembershipsToPlaylistsAsync(videoId, updatedPlaylistIds, cancellationToken);
-
-        // Return updated video details with playlists
-        var playlists = await playlistRepository.GetPlaylistsByVideoAsync(videoId, cancellationToken);
-
-        return new VideoDetailsDto
-        {
-            Title = video.Title,
-            Description = video.Description,
-            Tags = video.Tags,
-            IsAiTitleInProgress = video.IsAiTitleInProgress,
-            IsAiDescriptionInProgress = video.IsAiDescriptionInProgress,
-            IsAiTagsInProgress = video.IsAiTagsInProgress,
-            IsAiPlaylistSuggestionInProgress = video.IsAiPlaylistSuggestionInProgress,
-            Playlists = [.. playlists.Select(p => new PlaylistDto { Id = p.PlaylistId, Name = p.Title })],
-            Category = video.CategoryId is { } catId ? new CategoryDto(catId, null) : null,
-            DefaultLanguage = video.DefaultLanguage,
-            DefaultAudioLanguage = video.DefaultAudioLanguage,
-            ThumbnailUrl = video.ThumbnailUrl
-        };
-    }
+                Id = p.PlaylistId,
+                Name = p.Title
+            })
+        ],
+        Category = video.CategoryId is { } catId ? new CategoryDto(catId, null) : null,
+        DefaultLanguage = video.DefaultLanguage,
+        DefaultAudioLanguage = video.DefaultAudioLanguage,
+        ThumbnailUrl = video.ThumbnailUrl
+    };
+}
 }

@@ -39,4 +39,9 @@ public interface IYouTubeIntegration
     Task<IReadOnlyList<VideoDto>> GetVideosAsync(
         IEnumerable<string> videoIds,
         CancellationToken cancellationToken);
+
+    Task<bool> PlaylistContainsVideoAsync(
+        string playlistId,
+        string videoId,
+        CancellationToken cancellationToken);
 }

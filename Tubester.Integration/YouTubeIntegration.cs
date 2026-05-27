@@ -310,6 +310,29 @@ public sealed class YouTubeIntegration(
             .ToList() ?? [];
     }
 
+    public async Task<bool> PlaylistContainsVideoAsync(
+        string playlistId,
+        string videoId,
+        CancellationToken cancellationToken)
+    {
+        var youTubeService = await CreateReadOnlyServiceAsync(cancellationToken);
+
+        var request = youTubeService.PlaylistItems.List("contentDetails");
+        request.PlaylistId = playlistId;
+        request.VideoId = videoId;
+        request.MaxResults = 1;
+
+        var response = await ExecuteYouTubeRequestAsync(
+            request,
+            new YouTubeRequestLogContext(
+                Operation: "PlaylistItems.List.ContainsVideo",
+                PlaylistId: playlistId,
+                VideoId: videoId),
+            cancellationToken);
+
+        return response.Items is { Count: > 0 };
+    }
+
     public async Task ReplyAsync(
         string parentCommentId,
         string text,
