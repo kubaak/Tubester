@@ -1,5 +1,6 @@
 using AutoFixture;
 using AutoFixture.AutoMoq;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Tubester.Domain;
@@ -100,5 +101,10 @@ public sealed class TestFixture : IAsyncLifetime
         f.Register(() => TestingDateTimeOffset);
 
         return f;
+    }
+    
+    public HttpClient CreateClient(WebApplicationFactoryClientOptions options)
+    {
+        return ApiFactory.CreateClient(options);
     }
 }

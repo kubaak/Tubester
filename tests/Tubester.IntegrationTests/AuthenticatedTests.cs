@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Tubester.IntegrationTests.TestHost;
 using Xunit;
 
@@ -35,12 +36,53 @@ public sealed class AuthenticatedTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task Logout_WhenAuthenticated_ReturnsOk()
+    public async Task Logout_WhenAuthenticated_RedirectsToLandingPage()
     {
+        // Arrange
+        var client = fixture.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
         // Act
-        var response = await fixture.HttpClient.PostAsync("api/auth/logout", null);
+        var response = await client.GetAsync("api/auth/logout");
 
         // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/login?returnUrl=%2F", response.Headers.Location?.ToString());
+    }
+    
+    [Fact]
+    public async Task Logout_WithReturnUrl_RedirectsToLoginWithReturnUrl()
+    {
+        // Arrange
+        var client = fixture.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        // Act
+        var response = await client.GetAsync("api/auth/logout?returnUrl=%2Fdashboard");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/login?returnUrl=%2Fdashboard", response.Headers.Location?.ToString());
+    }
+    
+    [Fact]
+    public async Task Logout_WithExternalReturnUrl_RedirectsToLandingPage()
+    {
+        // Arrange
+        var client = fixture.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        // Act
+        var response = await client.GetAsync("api/auth/logout?returnUrl=https%3A%2F%2Fevil.com");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/login?returnUrl=%2F", response.Headers.Location?.ToString());
     }
 }

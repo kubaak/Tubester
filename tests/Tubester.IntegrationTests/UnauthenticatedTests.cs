@@ -22,11 +22,14 @@ public sealed class UnauthenticatedTests(WebApplicationFactory<Api.Program> fact
     [Fact]
     public async Task Logout_WhenNotAuthenticated_Returns401()
     {
-        var response = await _client.PostAsync("api/auth/logout", null);
+        // Act
+        var response = await _client.GetAsync("api/auth/logout");
 
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        // Assert
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/login?returnUrl=%2F", response.Headers.Location?.ToString());
     }
-
+    
     [Fact]
     public async Task LoginWithGoogle_ReturnsRedirectChallenge()
     {

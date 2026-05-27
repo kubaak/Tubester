@@ -54,23 +54,13 @@ public sealed class AuthController(IConfiguration configuration) : ApiController
     }
 
     /// <summary>
-    /// Logs out the authenticated user and clears authentication cookies.
-    /// </summary>
-    /// <returns>An IActionResult indicating the success of the logout operation.</returns>
-    [HttpPost("logout")]
-    public async Task<IActionResult> Logout()
-    {
-        await SignOutAndDeleteAuthCookiesAsync();
-        return Ok();
-    }
-
-    /// <summary>
     /// Logs out the user and redirects to a specified return URL.
     /// </summary>
     /// <param name="returnUrl">Optional local URL to redirect to after logout.
     /// If the return URL is not local, it defaults to "/"</param>
     /// <returns>An IActionResult that redirects to the provided return URL or the default URL.</returns>
     [HttpGet("logout")]
+    [AllowAnonymous]
     public async Task<IActionResult> LogoutRedirect([FromQuery] string? returnUrl)
     {
         await SignOutAndDeleteAuthCookiesAsync();
