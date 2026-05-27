@@ -57,16 +57,18 @@ public class VideoResyncTests(TestFixture fixture)
             .ReturnsAsync([remoteVideo]);
 
         fixture.ApiFactory.MockYouTubeIntegration
-            .Setup(youTubeIntegration => youTubeIntegration.GetPlaylistVideoIdsAsync(
+            .Setup(youTubeIntegration => youTubeIntegration.PlaylistContainsVideoAsync(
                 oldPlaylist.PlaylistId,
+                video.VideoId,
                 It.IsAny<CancellationToken>()))
-            .Returns(TestHelpers.CreateAsyncEnumerable(Array.Empty<string>()));
+            .ReturnsAsync(false);
 
         fixture.ApiFactory.MockYouTubeIntegration
-            .Setup(youTubeIntegration => youTubeIntegration.GetPlaylistVideoIdsAsync(
+            .Setup(youTubeIntegration => youTubeIntegration.PlaylistContainsVideoAsync(
                 currentPlaylist.PlaylistId,
+                video.VideoId,
                 It.IsAny<CancellationToken>()))
-            .Returns(TestHelpers.CreateAsyncEnumerable([video.VideoId]));
+            .ReturnsAsync(true);
 
         // Act
         var response = await fixture.HttpClient.PostAsync($"/api/videos/resync?videoId={video.VideoId}", null);
@@ -84,11 +86,14 @@ public class VideoResyncTests(TestFixture fixture)
         TestHelpers.SetProperty(video, nameof(video.ETag), remoteVideo.ETag);
         TestHelpers.SetProperty(video, nameof(video.IsDirty), false);
         TestHelpers.SetProperty(video, nameof(video.CachedAt), TestFixture.TestingDateTimeOffset);
+
         await _helpers.AssertVideoAsync(video);
+
         var expectedPlaylistDtos = new PlaylistDto[]
         {
             new() { Id = currentPlaylist.PlaylistId, Name = currentPlaylist.Title }
         };
+
         TestHelpers.AssertVideoDetails(videoDetails, video, expectedPlaylistDtos);
         await _helpers.AssertVideoPlaylistsAsync(video.VideoId, currentPlaylist.PlaylistId);
 
@@ -99,11 +104,17 @@ public class VideoResyncTests(TestFixture fixture)
             Times.Once);
 
         fixture.ApiFactory.MockYouTubeIntegration.Verify(youTubeIntegration =>
-                youTubeIntegration.GetPlaylistVideoIdsAsync(oldPlaylist.PlaylistId, It.IsAny<CancellationToken>()),
+                youTubeIntegration.PlaylistContainsVideoAsync(
+                    oldPlaylist.PlaylistId,
+                    video.VideoId,
+                    It.IsAny<CancellationToken>()),
             Times.Once);
 
         fixture.ApiFactory.MockYouTubeIntegration.Verify(youTubeIntegration =>
-                youTubeIntegration.GetPlaylistVideoIdsAsync(currentPlaylist.PlaylistId, It.IsAny<CancellationToken>()),
+                youTubeIntegration.PlaylistContainsVideoAsync(
+                    currentPlaylist.PlaylistId,
+                    video.VideoId,
+                    It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -115,6 +126,7 @@ public class VideoResyncTests(TestFixture fixture)
 
         var video = TestHelpers.GetTargetVideo();
         video.MarkAsDirty(TestFixture.TestingDateTimeOffset);
+
         var oldPlaylist = TestHelpers.GetPlaylist("old-playlist");
         var currentPlaylist = TestHelpers.GetPlaylist("current-playlist");
 
@@ -152,16 +164,18 @@ public class VideoResyncTests(TestFixture fixture)
             .ReturnsAsync([remoteVideo]);
 
         fixture.ApiFactory.MockYouTubeIntegration
-            .Setup(youTubeIntegration => youTubeIntegration.GetPlaylistVideoIdsAsync(
+            .Setup(youTubeIntegration => youTubeIntegration.PlaylistContainsVideoAsync(
                 oldPlaylist.PlaylistId,
+                video.VideoId,
                 It.IsAny<CancellationToken>()))
-            .Returns(TestHelpers.CreateAsyncEnumerable(Array.Empty<string>()));
+            .ReturnsAsync(false);
 
         fixture.ApiFactory.MockYouTubeIntegration
-            .Setup(youTubeIntegration => youTubeIntegration.GetPlaylistVideoIdsAsync(
+            .Setup(youTubeIntegration => youTubeIntegration.PlaylistContainsVideoAsync(
                 currentPlaylist.PlaylistId,
+                video.VideoId,
                 It.IsAny<CancellationToken>()))
-            .Returns(TestHelpers.CreateAsyncEnumerable([video.VideoId]));
+            .ReturnsAsync(true);
 
         // Act
         var response = await fixture.HttpClient.PostAsync($"/api/videos/resync?videoId={video.VideoId}", null);
@@ -179,11 +193,14 @@ public class VideoResyncTests(TestFixture fixture)
         TestHelpers.SetProperty(video, nameof(video.ETag), remoteVideo.ETag);
         TestHelpers.SetProperty(video, nameof(video.IsDirty), false);
         TestHelpers.SetProperty(video, nameof(video.CachedAt), TestFixture.TestingDateTimeOffset);
+
         await _helpers.AssertVideoAsync(video);
+
         var expectedPlaylistDtos = new PlaylistDto[]
         {
             new() { Id = currentPlaylist.PlaylistId, Name = currentPlaylist.Title }
         };
+
         TestHelpers.AssertVideoDetails(videoDetails, video, expectedPlaylistDtos);
         await _helpers.AssertVideoPlaylistsAsync(video.VideoId, currentPlaylist.PlaylistId);
 
@@ -194,11 +211,17 @@ public class VideoResyncTests(TestFixture fixture)
             Times.Once);
 
         fixture.ApiFactory.MockYouTubeIntegration.Verify(youTubeIntegration =>
-                youTubeIntegration.GetPlaylistVideoIdsAsync(oldPlaylist.PlaylistId, It.IsAny<CancellationToken>()),
+                youTubeIntegration.PlaylistContainsVideoAsync(
+                    oldPlaylist.PlaylistId,
+                    video.VideoId,
+                    It.IsAny<CancellationToken>()),
             Times.Once);
 
         fixture.ApiFactory.MockYouTubeIntegration.Verify(youTubeIntegration =>
-                youTubeIntegration.GetPlaylistVideoIdsAsync(currentPlaylist.PlaylistId, It.IsAny<CancellationToken>()),
+                youTubeIntegration.PlaylistContainsVideoAsync(
+                    currentPlaylist.PlaylistId,
+                    video.VideoId,
+                    It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -210,6 +233,7 @@ public class VideoResyncTests(TestFixture fixture)
 
         var video = TestHelpers.GetTargetVideo();
         video.MarkAsDirty(TestFixture.TestingDateTimeOffset);
+
         var oldPlaylist = TestHelpers.GetPlaylist("old-playlist");
         var currentPlaylist = TestHelpers.GetPlaylist("current-playlist");
 
@@ -247,16 +271,18 @@ public class VideoResyncTests(TestFixture fixture)
             .ReturnsAsync([remoteVideo]);
 
         fixture.ApiFactory.MockYouTubeIntegration
-            .Setup(youTubeIntegration => youTubeIntegration.GetPlaylistVideoIdsAsync(
+            .Setup(youTubeIntegration => youTubeIntegration.PlaylistContainsVideoAsync(
                 oldPlaylist.PlaylistId,
+                video.VideoId,
                 It.IsAny<CancellationToken>()))
-            .Returns(TestHelpers.CreateAsyncEnumerable(Array.Empty<string>()));
+            .ReturnsAsync(false);
 
         fixture.ApiFactory.MockYouTubeIntegration
-            .Setup(youTubeIntegration => youTubeIntegration.GetPlaylistVideoIdsAsync(
+            .Setup(youTubeIntegration => youTubeIntegration.PlaylistContainsVideoAsync(
                 currentPlaylist.PlaylistId,
+                video.VideoId,
                 It.IsAny<CancellationToken>()))
-            .Returns(TestHelpers.CreateAsyncEnumerable([video.VideoId]));
+            .ReturnsAsync(true);
 
         // Act
         var response = await fixture.HttpClient.PostAsync($"/api/videos/resync?videoId={video.VideoId}", null);
@@ -274,11 +300,14 @@ public class VideoResyncTests(TestFixture fixture)
         TestHelpers.SetProperty(video, nameof(video.ETag), remoteVideo.ETag);
         TestHelpers.SetProperty(video, nameof(video.IsDirty), false);
         TestHelpers.SetProperty(video, nameof(video.CachedAt), TestFixture.TestingDateTimeOffset);
+
         await _helpers.AssertVideoAsync(video);
+
         var expectedPlaylistDtos = new PlaylistDto[]
         {
             new() { Id = currentPlaylist.PlaylistId, Name = currentPlaylist.Title }
         };
+
         TestHelpers.AssertVideoDetails(videoDetails, video, expectedPlaylistDtos);
         await _helpers.AssertVideoPlaylistsAsync(video.VideoId, currentPlaylist.PlaylistId);
 
@@ -289,11 +318,17 @@ public class VideoResyncTests(TestFixture fixture)
             Times.Once);
 
         fixture.ApiFactory.MockYouTubeIntegration.Verify(youTubeIntegration =>
-                youTubeIntegration.GetPlaylistVideoIdsAsync(oldPlaylist.PlaylistId, It.IsAny<CancellationToken>()),
+                youTubeIntegration.PlaylistContainsVideoAsync(
+                    oldPlaylist.PlaylistId,
+                    video.VideoId,
+                    It.IsAny<CancellationToken>()),
             Times.Once);
 
         fixture.ApiFactory.MockYouTubeIntegration.Verify(youTubeIntegration =>
-                youTubeIntegration.GetPlaylistVideoIdsAsync(currentPlaylist.PlaylistId, It.IsAny<CancellationToken>()),
+                youTubeIntegration.PlaylistContainsVideoAsync(
+                    currentPlaylist.PlaylistId,
+                    video.VideoId,
+                    It.IsAny<CancellationToken>()),
             Times.Once);
     }
 }
