@@ -273,6 +273,8 @@ public sealed class AiVideoImprovingService(
             .Where(t => !string.IsNullOrWhiteSpace(t))
             .Select(t => t.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(t => t, StringComparer.Ordinal)
             .ToList();
 
         var result = new List<string>();
