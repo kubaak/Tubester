@@ -46,7 +46,11 @@ public sealed class GeminiTextGenerationClient(
                 {
                     Temperature = settings.Temperature,
                     MaxOutputTokens = settings.MaxOutputTokens,
-                    ResponseMimeType = JsonMimeType
+                    ResponseMimeType = JsonMimeType,
+                    ThinkingConfig = new ThinkingConfig
+                    {
+                        ThinkingBudget = 0 //todo load from configuration
+                    }
                 },
                 cancellationToken: cancellationToken);
         }
