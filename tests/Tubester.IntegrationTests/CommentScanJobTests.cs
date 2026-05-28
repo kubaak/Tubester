@@ -5,7 +5,6 @@ using Moq;
 using Tubester.Abstractions.ApplicationConfiguration;
 using Tubester.Application.Jobs;
 using Tubester.Domain;
-using Tubester.Integration;
 using Tubester.Integration.Dtos;
 using Tubester.Integration.Exceptions;
 using Tubester.IntegrationTests.TestHost;

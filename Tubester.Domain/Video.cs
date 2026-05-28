@@ -275,7 +275,7 @@ public sealed class Video : Entity
             Visibility = visibility;
             dirty = true;
         }
-        
+
 
         var newTags = (tags ?? []).ToArray();
 

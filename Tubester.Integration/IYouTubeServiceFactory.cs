@@ -4,5 +4,9 @@ namespace Tubester.Integration;
 
 public interface IYouTubeServiceFactory
 {
-    Task<YouTubeService> CreateAsync(string userId, CancellationToken cancellationToken);
+    /// <summary>
+    /// Creates a YouTubeService for the given access token and scope.
+    /// This method is used for real-time API calls where the token is already available.
+    /// </summary>
+    YouTubeService Create(string accessToken, string scope);
 }

@@ -29,7 +29,7 @@ public sealed class UnauthenticatedTests(WebApplicationFactory<Api.Program> fact
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal("/login?returnUrl=%2F", response.Headers.Location?.ToString());
     }
-    
+
     [Fact]
     public async Task LoginWithGoogle_ReturnsRedirectChallenge()
     {

@@ -58,23 +58,20 @@ public class VideoResyncTests(TestFixture fixture)
 
         fixture.ApiFactory.MockYouTubeIntegration
             .Setup(youTubeIntegration => youTubeIntegration.PlaylistContainsVideoAsync(
-                oldPlaylist.PlaylistId,
+                It.IsAny<string>(),
                 video.VideoId,
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-
-        fixture.ApiFactory.MockYouTubeIntegration
-            .Setup(youTubeIntegration => youTubeIntegration.PlaylistContainsVideoAsync(
-                currentPlaylist.PlaylistId,
-                video.VideoId,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync((string playlistId, string _, CancellationToken _) =>
+                playlistId == currentPlaylist.PlaylistId);
 
         // Act
         var response = await fixture.HttpClient.PostAsync($"/api/videos/resync?videoId={video.VideoId}", null);
 
         // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var responseBody = await response.Content.ReadAsStringAsync();
+        Assert.True(
+            response.StatusCode == HttpStatusCode.OK,
+            $"Expected OK but got {response.StatusCode}. Body: {responseBody}");
 
         var videoDetails = await TestHelpers.DeserializeAsync<VideoDetailsDto>(response);
         TestHelpers.SetVideoProperties(video, remoteVideo.Title, remoteVideo.Description, remoteVideo.Tags!.ToArray());
@@ -165,17 +162,11 @@ public class VideoResyncTests(TestFixture fixture)
 
         fixture.ApiFactory.MockYouTubeIntegration
             .Setup(youTubeIntegration => youTubeIntegration.PlaylistContainsVideoAsync(
-                oldPlaylist.PlaylistId,
+                It.IsAny<string>(),
                 video.VideoId,
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-
-        fixture.ApiFactory.MockYouTubeIntegration
-            .Setup(youTubeIntegration => youTubeIntegration.PlaylistContainsVideoAsync(
-                currentPlaylist.PlaylistId,
-                video.VideoId,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync((string playlistId, string _, CancellationToken _) =>
+                playlistId == currentPlaylist.PlaylistId);
 
         // Act
         var response = await fixture.HttpClient.PostAsync($"/api/videos/resync?videoId={video.VideoId}", null);
@@ -272,17 +263,11 @@ public class VideoResyncTests(TestFixture fixture)
 
         fixture.ApiFactory.MockYouTubeIntegration
             .Setup(youTubeIntegration => youTubeIntegration.PlaylistContainsVideoAsync(
-                oldPlaylist.PlaylistId,
+                It.IsAny<string>(),
                 video.VideoId,
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-
-        fixture.ApiFactory.MockYouTubeIntegration
-            .Setup(youTubeIntegration => youTubeIntegration.PlaylistContainsVideoAsync(
-                currentPlaylist.PlaylistId,
-                video.VideoId,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync((string playlistId, string _, CancellationToken _) =>
+                playlistId == currentPlaylist.PlaylistId);
 
         // Act
         var response = await fixture.HttpClient.PostAsync($"/api/videos/resync?videoId={video.VideoId}", null);

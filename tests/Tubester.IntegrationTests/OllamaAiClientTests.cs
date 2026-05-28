@@ -1,11 +1,9 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Tubester.Abstractions.ApplicationConfiguration;
 using Tubester.Abstractions.Playlists;
 using Tubester.Domain;
 using Tubester.Integration;
 using Tubester.IntegrationTests.TestHost;
-using Tubester.Persistence;
 using Xunit;
 
 namespace Tubester.IntegrationTests;

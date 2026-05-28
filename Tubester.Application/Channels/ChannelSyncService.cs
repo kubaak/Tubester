@@ -112,7 +112,7 @@ public sealed class ChannelSyncService(
 
         return await SyncInternalAsync(channel, nowUtc, cancellationToken);
     }
-    
+
     private async Task<ChannelSyncResult> SyncInternalAsync(
         Channel channel,
         DateTimeOffset now,

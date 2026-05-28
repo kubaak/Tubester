@@ -102,7 +102,7 @@ public sealed class TestFixture : IAsyncLifetime
 
         return f;
     }
-    
+
     public HttpClient CreateClient(WebApplicationFactoryClientOptions options)
     {
         return ApiFactory.CreateClient(options);
