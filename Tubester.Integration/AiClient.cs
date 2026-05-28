@@ -10,6 +10,7 @@ namespace Tubester.Integration;
 public sealed partial class AiClient(
     IAiTextGenerationClientFactory textGenerationClientFactory,
     IAiPromptBuilder promptBuilder,
+    IAiJsonResponseParser jsonResponseParser,
     ILogger<AiClient> logger)
     : IAiClient
 {
@@ -47,9 +48,8 @@ public sealed partial class AiClient(
 
         LogUsage(result.Usage, AiOperation.Metadata);
 
-        var parseResult = AiJsonResponseParser.DeserializeModelJson<AiMetadataJsonResult>(
-            result.Text,
-            logger);
+        var parseResult = jsonResponseParser.DeserializeModelResponse<AiMetadataJsonResult>(
+            result.Text);
 
         return AiSuggestionNormalizer.ToSuggestedMetadata(
             parseResult,
@@ -89,9 +89,8 @@ public sealed partial class AiClient(
 
         LogUsage(result.Usage, AiOperation.Reply);
 
-        var parseResult = AiJsonResponseParser.DeserializeModelJson<AiReplyJsonResult>(
-            result.Text,
-            logger);
+        var parseResult = jsonResponseParser.DeserializeModelResponse<AiReplyJsonResult>(
+            result.Text);
 
         return AiSuggestionNormalizer.NormalizeReply(parseResult.Reply);
     }
@@ -127,9 +126,8 @@ public sealed partial class AiClient(
 
         LogUsage(result.Usage, AiOperation.PlaylistSuggestion);
 
-        var parseResult = AiJsonResponseParser.DeserializeModelJson<AiPlaylistJsonResult>(
-            result.Text,
-            logger);
+        var parseResult = jsonResponseParser.DeserializeModelResponse<AiPlaylistJsonResult>(
+            result.Text);
 
         return AiSuggestionNormalizer.MapPlaylistIndexesToIds(
             parseResult.I,

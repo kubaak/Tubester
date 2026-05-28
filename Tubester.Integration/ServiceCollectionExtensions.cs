@@ -13,6 +13,7 @@ public static class ServiceCollectionExtensions
         IConfiguration configuration)
     {
         services.Configure<GoogleAuthOptions>(configuration.GetSection("GoogleAuth"));
+        services.AddSingleton<IYouTubeServiceFactory, YouTubeServiceFactory>();
         services.AddScoped<IYouTubeIntegration, YouTubeIntegration>();
 
         return services;
@@ -35,6 +36,7 @@ public static class ServiceCollectionExtensions
         services.Configure<OllamaOptions>(configuration.GetSection("AI:Ollama"));
 
         services.AddSingleton<IAiPromptBuilder, AiPromptBuilder>();
+        services.AddScoped<IAiJsonResponseParser, AiJsonResponseParser>();
         services.AddScoped<IAiClient, AiClient>();
 
         // Register provider-specific text generation clients

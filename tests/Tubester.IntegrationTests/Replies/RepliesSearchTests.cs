@@ -5,7 +5,7 @@ using Tubester.Domain;
 using Tubester.IntegrationTests.TestHost;
 using Xunit;
 
-namespace Tubester.IntegrationTests;
+namespace Tubester.IntegrationTests.Replies;
 
 [Collection(nameof(TestCollection))]
 public class RepliesSearchTests(TestFixture fixture)

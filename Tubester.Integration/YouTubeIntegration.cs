@@ -2,9 +2,7 @@
 using System.Runtime.CompilerServices;
 using System.Xml;
 using Google;
-using Google.Apis.Auth.OAuth2;
 using Google.Apis.Requests;
-using Google.Apis.Services;
 using Google.Apis.YouTube.v3;
 using Google.Apis.YouTube.v3.Data;
 using Microsoft.Extensions.Logging;
@@ -16,6 +14,7 @@ namespace Tubester.Integration;
 
 public sealed class YouTubeIntegration(
     ICurrentUserTokenAccessor currentUserTokenAccessor,
+    IYouTubeServiceFactory youTubeServiceFactory,
     ILogger<YouTubeIntegration> logger) : IYouTubeIntegration
 {
     public Task<ChannelDto?> GetChannelAsync(string channelId, CancellationToken cancellationToken)
@@ -78,7 +77,7 @@ public sealed class YouTubeIntegration(
         return ExecuteOrDefaultAsync(
             async () =>
             {
-                var youTubeService = CreateService(accessToken, YouTubeService.Scope.YoutubeReadonly);
+                var youTubeService = youTubeServiceFactory.Create(accessToken, YouTubeService.Scope.YoutubeReadonly);
 
                 var channelsRequest = youTubeService.Channels.List("snippet,contentDetails");
                 channelsRequest.Mine = true;
@@ -553,7 +552,7 @@ public sealed class YouTubeIntegration(
             page = itemsResponse.NextPageToken;
         } while (!string.IsNullOrEmpty(page));
     }
-    
+
     private static bool IsPlaylistNotFound(GoogleApiException ex)
     {
         return ex.HttpStatusCode == HttpStatusCode.NotFound &&
@@ -563,14 +562,14 @@ public sealed class YouTubeIntegration(
 
     private async Task<YouTubeService> CreateReadOnlyServiceAsync(CancellationToken cancellationToken)
     {
-        return CreateService(
+        return youTubeServiceFactory.Create(
             await GetCurrentUsersAccessToken(cancellationToken),
             YouTubeService.Scope.YoutubeReadonly);
     }
 
     private async Task<YouTubeService> CreateWriteServiceAsync(CancellationToken cancellationToken)
     {
-        return CreateService(
+        return youTubeServiceFactory.Create(
             await GetCurrentUsersAccessToken(cancellationToken),
             YouTubeService.Scope.YoutubeForceSsl);
     }
@@ -671,19 +670,6 @@ public sealed class YouTubeIntegration(
 
             throw;
         }
-    }
-
-    private static YouTubeService CreateService(string accessToken, string scope)
-    {
-        var googleCredential = GoogleCredential
-            .FromAccessToken(accessToken)
-            .CreateScoped(scope);
-
-        return new YouTubeService(new BaseClientService.Initializer
-        {
-            HttpClientInitializer = googleCredential,
-            ApplicationName = "Tubester"
-        });
     }
 
     private static VideoDto ToVideoDto(

@@ -1,6 +1,4 @@
-﻿using System.Text.Json;
-using Tubester.Abstractions;
-using Tubester.Abstractions.Playlists;
+﻿using Tubester.Abstractions.Playlists;
 
 namespace Tubester.Integration;
 

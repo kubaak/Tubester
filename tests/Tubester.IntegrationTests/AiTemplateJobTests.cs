@@ -5,7 +5,6 @@ using Tubester.Abstractions.ApplicationConfiguration;
 using Tubester.Abstractions.Videos;
 using Tubester.Application.Jobs;
 using Tubester.Domain;
-using Tubester.Integration;
 using Tubester.IntegrationTests.TestHost;
 using Xunit;
 

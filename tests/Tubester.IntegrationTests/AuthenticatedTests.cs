@@ -51,7 +51,7 @@ public sealed class AuthenticatedTests(TestFixture fixture)
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal("/login?returnUrl=%2F", response.Headers.Location?.ToString());
     }
-    
+
     [Fact]
     public async Task Logout_WithReturnUrl_RedirectsToLoginWithReturnUrl()
     {
@@ -68,7 +68,7 @@ public sealed class AuthenticatedTests(TestFixture fixture)
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal("/login?returnUrl=%2Fdashboard", response.Headers.Location?.ToString());
     }
-    
+
     [Fact]
     public async Task Logout_WithExternalReturnUrl_RedirectsToLandingPage()
     {
