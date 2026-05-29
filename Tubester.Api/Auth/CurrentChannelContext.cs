@@ -1,4 +1,5 @@
 using Tubester.Abstractions.Channels;
+using Tubester.Application.Common;
 
 namespace Tubester.Api.Auth;
 
@@ -24,7 +25,7 @@ public sealed class CurrentChannelContext(IHttpContextAccessor httpContextAccess
         var channelId = ChannelId;
         if (string.IsNullOrWhiteSpace(channelId))
         {
-            throw new InvalidOperationException("Current channel id is not available.");
+            throw new NotFoundException("The user has no channel.");
         }
 
         return channelId;

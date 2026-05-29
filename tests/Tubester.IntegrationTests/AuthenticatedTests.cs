@@ -49,7 +49,7 @@ public sealed class AuthenticatedTests(TestFixture fixture)
 
         // Assert
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/login?returnUrl=%2F", response.Headers.Location?.ToString());
+        Assert.Equal("/login?returnUrl=%2Fdashboard", response.Headers.Location?.ToString());
     }
 
     [Fact]
@@ -83,6 +83,6 @@ public sealed class AuthenticatedTests(TestFixture fixture)
 
         // Assert
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/login?returnUrl=%2F", response.Headers.Location?.ToString());
+        Assert.Equal("/login?returnUrl=%2Fdashboard", response.Headers.Location?.ToString());
     }
 }

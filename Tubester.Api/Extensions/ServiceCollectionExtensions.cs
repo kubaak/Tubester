@@ -1,5 +1,7 @@
+using System.Net;
 using System.Reflection;
 using System.Security.Claims;
+using Google;
 using Google.Apis.YouTube.v3;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -9,6 +11,7 @@ using Microsoft.OpenApi;
 using Tubester.Abstractions;
 using Tubester.Abstractions.Analytics;
 using Tubester.Abstractions.Users;
+using Tubester.Api.Auth;
 using Tubester.Integration;
 
 namespace Tubester.Api.Extensions;
@@ -86,7 +89,7 @@ public static class ServiceCollectionExtensions
             options.AddPolicy("RequiresYouTubeWrite", policy =>
             {
                 policy.RequireAuthenticatedUser();
-                policy.RequireClaim("yt_write_granted", "true");
+                policy.RequireClaim(TubesterClaimTypes.YouTubeWriteGranted, "true");
             });
         });
 
@@ -135,9 +138,11 @@ public static class ServiceCollectionExtensions
         options.ClientId = configuration["GoogleAuth:ClientId"]!;
         options.ClientSecret = configuration["GoogleAuth:ClientSecret"]!;
         options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-        //to use OAuth token in the subsequent requests in the same signed-in session
+
+        // To use OAuth token in subsequent requests during the same signed-in session.
         options.SaveTokens = true;
-        //no refresh token
+
+        // No refresh token.
         options.AccessType = "online";
         options.CallbackPath = callbackPath;
         options.CorrelationCookie.SameSite = SameSiteMode.None;
@@ -157,8 +162,12 @@ public static class ServiceCollectionExtensions
         {
             OnTicketReceived = async context =>
             {
-                var accessToken = await TryEnrichYouTubeClaimsAsync(context);
-                if (string.IsNullOrWhiteSpace(accessToken))
+                var enrichmentResult = await TryEnrichYouTubeClaimsAsync(
+                    context,
+                    grantedClaimType: TubesterClaimTypes.YouTubeReadGranted,
+                    alsoGrantReadAccess: false);
+
+                if (string.IsNullOrWhiteSpace(enrichmentResult.AccessToken))
                 {
                     return;
                 }
@@ -205,8 +214,12 @@ public static class ServiceCollectionExtensions
         {
             OnTicketReceived = async context =>
             {
-                var accessToken = await TryEnrichYouTubeClaimsAsync(context);
-                if (string.IsNullOrWhiteSpace(accessToken))
+                var enrichmentResult = await TryEnrichYouTubeClaimsAsync(
+                    context,
+                    grantedClaimType: TubesterClaimTypes.YouTubeWriteGranted,
+                    alsoGrantReadAccess: true);
+
+                if (string.IsNullOrWhiteSpace(enrichmentResult.AccessToken))
                 {
                     return;
                 }
@@ -223,14 +236,16 @@ public static class ServiceCollectionExtensions
                     return;
                 }
 
-                var claimsIdentity = (ClaimsIdentity)principal.Identity!;
-                claimsIdentity.AddClaim(new Claim("yt_write_granted", "true"));
-
                 var requestServices = context.HttpContext.RequestServices;
                 var userEventLogger = requestServices.GetRequiredService<IUserEventLogger>();
                 var cancellationToken = context.HttpContext.RequestAborted;
 
                 await LogLoginAsync(context, userId);
+
+                if (!enrichmentResult.YouTubePermissionGranted)
+                {
+                    return;
+                }
 
                 await userEventLogger.LogAsync(
                     userId,
@@ -276,34 +291,77 @@ public static class ServiceCollectionExtensions
         return Task.CompletedTask;
     };
 
-    private static async Task<string?> TryEnrichYouTubeClaimsAsync(TicketReceivedContext context)
+    private sealed record YouTubeClaimEnrichmentResult(
+        string? AccessToken,
+        bool YouTubePermissionGranted);
+
+    private static async Task<YouTubeClaimEnrichmentResult> TryEnrichYouTubeClaimsAsync(
+        TicketReceivedContext context,
+        string grantedClaimType,
+        bool alsoGrantReadAccess)
     {
         var accessToken = context.Properties?.GetTokenValue("access_token");
         if (string.IsNullOrWhiteSpace(accessToken))
         {
             var loggerFactory = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>();
             var logger = loggerFactory.CreateLogger("Tubester.Api.Authentication");
+
             logger.LogWarning(
                 "Access token was not available during Google login; skipping channel enrichment");
-            return null;
+
+            return new YouTubeClaimEnrichmentResult(null, false);
         }
 
-        var youTubeIntegration = context.HttpContext.RequestServices.GetRequiredService<IYouTubeIntegration>();
-        var userChannel = await youTubeIntegration.GetCurrentChannelAsync(
-            accessToken,
-            context.HttpContext.RequestAborted);
-
-        if (userChannel is null || context.Principal?.Identity is not ClaimsIdentity claimsIdentity)
+        if (context.Principal?.Identity is not ClaimsIdentity claimsIdentity)
         {
-            return accessToken;
+            return new YouTubeClaimEnrichmentResult(accessToken, false);
         }
 
-        AddOrReplaceClaim(claimsIdentity, "yt_channel_id", userChannel.Id);
-        AddOrReplaceClaim(claimsIdentity, "yt_channel_title", userChannel.Title ?? string.Empty);
-        AddOrReplaceClaim(claimsIdentity, "yt_channel_picture", userChannel.Picture ?? string.Empty);
-        AddOrReplaceClaim(claimsIdentity, "yt_upload_playlist_id", userChannel.UploadPlaylistId ?? string.Empty);
+        try
+        {
+            var youTubeIntegration = context.HttpContext.RequestServices.GetRequiredService<IYouTubeIntegration>();
+            var userChannel = await youTubeIntegration.GetCurrentChannelAsync(
+                accessToken,
+                context.HttpContext.RequestAborted);
 
-        return accessToken;
+            AddOrReplaceClaim(claimsIdentity, grantedClaimType, "true");
+
+            if (alsoGrantReadAccess)
+            {
+                AddOrReplaceClaim(claimsIdentity, TubesterClaimTypes.YouTubeReadGranted, "true");
+            }
+
+            if (userChannel is null)
+            {
+                return new YouTubeClaimEnrichmentResult(accessToken, true);
+            }
+
+            AddOrReplaceClaim(claimsIdentity, TubesterClaimTypes.YouTubeChannelId, userChannel.Id);
+            AddOrReplaceClaim(claimsIdentity, TubesterClaimTypes.YouTubeChannelTitle, userChannel.Title ?? string.Empty);
+            AddOrReplaceClaim(claimsIdentity, TubesterClaimTypes.YouTubeChannelPicture, userChannel.Picture ?? string.Empty);
+            AddOrReplaceClaim(claimsIdentity, TubesterClaimTypes.YouTubeUploadPlaylistId, userChannel.UploadPlaylistId ?? string.Empty);
+
+            return new YouTubeClaimEnrichmentResult(accessToken, true);
+        }
+        catch (GoogleApiException exception) when (IsInsufficientPermissions(exception))
+        {
+            AddOrReplaceClaim(claimsIdentity, TubesterClaimTypes.YouTubeReadGranted, "false");
+            return new YouTubeClaimEnrichmentResult(accessToken, false);
+        }
+    }
+
+    private static bool IsInsufficientPermissions(GoogleApiException exception)
+    {
+        if (exception.HttpStatusCode != HttpStatusCode.Forbidden)
+        {
+            return false;
+        }
+
+        return exception.Error?.Errors?.Any(error =>
+            string.Equals(
+                error.Reason,
+                "insufficientPermissions",
+                StringComparison.OrdinalIgnoreCase)) == true;
     }
 
     private static async Task LogLoginAsync(TicketReceivedContext context, string userId)

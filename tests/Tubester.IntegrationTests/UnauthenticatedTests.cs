@@ -27,7 +27,7 @@ public sealed class UnauthenticatedTests(WebApplicationFactory<Api.Program> fact
 
         // Assert
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/login?returnUrl=%2F", response.Headers.Location?.ToString());
+        Assert.Equal("/login?returnUrl=%2Fdashboard", response.Headers.Location?.ToString());
     }
 
     [Fact]

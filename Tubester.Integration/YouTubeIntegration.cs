@@ -64,7 +64,7 @@ public sealed class YouTubeIntegration(
             "Error while getting channel.");
     }
 
-    public Task<UserChannelDto?> GetCurrentChannelAsync(
+    public async Task<UserChannelDto?> GetCurrentChannelAsync(
         string accessToken,
         CancellationToken cancellationToken)
     {
@@ -74,42 +74,40 @@ public sealed class YouTubeIntegration(
                 "No Google access token is available for the current user. Please sign in again.");
         }
 
-        return ExecuteOrDefaultAsync(
-            async () =>
-            {
-                var youTubeService = youTubeServiceFactory.Create(accessToken, YouTubeService.Scope.YoutubeReadonly);
+        var youTubeService = youTubeServiceFactory.Create(
+            accessToken,
+            YouTubeService.Scope.YoutubeReadonly);
 
-                var channelsRequest = youTubeService.Channels.List("snippet,contentDetails");
-                channelsRequest.Mine = true;
-                channelsRequest.MaxResults = 1;
+        var channelsRequest = youTubeService.Channels.List("snippet,contentDetails");
+        channelsRequest.Mine = true;
+        channelsRequest.MaxResults = 1;
 
-                var channelsResponse = await ExecuteYouTubeRequestAsync(
-                    channelsRequest,
-                    new YouTubeRequestLogContext(
-                        Operation: "Channels.List.Mine"),
-                    cancellationToken);
+        var channelsResponse = await ExecuteYouTubeRequestAsync(
+            channelsRequest,
+            new YouTubeRequestLogContext(
+                Operation: "Channels.List.Mine"),
+            cancellationToken,
+            logGoogleApiErrors: false);
 
-                var channel = channelsResponse.Items?.FirstOrDefault();
+        var channel = channelsResponse.Items?.FirstOrDefault();
 
-                if (channel is null || string.IsNullOrWhiteSpace(channel.Id))
-                {
-                    logger.LogInformation(
-                        "No current channel found for authenticated user when discovering channel from token");
-                    return null;
-                }
+        if (channel is null || string.IsNullOrWhiteSpace(channel.Id))
+        {
+            logger.LogInformation(
+                "No current channel found for authenticated user when discovering channel from token");
 
-                var title = channel.Snippet?.Title ?? channel.Id;
-                var picture = GetBestThumbnailUrl(channel.Snippet?.Thumbnails);
-                var uploadsPlaylistId = channel.ContentDetails?.RelatedPlaylists?.Uploads;
+            return null;
+        }
 
-                return new UserChannelDto(
-                    channel.Id,
-                    title,
-                    picture,
-                    uploadsPlaylistId);
-            },
-            fallbackValue: null,
-            "Error while discovering current channel from access token.");
+        var title = channel.Snippet?.Title ?? channel.Id;
+        var picture = GetBestThumbnailUrl(channel.Snippet?.Thumbnails);
+        var uploadsPlaylistId = channel.ContentDetails?.RelatedPlaylists?.Uploads;
+
+        return new UserChannelDto(
+            channel.Id,
+            title,
+            picture,
+            uploadsPlaylistId);
     }
 
     public async IAsyncEnumerable<VideoDto> GetAllVideosAsync(
@@ -639,20 +637,23 @@ public sealed class YouTubeIntegration(
                 "Your Google session has expired. Please sign in again.",
                 ex);
         }
-        catch (GoogleApiException ex) when (logGoogleApiErrors)
+        catch (GoogleApiException ex)
         {
-            logger.LogError(
-                ex,
-                "YouTube API error while executing {YouTubeOperation}. ChannelId={ChannelId}, VideoId={VideoId}, UploadPlaylistId={UploadPlaylistId}, PlaylistId={PlaylistId}, ParentCommentId={ParentCommentId}, HttpStatusCode={HttpStatusCode}, GoogleReason={GoogleReason}, GoogleLocation={GoogleLocation}",
-                context.Operation,
-                context.ChannelId,
-                context.VideoId,
-                context.UploadPlaylistId,
-                context.PlaylistId,
-                context.ParentCommentId,
-                ex.HttpStatusCode,
-                GetGoogleReason(ex),
-                GetGoogleLocation(ex));
+            if (logGoogleApiErrors)
+            {
+                logger.LogError(
+                    ex,
+                    "YouTube API error while executing {YouTubeOperation}. ChannelId={ChannelId}, VideoId={VideoId}, UploadPlaylistId={UploadPlaylistId}, PlaylistId={PlaylistId}, ParentCommentId={ParentCommentId}, HttpStatusCode={HttpStatusCode}, GoogleReason={GoogleReason}, GoogleLocation={GoogleLocation}",
+                    context.Operation,
+                    context.ChannelId,
+                    context.VideoId,
+                    context.UploadPlaylistId,
+                    context.PlaylistId,
+                    context.ParentCommentId,
+                    ex.HttpStatusCode,
+                    GetGoogleReason(ex),
+                    GetGoogleLocation(ex));
+            }
 
             throw;
         }
