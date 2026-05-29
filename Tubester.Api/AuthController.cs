@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Tubester.Api.Auth;
 
 namespace Tubester.Api;
 
@@ -26,7 +27,7 @@ public sealed class AuthController(IConfiguration configuration) : ApiController
     {
         if (string.IsNullOrWhiteSpace(returnUrl) || !Url.IsLocalUrl(returnUrl))
         {
-            returnUrl = "/";
+            returnUrl = "/dashboard";
         }
 
         var authenticationProperties = new AuthenticationProperties { RedirectUri = returnUrl };
@@ -45,7 +46,7 @@ public sealed class AuthController(IConfiguration configuration) : ApiController
     {
         if (string.IsNullOrWhiteSpace(returnUrl) || !Url.IsLocalUrl(returnUrl))
         {
-            returnUrl = "/";
+            returnUrl = "/dashboard";
         }
 
         var authenticationProperties = new AuthenticationProperties { RedirectUri = returnUrl };
@@ -67,7 +68,7 @@ public sealed class AuthController(IConfiguration configuration) : ApiController
 
         var safeReturnUrl = Url.IsLocalUrl(returnUrl)
             ? returnUrl
-            : "/";
+            : "/dashboard";
 
         return Redirect($"/login?returnUrl={Uri.EscapeDataString(safeReturnUrl)}");
     }
@@ -104,15 +105,16 @@ public sealed class AuthController(IConfiguration configuration) : ApiController
         var subject = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var googlePicture = User.FindFirst("picture")?.Value;
 
-        var channelId = User.FindFirst("yt_channel_id")?.Value;
-        var channelTitle = User.FindFirst("yt_channel_title")?.Value;
-        var channelPicture = User.FindFirst("yt_channel_picture")?.Value;
+        var channelId = User.FindFirst(TubesterClaimTypes.YouTubeChannelId)?.Value;
+        var channelTitle = User.FindFirst(TubesterClaimTypes.YouTubeChannelTitle)?.Value;
+        var channelPicture = User.FindFirst(TubesterClaimTypes.YouTubeChannelPicture)?.Value;
+        var hasYouTubeReadAccess = User.HasClaim(TubesterClaimTypes.YouTubeReadGranted, "true");
 
         var picture = string.IsNullOrWhiteSpace(channelPicture)
             ? googlePicture
             : channelPicture;
 
-        var hasWriteAccess = User.HasClaim("yt_write_granted", "true");
+        var hasWriteAccess = User.HasClaim(TubesterClaimTypes.YouTubeWriteGranted, "true");
 
         var isAdmin = !string.IsNullOrWhiteSpace(email) && configuration["AdminEmails:0"]?.Contains(email) == true;
 
@@ -125,7 +127,8 @@ public sealed class AuthController(IConfiguration configuration) : ApiController
             ChannelTitle = channelTitle,
             Picture = picture,
             HasWriteAccess = hasWriteAccess,
-            IsAdmin = isAdmin
+            IsAdmin = isAdmin,
+            HasYouTubeReadAccess = hasYouTubeReadAccess
         });
     }
 
@@ -166,5 +169,9 @@ public sealed class AuthController(IConfiguration configuration) : ApiController
         /// 
         /// </summary>
         public bool IsAdmin { get; init; }
+        /// <summary>
+        /// 
+        /// </summary>
+        public bool HasYouTubeReadAccess { get; set; }
     }
 }

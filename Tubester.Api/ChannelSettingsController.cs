@@ -28,7 +28,7 @@ public sealed class ChannelSettingsController(
         var channelId = currentChannelContext.ChannelId;
         if (string.IsNullOrWhiteSpace(channelId))
         {
-            return Unauthorized();
+            return NotFound("The user has no channel.");
         }
 
         var settings = await channelSettingsService.GetOrCreateAsync(channelId, cancellationToken);
