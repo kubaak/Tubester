@@ -9,6 +9,8 @@ public interface IUserRepository
         string? picture,
         DateTimeOffset loginAt,
         CancellationToken cancellationToken);
+    
+    Task UpdateUserAsync(User user, CancellationToken cancellationToken);
 
     Task<User?> GetByIdAsync(string userId, CancellationToken cancellationToken);
 

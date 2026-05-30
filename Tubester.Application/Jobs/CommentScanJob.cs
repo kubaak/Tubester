@@ -6,6 +6,7 @@ using Tubester.Abstractions.Channels;
 using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Replies;
 using Tubester.Abstractions.Videos;
+using Tubester.Application.Channels;
 using Tubester.Application.Common;
 using Tubester.Application.Credits;
 using Tubester.Domain;
@@ -14,6 +15,8 @@ using Tubester.Integration.Exceptions;
 
 namespace Tubester.Application.Jobs;
 
+public record CommentScanOptions(bool InitialRun = false);
+
 public sealed partial class CommentScanJob(
     ILogger<CommentScanJob> logger,
     IBackgroundYoutubeIntegration youTubeIntegration,
@@ -21,7 +24,7 @@ public sealed partial class CommentScanJob(
     IVideoRepository videoRepository,
     IReplyRepository replyRepository,
     IChannelRepository channelRepository,
-    IChannelSettingsRepository channelSettingsRepository,
+    IChannelSettingsService channelSettingsRepository,
     ICreditsService creditsService,
     IDateTimeOffsetProvider dateTimeOffsetProvider)
 {
@@ -29,7 +32,7 @@ public sealed partial class CommentScanJob(
 
     [Queue("scanning")]
     [AutomaticRetry(Attempts = 3, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
-    public async Task Run(string channelId, IJobCancellationToken jobCancellationToken)
+    public async Task Run(string channelId, CommentScanOptions? options, IJobCancellationToken jobCancellationToken)
     {
         jobCancellationToken.ThrowIfCancellationRequested();
 
@@ -40,7 +43,7 @@ public sealed partial class CommentScanJob(
 
         try
         {
-            var count = await ScanOnceAsync(channelId, jobCancellationToken.ShutdownToken);
+            var count = await ScanOnceAsync(channelId, options, jobCancellationToken.ShutdownToken);
             logger.LogInformation("Comment scan completed. Drafted: {Count}", count);
         }
         finally
@@ -49,7 +52,7 @@ public sealed partial class CommentScanJob(
         }
     }
 
-    private async Task<int> ScanOnceAsync(string channelId, CancellationToken cancellationToken)
+    private async Task<int> ScanOnceAsync(string channelId, CommentScanOptions? options, CancellationToken cancellationToken)
     {
         var channel = await channelRepository.GetChannelAsync(channelId, cancellationToken);
         if (channel is null)
@@ -63,12 +66,19 @@ public sealed partial class CommentScanJob(
             { LoggingConstants.UploadPlaylistId, channel.UploadsPlaylistId }
         });
 
-        var settings = await channelSettingsRepository.GetByChannelIdAsync(channelId, cancellationToken);
-        if (settings is null || !settings.IsCommentAssistantEnabled)
+        var settings = await channelSettingsRepository.GetOrCreateAsync(channelId, cancellationToken);
+        var isInitialRun = options?.InitialRun ?? false;
+        var isCommentAssistantEnabled = settings.IsCommentAssistantEnabled;
+        if (!isInitialRun && !isCommentAssistantEnabled)
         {
             logger.LogInformation("Skipping comment scan: comment assistant disabled");
             return 0;
         }
+        
+        var maxSuggestedRepliesPerSync = settings.MaxSuggestedRepliesPerSync;
+        var maxCommentAgeDays = settings.MaxCommentAgeDays;
+        var responseForNonTextualComments = settings.ResponseForNonTextualComments ?? "🔥🙌" ;
+        var replyLanguage = settings.ReplyLanguage;
 
         var userId = channel.UserId;
         var drafted = 0;
@@ -88,11 +98,9 @@ public sealed partial class CommentScanJob(
                 continue;
             }
 
-            if (settings.MaxSuggestedRepliesPerSync > 0 && drafted >= settings.MaxSuggestedRepliesPerSync)
+            if (maxSuggestedRepliesPerSync > 0 && drafted >= maxSuggestedRepliesPerSync)
             {
-                logger.LogInformation(
-                    "Skipping further comments: max suggestions reached ({MaxSuggestions})",
-                    settings.MaxSuggestedRepliesPerSync);
+                logger.LogInformation("Skipping further comments: max suggestions reached ({MaxSuggestions})", maxSuggestedRepliesPerSync);
                 break;
             }
 
@@ -110,18 +118,16 @@ public sealed partial class CommentScanJob(
                         { LoggingConstants.CommentId, thread.ParentCommentId }
                     });
 
-                    if (settings.MaxSuggestedRepliesPerSync > 0 && drafted >= settings.MaxSuggestedRepliesPerSync)
+                    if (maxSuggestedRepliesPerSync > 0 && drafted >= maxSuggestedRepliesPerSync)
                     {
-                        logger.LogInformation(
-                            "Skipping further comments: max suggestions reached ({MaxSuggestions})",
-                            settings.MaxSuggestedRepliesPerSync);
+                        logger.LogInformation("Skipping further comments: max suggestions reached ({MaxSuggestions})", maxSuggestedRepliesPerSync);
                         break;
                     }
 
-                    if (settings.MaxCommentAgeDays > 0 && thread.PublishedAt.HasValue)
+                    if (maxCommentAgeDays > 0 && thread.PublishedAt.HasValue)
                     {
                         var commentAge = nowUtc - thread.PublishedAt.Value;
-                        if (commentAge.TotalDays > settings.MaxCommentAgeDays)
+                        if (commentAge.TotalDays > maxCommentAgeDays)
                         {
                             logger.LogDebug("Skipping comment: comment not eligible because too old");
                             continue;
@@ -150,30 +156,39 @@ public sealed partial class CommentScanJob(
 
                     if (IsEmojiOnly(thread.Text))
                     {
-                        replyText = !string.IsNullOrWhiteSpace(settings.ResponseForNonTextualComments)
-                            ? settings.ResponseForNonTextualComments
-                            : "🔥🙌";
+                        replyText = responseForNonTextualComments;
                     }
                     else
                     {
-                        var idempotencyKey =
-                            $"ai-reply-generated:{userId}:{thread.VideoId}:{thread.ParentCommentId}";
-
-                        var spendResult = await creditsService.TrySpendAsync(
-                            userId,
-                            nameof(CreditActionType.AiReplyGenerated),
-                            idempotencyKey,
-                            thread.ParentCommentId,
-                            new { videoId = thread.VideoId, commentId = thread.ParentCommentId },
-                            cancellationToken);
-
-                        if (!spendResult.Succeeded)
-                        {
-                            logger.LogWarning("Insufficient credits to generate AI reply, skipping");
-                            return drafted;
-                        }
-
                         string? suggestion;
+                        string? idempotencyKey = null;
+                        var charged = false;
+
+                        if (!isInitialRun)
+                        {
+                            idempotencyKey =
+                                $"ai-reply-generated:{userId}:{thread.VideoId}:{thread.ParentCommentId}";
+
+                            var spendResult = await creditsService.TrySpendAsync(
+                                userId,
+                                nameof(CreditActionType.AiReplyGenerated),
+                                idempotencyKey,
+                                thread.ParentCommentId,
+                                new { videoId = thread.VideoId, commentId = thread.ParentCommentId },
+                                cancellationToken);
+
+                            if (!spendResult.Succeeded)
+                            {
+                                logger.LogWarning("Insufficient credits to generate AI reply, skipping");
+                                return drafted;
+                            }
+
+                            charged = true;
+                        }
+                        else
+                        {
+                            logger.LogInformation("Skipping credit charge for initial comment scan");
+                        }
 
                         try
                         {
@@ -181,26 +196,29 @@ public sealed partial class CommentScanJob(
                                 video.Title ?? string.Empty,
                                 video.Tags,
                                 thread.Text,
-                                settings.ReplyLanguage,
+                                replyLanguage,
                                 cancellationToken);
                         }
                         catch
                         {
-                            var refundIdempotencyKey =
-                                $"ai-reply-generated-refund:{userId}:{thread.VideoId}:{thread.ParentCommentId}";
+                            if (charged && idempotencyKey is not null)
+                            {
+                                var refundIdempotencyKey =
+                                    $"ai-reply-generated-refund:{userId}:{thread.VideoId}:{thread.ParentCommentId}";
 
-                            await creditsService.RefundAsync(
-                                userId,
-                                nameof(CreditActionType.AiReplyGenerated),
-                                idempotencyKey,
-                                refundIdempotencyKey,
-                                cancellationToken);
+                                await creditsService.RefundAsync(
+                                    userId,
+                                    nameof(CreditActionType.AiReplyGenerated),
+                                    idempotencyKey,
+                                    refundIdempotencyKey,
+                                    cancellationToken);
+                            }
 
                             throw;
                         }
 
                         replyText = string.IsNullOrWhiteSpace(suggestion)
-                            ? "Thanks for the comment! 🙌"
+                            ? responseForNonTextualComments
                             : suggestion;
                     }
 

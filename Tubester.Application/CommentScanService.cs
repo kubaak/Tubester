@@ -20,7 +20,7 @@ public class CommentScanService(
         }
 
         var jobId = backgroundJobClient.Enqueue<CommentScanJob>(
-            j => j.Run(channelId, JobCancellationToken.Null));
+            j => j.Run(channelId, new CommentScanOptions(), JobCancellationToken.Null));
         return jobId;
     }
 }
