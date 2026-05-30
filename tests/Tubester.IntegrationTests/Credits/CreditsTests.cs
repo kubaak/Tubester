@@ -412,7 +412,7 @@ public sealed class CreditsTests(TestFixture fixture)
         using (var jobScope = fixture.WorkerServices.CreateScope())
         {
             var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
-            await commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false));
+            await commentScanJob.Run(TestConstants.ChannelId, new CommentScanOptions(), new Hangfire.JobCancellationToken(false));
         }
 
         await _helpers.AssertLedgerAfterDeductionAsync(nameof(CreditActionType.AiReplyGenerated),
@@ -467,7 +467,7 @@ public sealed class CreditsTests(TestFixture fixture)
         {
             var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
             await Assert.ThrowsAsync<Exception>(() =>
-                commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false)));
+                commentScanJob.Run(TestConstants.ChannelId, new CommentScanOptions(), new Hangfire.JobCancellationToken(false)));
         }
 
         using var verificationScope = fixture.WorkerServices.CreateScope();
@@ -613,7 +613,7 @@ public sealed class CreditsTests(TestFixture fixture)
         using (var jobScope = fixture.WorkerServices.CreateScope())
         {
             var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
-            await commentScanJob.Run(channelId, new Hangfire.JobCancellationToken(false));
+            await commentScanJob.Run(channelId, new CommentScanOptions(), new Hangfire.JobCancellationToken(false));
         }
 
         using (var verificationScope = fixture.WorkerServices.CreateScope())

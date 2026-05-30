@@ -105,7 +105,7 @@ public class CommentScanJobTests(TestFixture fixture)
         // Act
         using var jobScope = fixture.WorkerServices.CreateScope();
         var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
-        await commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false));
+        await commentScanJob.Run(TestConstants.ChannelId, null, new Hangfire.JobCancellationToken(false));
 
         // Assert
         fixture.WorkerFactory.MockAiTextGenerationClient.Verify(
@@ -146,7 +146,7 @@ public class CommentScanJobTests(TestFixture fixture)
         // Act
         using var jobScope = fixture.WorkerServices.CreateScope();
         var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
-        await commentScanJob.Run(NonExistentChannelId, new Hangfire.JobCancellationToken(false));
+        await commentScanJob.Run(NonExistentChannelId, null, new Hangfire.JobCancellationToken(false));
 
         // Assert
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Verify(
@@ -174,7 +174,7 @@ public class CommentScanJobTests(TestFixture fixture)
         // Act
         using var jobScope = fixture.WorkerServices.CreateScope();
         var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
-        await commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false));
+        await commentScanJob.Run(TestConstants.ChannelId, null, new Hangfire.JobCancellationToken(false));
 
         // Assert
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Verify(
@@ -219,7 +219,7 @@ public class CommentScanJobTests(TestFixture fixture)
         // Act
         using var jobScope = fixture.WorkerServices.CreateScope();
         var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
-        await commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false));
+        await commentScanJob.Run(TestConstants.ChannelId, null, new Hangfire.JobCancellationToken(false));
 
         // Assert
         fixture.WorkerFactory.MockAiTextGenerationClient.Verify(
@@ -279,7 +279,7 @@ public class CommentScanJobTests(TestFixture fixture)
         var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
 
         var exception = await Assert.ThrowsAsync<Exception>(() =>
-            commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false)));
+            commentScanJob.Run(TestConstants.ChannelId, null, new Hangfire.JobCancellationToken(false)));
 
         Assert.Equal(SimulatedAiTextGenerationClientFailureMessage, exception.Message);
     }
@@ -354,7 +354,7 @@ public class CommentScanJobTests(TestFixture fixture)
         // Act
         using var jobScope = fixture.WorkerServices.CreateScope();
         var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
-        await commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false));
+        await commentScanJob.Run(TestConstants.ChannelId, new CommentScanOptions(), new Hangfire.JobCancellationToken(false));
 
         // Assert
         fixture.WorkerFactory.MockAiTextGenerationClient.Verify(
@@ -434,7 +434,7 @@ public class CommentScanJobTests(TestFixture fixture)
         // Act
         using var jobScope = fixture.WorkerServices.CreateScope();
         var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
-        await commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false));
+        await commentScanJob.Run(TestConstants.ChannelId, null, new Hangfire.JobCancellationToken(false));
 
         // Assert
         fixture.WorkerFactory.MockAiTextGenerationClient.Verify(
@@ -514,7 +514,7 @@ public class CommentScanJobTests(TestFixture fixture)
         // Act
         using var jobScope = fixture.WorkerServices.CreateScope();
         var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
-        await commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false));
+        await commentScanJob.Run(TestConstants.ChannelId, null, new Hangfire.JobCancellationToken(false));
 
         // Assert
         fixture.WorkerFactory.MockAiTextGenerationClient.Verify(
@@ -566,7 +566,7 @@ public class CommentScanJobTests(TestFixture fixture)
         // Act
         using var jobScope = fixture.WorkerServices.CreateScope();
         var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
-        await commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false));
+        await commentScanJob.Run(TestConstants.ChannelId, null, new Hangfire.JobCancellationToken(false));
 
         // Assert
         fixture.WorkerFactory.MockBackgroundYoutubeIntegration.Verify(
@@ -596,9 +596,7 @@ public class CommentScanJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-
-
-
+        
         var targetVideo = TestHelpers.GetTargetVideo();
         await _helpers.SeedTestDataAsync(new TestDataOptions
         {
@@ -619,7 +617,7 @@ public class CommentScanJobTests(TestFixture fixture)
         // Act
         using var jobScope = fixture.WorkerServices.CreateScope();
         var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
-        await commentScanJob.Run(TestConstants.ChannelId, new Hangfire.JobCancellationToken(false));
+        await commentScanJob.Run(TestConstants.ChannelId, null, new Hangfire.JobCancellationToken(false));
 
         // Assert
         TestHelpers.SetProperty(targetVideo, nameof(targetVideo.CommentsAllowed), false);

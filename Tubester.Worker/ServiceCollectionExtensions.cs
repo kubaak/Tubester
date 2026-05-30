@@ -11,6 +11,7 @@ using Tubester.Abstractions.Replies;
 using Tubester.Abstractions.Transactions;
 using Tubester.Abstractions.Videos;
 using Tubester.Application;
+using Tubester.Application.Channels;
 using Tubester.Application.Credits;
 using Tubester.Application.DomainEvents;
 using Tubester.Application.Jobs;
@@ -68,6 +69,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICreditsService, CreditsService>();
 
         // App services & jobs
+        services.AddScoped<IChannelSettingsService, ChannelSettingsService>();
         services.AddScoped<IAiVideoImprovingService, AiVideoImprovingService>();
         services.AddScoped<CommentScanJob>();
         services.AddScoped<AiTemplateJob>();

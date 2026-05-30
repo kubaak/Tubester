@@ -45,4 +45,10 @@ public sealed class UserRepository(TubesterDb databaseContext) : IUserRepository
 
         return user;
     }
+    
+    public async Task UpdateUserAsync(User user, CancellationToken cancellationToken)
+    {
+        databaseContext.Users.Update(user);
+        await databaseContext.SaveChangesAsync(cancellationToken);
+    }
 }

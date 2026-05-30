@@ -8,6 +8,7 @@ public sealed class User
     public string? Picture { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? LastLoginAt { get; private set; }
+    public bool IsNew { get; private set; }
 
     public static User Create(string id, string? email, string? name, string? picture, DateTimeOffset createdAt)
     {
@@ -23,7 +24,8 @@ public sealed class User
             Name = name,
             Picture = picture,
             CreatedAt = createdAt,
-            LastLoginAt = createdAt
+            LastLoginAt = createdAt,
+            IsNew = true
         };
 
         return user;
@@ -35,6 +37,11 @@ public sealed class User
         Name = name;
         Picture = picture;
         LastLoginAt = loginAt;
+    }
+
+    public void MarkAsExisting()
+    {
+        IsNew = false;
     }
 
     private User()

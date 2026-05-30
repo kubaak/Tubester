@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Security.Claims;
 using Google;
 using Google.Apis.YouTube.v3;
+using Hangfire;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
@@ -12,6 +13,7 @@ using Tubester.Abstractions;
 using Tubester.Abstractions.Analytics;
 using Tubester.Abstractions.Users;
 using Tubester.Api.Auth;
+using Tubester.Application.Jobs;
 using Tubester.Integration;
 
 namespace Tubester.Api.Extensions;
@@ -194,13 +196,19 @@ public static class ServiceCollectionExtensions
                 var cancellationToken = context.HttpContext.RequestAborted;
                 var now = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
 
-                await userRepository.UpsertUserAsync(
+                var user = await userRepository.UpsertUserAsync(
                     userId,
                     email,
                     name,
                     picture,
                     now,
                     cancellationToken);
+
+                if (user.IsNew && TryEnqueueInitialCommentScan(context, principal))
+                {
+                    user.MarkAsExisting();
+                    await userRepository.UpdateUserAsync(user, cancellationToken);
+                }
 
                 await LogLoginAsync(context, userId);
             },
@@ -380,6 +388,24 @@ public static class ServiceCollectionExtensions
                 scheme = context.Scheme.Name
             },
             cancellationToken);
+    }
+
+    private static bool TryEnqueueInitialCommentScan(TicketReceivedContext context, ClaimsPrincipal principal)
+    {
+        var channelId = principal.FindFirstValue(TubesterClaimTypes.YouTubeChannelId);
+        if (string.IsNullOrWhiteSpace(channelId))
+        {
+            return false;
+        }
+
+        var backgroundJobClient = context.HttpContext.RequestServices.GetRequiredService<IBackgroundJobClient>();
+
+        backgroundJobClient.Enqueue<CommentScanJob>(
+            job => job.Run(
+                channelId,
+                new CommentScanOptions(InitialRun: true),
+                JobCancellationToken.Null));
+        return true;
     }
 
     private static void AddOrReplaceClaim(ClaimsIdentity identity, string claimType, string value)
