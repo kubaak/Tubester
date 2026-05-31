@@ -19,6 +19,7 @@ using Tubester.Api.Hangfire;
 using Tubester.Api.Infrastructure;
 using Tubester.Application;
 using Tubester.Application.Account;
+using Tubester.Application.Auth;
 using Tubester.Application.Channels;
 using Tubester.Application.Credits;
 using Tubester.Application.DomainEvents;
@@ -83,6 +84,7 @@ builder.Services.AddScoped<IAccountSettingsService, AccountSettingsService>();
 builder.Services.AddScoped<IAiVideoImprovingService, AiVideoImprovingService>();
 builder.Services.AddScoped<IAiTemplateOrchestrationService, AiTemplateOrchestrationService>();
 builder.Services.AddScoped<ICommentScanService, CommentScanService>();
+builder.Services.AddScoped<IUserOnboardingService, UserOnboardingService>();
 builder.Services.AddSingleton<IDateTimeOffsetProvider, DateTimeOffsetProvider>();
 builder.Services.AddScoped<IApplicationTransactionRunner, EfApplicationTransactionRunner>();
 
