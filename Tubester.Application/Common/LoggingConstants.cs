@@ -2,6 +2,7 @@
 
 public class LoggingConstants
 {
+    public const string UserId = "UserId";
     public const string ChannelId = "ChannelId";
     public const string UploadPlaylistId = "UploadPlaylistId";
     public const string PlaylistId = "PlaylistId";

@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.OpenApi;
 using Tubester.Abstractions;
 using Tubester.Abstractions.Analytics;
+using Tubester.Abstractions.Auth;
 using Tubester.Abstractions.Users;
 using Tubester.Api.Auth;
 using Tubester.Application.Jobs;
@@ -189,26 +190,24 @@ public static class ServiceCollectionExtensions
                 var email = principal.FindFirstValue(ClaimTypes.Email);
                 var name = principal.Identity?.Name;
                 var picture = principal.FindFirst("picture")?.Value;
+                var channelId = principal.FindFirstValue(TubesterClaimTypes.YouTubeChannelId);
 
                 var requestServices = context.HttpContext.RequestServices;
-                var userRepository = requestServices.GetRequiredService<IUserRepository>();
+                var onboardingService = requestServices.GetRequiredService<IUserOnboardingService>();
                 var dateTimeOffsetProvider = requestServices.GetRequiredService<IDateTimeOffsetProvider>();
+
                 var cancellationToken = context.HttpContext.RequestAborted;
                 var now = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
 
-                var user = await userRepository.UpsertUserAsync(
-                    userId,
-                    email,
-                    name,
-                    picture,
-                    now,
+                await onboardingService.HandleSuccessfulLoginAsync(
+                    new SuccessfulLoginContext(
+                        UserId: userId,
+                        Email: email,
+                        Name: name,
+                        Picture: picture,
+                        ChannelId: channelId,
+                        LoginAt: now),
                     cancellationToken);
-
-                if (user.IsNew && TryEnqueueInitialCommentScan(context, principal))
-                {
-                    user.MarkAsExisting();
-                    await userRepository.UpdateUserAsync(user, cancellationToken);
-                }
 
                 await LogLoginAsync(context, userId);
             },
