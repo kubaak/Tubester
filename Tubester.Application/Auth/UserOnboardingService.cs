@@ -46,12 +46,13 @@ public sealed class UserOnboardingService(
             nowUtc,
             cancellationToken);
 
-        if (!string.IsNullOrWhiteSpace(context.ChannelId))
-        {
-            await channelSettingsService.GetOrCreateAsync(
-                context.ChannelId,
-                cancellationToken);
-        }
+        //Channel itself is not persisted yet at this stage
+        // if (!string.IsNullOrWhiteSpace(context.ChannelId))
+        // {
+        //     await channelSettingsService.GetOrCreateAsync(
+        //         context.ChannelId,
+        //         cancellationToken);
+        // }
 
         var initialScanQueued = false;
 
