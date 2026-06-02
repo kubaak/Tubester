@@ -12,7 +12,7 @@ using Tubester.Persistence;
 using Tubester.Persistence.Credits;
 using Xunit;
 
-namespace Tubester.IntegrationTests;
+namespace Tubester.IntegrationTests.Channels;
 
 [Collection(nameof(TestCollection))]
 public class ChannelTests(TestFixture fixture)
@@ -20,7 +20,7 @@ public class ChannelTests(TestFixture fixture)
     private readonly TestHelpers _helpers = new(fixture.ApiServices);
 
     [Fact]
-    public async Task Sync_UpdatesDatabaseCorrectly()
+    public async Task UpdatesDatabaseCorrectly()
     {
         // Arrange
         await fixture.CleanStateAsync();
@@ -223,7 +223,7 @@ public class ChannelTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task Sync_CalledTwice_IsIdempotentAndUpdatesExistingData()
+    public async Task CalledTwice_IsIdempotentAndUpdatesExistingData()
     {
         // Arrange
         await fixture.CleanStateAsync();
@@ -327,7 +327,7 @@ public class ChannelTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task Sync_WithoutSubscription_AssignsFreeSubscriptionAndGrantsCredits()
+    public async Task WithoutSubscription_AssignsFreeSubscriptionAndGrantsCredits()
     {
         // Arrange
         await fixture.CleanStateAsync();
@@ -382,7 +382,7 @@ public class ChannelTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task Sync_WithActiveSubscription_SyncsWithoutModifyingCredits()
+    public async Task WithActiveSubscription_SyncsWithoutModifyingCredits()
     {
         // Arrange
         await fixture.CleanStateAsync();
@@ -432,7 +432,7 @@ public class ChannelTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task Sync_WithInactiveSubscription_ReturnsForbiddenAndDoesNotModifyCredits()
+    public async Task WithInactiveSubscription_ReturnsForbiddenAndDoesNotModifyCredits()
     {
         // Arrange
         await fixture.CleanStateAsync();
@@ -520,7 +520,7 @@ public class ChannelTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task Sync_Current_DoesNotOverrideCurrentVideoTitleDescriptionTagsAndPlaylist()
+    public async Task Current_DoesNotOverrideCurrentVideoTitleDescriptionTagsAndPlaylist()
     {
         // Arrange
         await fixture.CleanStateAsync();
@@ -604,7 +604,7 @@ public class ChannelTests(TestFixture fixture)
     }
 
     [Fact]
-    public async Task Sync_Current_WithDirtyVideoFilteredOutByUploadsCutoff_DoesNotModifyDetailsOrPlaylists()
+    public async Task Current_WithDirtyVideoFilteredOutByUploadsCutoff_DoesNotModifyDetailsOrPlaylists()
     {
         // Arrange
         await fixture.CleanStateAsync();

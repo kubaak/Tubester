@@ -58,6 +58,8 @@ public sealed class TestHelpers(IServiceProvider serviceProvider)
             MockAuthenticationExtensions.TestPicture,
             TestFixture.TestingDateTimeOffset);
 
+        user.MarkAsExisting();
+
         var channel = Channel.Create(
             options.ChannelId,
             options.UserId,

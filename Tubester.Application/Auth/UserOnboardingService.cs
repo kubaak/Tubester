@@ -4,7 +4,6 @@ using Tubester.Abstractions;
 using Tubester.Abstractions.Auth;
 using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Users;
-using Tubester.Application.Channels;
 using Tubester.Application.Common;
 using Tubester.Application.Jobs;
 
@@ -13,7 +12,6 @@ namespace Tubester.Application.Auth;
 public sealed class UserOnboardingService(
     IUserRepository userRepository,
     ICreditsStore creditsStore,
-    IChannelSettingsService channelSettingsService,
     IBackgroundJobClient backgroundJobClient,
     IDateTimeOffsetProvider dateTimeOffsetProvider,
     ILogger<UserOnboardingService> logger) : IUserOnboardingService
@@ -59,10 +57,6 @@ public sealed class UserOnboardingService(
         if (isNewUser && !string.IsNullOrWhiteSpace(context.ChannelId))
         {
             initialScanQueued = TryEnqueueInitialCommentScan(context.ChannelId);
-        }
-
-        if (isNewUser)
-        {
             user.MarkAsExisting();
             await userRepository.UpdateUserAsync(user, cancellationToken);
         }
