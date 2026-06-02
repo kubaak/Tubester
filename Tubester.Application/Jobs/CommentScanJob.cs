@@ -74,10 +74,10 @@ public sealed partial class CommentScanJob(
             logger.LogInformation("Skipping comment scan: comment assistant disabled");
             return 0;
         }
-        
+
         var maxSuggestedRepliesPerSync = settings.MaxSuggestedRepliesPerSync;
         var maxCommentAgeDays = settings.MaxCommentAgeDays;
-        var responseForNonTextualComments = settings.ResponseForNonTextualComments ?? "🔥🙌" ;
+        var responseForNonTextualComments = settings.ResponseForNonTextualComments ?? "🔥🙌";
         var replyLanguage = settings.ReplyLanguage;
 
         var userId = channel.UserId;

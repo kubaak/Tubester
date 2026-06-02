@@ -32,7 +32,7 @@ public sealed class UserOnboardingServiceTests(TestFixture fixture)
 
         await databaseContext.Plans.AddAsync(plan, CancellationToken.None);
         await databaseContext.SaveChangesAsync(CancellationToken.None);
-        
+
         using var scope = fixture.ApiServices.CreateScope();
         var onboardingService = scope.ServiceProvider.GetRequiredService<IUserOnboardingService>();
 
@@ -104,7 +104,7 @@ public sealed class UserOnboardingServiceTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        _ = await _helpers.SeedTestDataAsync(new TestDataOptions{ CreateSubscription = false});
+        _ = await _helpers.SeedTestDataAsync(new TestDataOptions { CreateSubscription = false });
 
         using var scope = fixture.ApiServices.CreateScope();
         var onboardingService = scope.ServiceProvider.GetRequiredService<IUserOnboardingService>();
@@ -149,5 +149,105 @@ public sealed class UserOnboardingServiceTests(TestFixture fixture)
 
         var enqueuedJobs = fixture.CapturingJobClient.GetEnqueued<CommentScanJob>();
         Assert.Empty(enqueuedJobs);
+    }
+
+    [Fact]
+    public async Task HandleSuccessfulLoginAsync_WhenChannelIdIsNull_DoesNotCreateChannelSettingsOrQueueInitialScan()
+    {
+        // Arrange
+        await fixture.CleanStateAsync();
+        fixture.CapturingJobClient.Clear();
+
+        await EnsureFreePlanAsync();
+
+        using var scope = fixture.ApiServices.CreateScope();
+        var onboardingService = scope.ServiceProvider.GetRequiredService<IUserOnboardingService>();
+
+        var context = new SuccessfulLoginContext(
+            UserId: MockAuthenticationExtensions.TestSub,
+            Email: MockAuthenticationExtensions.TestEmail,
+            Name: MockAuthenticationExtensions.TestName,
+            Picture: MockAuthenticationExtensions.TestPicture,
+            ChannelId: null,
+            LoginAt: TestFixture.TestingDateTimeOffset);
+
+        // Act
+        await onboardingService.HandleSuccessfulLoginAsync(context, CancellationToken.None);
+
+        // Assert
+        await using var assertScope = fixture.ApiServices.CreateAsyncScope();
+        var db = assertScope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        var user = await db.Users
+            .AsNoTracking()
+            .SingleOrDefaultAsync(entity => entity.Id == MockAuthenticationExtensions.TestSub);
+
+        Assert.NotNull(user);
+        Assert.Equal(MockAuthenticationExtensions.TestEmail, user.Email);
+        Assert.Equal(MockAuthenticationExtensions.TestName, user.Name);
+        Assert.Equal(MockAuthenticationExtensions.TestPicture, user.Picture);
+
+        // Important: with the safer onboarding logic, the user should remain new
+        // because channel onboarding and initial scan could not happen yet.
+        Assert.True(user.IsNew);
+
+        var subscription = await db.Subscriptions
+            .AsNoTracking()
+            .Include(entity => entity.Plan)
+            .SingleOrDefaultAsync(entity => entity.UserId == MockAuthenticationExtensions.TestSub);
+
+        Assert.NotNull(subscription);
+        Assert.Equal(TestConstants.FreePlanCode, subscription.Plan.Code);
+        Assert.Equal(SubscriptionStatus.Active, subscription.Status);
+
+        var wallet = await db.Wallets
+            .AsNoTracking()
+            .SingleOrDefaultAsync(entity => entity.UserId == MockAuthenticationExtensions.TestSub);
+
+        Assert.NotNull(wallet);
+        Assert.Equal(TestConstants.MonthlyCredits, wallet.Balance);
+
+        var channelSettings = await db.ChannelSettings
+            .AsNoTracking()
+            .Where(entity => entity.ChannelId == TestConstants.ChannelId)
+            .ToListAsync();
+
+        Assert.Empty(channelSettings);
+
+        var channels = await db.Channels
+            .AsNoTracking()
+            .ToListAsync();
+
+        Assert.Empty(channels);
+
+        var enqueuedJobs = fixture.CapturingJobClient.GetEnqueued<CommentScanJob>();
+        Assert.Empty(enqueuedJobs);
+    }
+
+    private async Task EnsureFreePlanAsync()
+    {
+        await using var scope = fixture.ApiServices.CreateAsyncScope();
+        var databaseContext = scope.ServiceProvider.GetRequiredService<TubesterDb>();
+
+        var planExists = await databaseContext.Plans
+            .AnyAsync(entity => entity.Code == TestConstants.FreePlanCode);
+
+        if (planExists)
+        {
+            return;
+        }
+
+        var plan = new Plan
+        {
+            Code = TestConstants.FreePlanCode,
+            Name = TestConstants.FreePlanName,
+            MonthlyCredits = TestConstants.MonthlyCredits,
+            IsActive = true,
+            CreatedAtUtc = TestFixture.TestingDateTimeOffset,
+            UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+        };
+
+        await databaseContext.Plans.AddAsync(plan, CancellationToken.None);
+        await databaseContext.SaveChangesAsync(CancellationToken.None);
     }
 }

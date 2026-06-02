@@ -22,6 +22,7 @@ public sealed class ChannelSyncService(
     IChannelSettingsRepository channelSettingsRepository,
     ICurrentChannelContext channelContext,
     ICreditsStore creditsStore,
+    IChannelSettingsService channelSettingsService,
     ILogger<ChannelSyncService> logger,
     IDateTimeOffsetProvider dateTimeOffsetProvider) : IChannelSyncService
 {
@@ -29,7 +30,6 @@ public sealed class ChannelSyncService(
 
     public async Task<Channel> PullChannelAsync(
         string userId,
-        string channelId,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(userId))
@@ -37,10 +37,7 @@ public sealed class ChannelSyncService(
             throw new ArgumentException("User id is required.", nameof(userId));
         }
 
-        if (string.IsNullOrWhiteSpace(channelId))
-        {
-            throw new ArgumentException("Channel id is required.", nameof(channelId));
-        }
+        var channelId = channelContext.GetRequiredChannelId();
 
         // Pull canonical channel details (ChannelId, Title, UploadsPlaylistId, ETag)
         var channelDto = await youTubeIntegration.GetChannelAsync(channelId, cancellationToken)
@@ -62,6 +59,7 @@ public sealed class ChannelSyncService(
                 channelDto.ETag);
 
             await channelRepository.UpsertChannelAsync(channel, cancellationToken);
+            _ = await channelSettingsService.GetOrCreateAsync(channelId, cancellationToken);
             return channel;
         }
 
@@ -100,7 +98,7 @@ public sealed class ChannelSyncService(
         var channelId = channelContext.GetRequiredChannelId();
 
         var channel = await channelRepository.GetChannelAsync(channelId, cancellationToken)
-                      ?? await PullChannelAsync(userId, channelId, cancellationToken);
+                      ?? await PullChannelAsync(userId, cancellationToken);
 
         var settings = await channelSettingsRepository.GetByChannelIdAsync(channelId, cancellationToken);
 
