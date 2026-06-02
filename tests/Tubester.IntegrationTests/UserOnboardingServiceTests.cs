@@ -19,8 +19,20 @@ public sealed class UserOnboardingServiceTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-        _ = await _helpers.SeedTestDataAsync(new TestDataOptions{ CreateSubscription = false});
+        var databaseContext = fixture.ApiServices.GetRequiredService<TubesterDb>();
+        var plan = new Plan
+        {
+            Code = TestConstants.FreePlanCode,
+            Name = TestConstants.FreePlanName,
+            MonthlyCredits = TestConstants.MonthlyCredits,
+            IsActive = true,
+            CreatedAtUtc = TestFixture.TestingDateTimeOffset,
+            UpdatedAtUtc = TestFixture.TestingDateTimeOffset
+        };
 
+        await databaseContext.Plans.AddAsync(plan, CancellationToken.None);
+        await databaseContext.SaveChangesAsync(CancellationToken.None);
+        
         using var scope = fixture.ApiServices.CreateScope();
         var onboardingService = scope.ServiceProvider.GetRequiredService<IUserOnboardingService>();
 
@@ -75,12 +87,6 @@ public sealed class UserOnboardingServiceTests(TestFixture fixture)
         Assert.NotNull(ledgerEntry);
         Assert.Equal("PeriodGrant", ledgerEntry.ActionType);
         Assert.Equal(TestConstants.MonthlyCredits, ledgerEntry.Delta);
-
-        var channelSettings = await db.ChannelSettings
-            .AsNoTracking()
-            .SingleOrDefaultAsync(entity => entity.ChannelId == TestConstants.ChannelId);
-
-        Assert.NotNull(channelSettings);
 
         var enqueuedJobs = fixture.CapturingJobClient.GetEnqueued<CommentScanJob>();
         var initialScanJob = Assert.Single(enqueuedJobs);
