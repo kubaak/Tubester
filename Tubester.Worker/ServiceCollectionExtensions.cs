@@ -3,7 +3,6 @@ using Hangfire.PostgreSql;
 using Hangfire.RecurringJobExtensions;
 using Tubester.Abstractions;
 using Tubester.Abstractions.Analytics;
-using Tubester.Abstractions.Auth;
 using Tubester.Abstractions.Channels;
 using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Playlists;
@@ -24,7 +23,6 @@ using Tubester.Persistence.Credits;
 using Tubester.Persistence.Playlists;
 using Tubester.Persistence.Replies;
 using Tubester.Persistence.Transactions;
-using Tubester.Persistence.Users;
 using Tubester.Persistence.Videos;
 
 namespace Tubester.Worker;
@@ -56,7 +54,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IVideoRepository, VideoRepository>();
         services.AddScoped<IPlaylistRepository, PlaylistRepository>();
         services.AddScoped<IReplyRepository, ReplyRepository>();
-        services.AddScoped<IUserTokenStore, UserTokenStore>();
 
         // Analytics
         services.AddScoped<IUserEventLogger, UserEventLogger>();

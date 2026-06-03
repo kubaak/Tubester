@@ -12,7 +12,6 @@ using Microsoft.OpenApi;
 using Tubester.Abstractions;
 using Tubester.Abstractions.Analytics;
 using Tubester.Abstractions.Auth;
-using Tubester.Abstractions.Users;
 using Tubester.Api.Auth;
 using Tubester.Application.Jobs;
 using Tubester.Integration;

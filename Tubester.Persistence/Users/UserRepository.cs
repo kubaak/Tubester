@@ -51,4 +51,43 @@ public sealed class UserRepository(TubesterDb databaseContext) : IUserRepository
         databaseContext.Users.Update(user);
         await databaseContext.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task MarkAsDeletedAsync(string userId, DateTimeOffset deletedAt, CancellationToken cancellationToken)
+    {
+        await databaseContext.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE "Users"
+            SET "Email" = NULL,
+                "Name" = NULL,
+                "Picture" = NULL,
+                "IsDeleted" = true,
+                "DeletedAt" = {deletedAt},
+                "ReactivatedAt" = NULL
+            WHERE "Id" = {userId}
+            """,
+            cancellationToken);
+    }
+
+    public async Task RestoreFromFreshLoginAsync(
+        string userId,
+        string? email,
+        string? name,
+        string? picture,
+        DateTimeOffset reactivatedAt,
+        CancellationToken cancellationToken)
+    {
+        await databaseContext.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE "Users"
+            SET "Email" = {email},
+                "Name" = {name},
+                "Picture" = {picture},
+                "LastLoginAt" = {reactivatedAt},
+                "IsDeleted" = false,
+                "ReactivatedAt" = {reactivatedAt},
+                "IsNew" = false
+            WHERE "Id" = {userId}
+            """,
+            cancellationToken);
+    }
 }

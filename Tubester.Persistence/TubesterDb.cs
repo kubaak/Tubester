@@ -3,7 +3,6 @@ using Tubester.Abstractions.Users;
 using Tubester.Domain;
 using Tubester.Persistence.Analytics;
 using Tubester.Persistence.Credits;
-using Tubester.Persistence.Users;
 using Channel = Tubester.Domain.Channel;
 
 namespace Tubester.Persistence;
@@ -11,7 +10,6 @@ namespace Tubester.Persistence;
 public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(options)
 {
     public DbSet<User> Users => Set<User>();
-    public DbSet<UserToken> UserTokens => Set<UserToken>();
     public DbSet<Reply> Replies => Set<Reply>();
     public DbSet<Channel> Channels => Set<Channel>();
     public DbSet<Video> Videos => Set<Video>();
@@ -41,13 +39,6 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
         b.Entity<User>().HasKey(user => user.Id);
         b.Entity<User>().Property(user => user.CreatedAt);
         b.Entity<User>().Property(user => user.LastLoginAt);
-        b.Entity<UserToken>().HasKey(token => token.UserId);
-        b.Entity<UserToken>().Property(token => token.ExpiresAt);
-        b.Entity<UserToken>()
-            .HasOne<User>()
-            .WithOne()
-            .HasForeignKey<UserToken>(token => token.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
 
         b.Entity<Channel>().HasKey(channel => channel.ChannelId);
         b.Entity<Channel>().Property(channel => channel.ETag).HasMaxLength(128);

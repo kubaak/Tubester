@@ -7,4 +7,6 @@ public interface IAccountSettingsRepository
     Task<AccountSettings?> GetByUserIdAsync(string userId, CancellationToken cancellationToken);
 
     Task UpsertAsync(AccountSettings settings, CancellationToken cancellationToken);
+
+    Task<int> DeleteByUserIdAsync(string userId, CancellationToken cancellationToken);
 }

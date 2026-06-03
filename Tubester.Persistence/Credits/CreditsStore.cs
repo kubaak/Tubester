@@ -505,6 +505,7 @@ public sealed class CreditsStore(
 
         var subscription = await databaseContext.Subscriptions
             .AsNoTracking()
+            .Where(s => s.Status == SubscriptionStatus.Active)
             .Include(entity => entity.Plan)
             .FirstOrDefaultAsync(entity => entity.UserId == userId, cancellationToken);
 
@@ -1144,5 +1145,75 @@ public sealed class CreditsStore(
             PeriodStartUtc = subscription.PeriodStartUtc,
             PeriodEndUtc = subscription.PeriodEndUtc
         };
+    }
+
+    public async Task CancelSubscriptionAsync(string userId, DateTimeOffset cancelledAt, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new ArgumentException("User id is required.", nameof(userId));
+        }
+
+        if (cancelledAt.Offset != TimeSpan.Zero)
+        {
+            cancelledAt = cancelledAt.ToUniversalTime();
+        }
+
+        // Cancel the subscription by updating its status and period end
+        await databaseContext.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE "Subscriptions"
+            SET "Status" = {SubscriptionStatus.Cancelled.ToString()},
+                "PeriodEndUtc" = {cancelledAt}
+            WHERE "UserId" = {userId}
+            """,
+            cancellationToken);
+
+        // Create a subscription history record
+        var currentSubscription = await databaseContext.Subscriptions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.UserId == userId, cancellationToken);
+
+        if (currentSubscription is not null)
+        {
+            await databaseContext.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                INSERT INTO "SubscriptionHistories"
+                    ("UserId", "PlanId", "Status", "PeriodStartUtc", "PeriodEndUtc", "CreatedAtUtc")
+                VALUES
+                    ({userId}, {currentSubscription.PlanId}, {SubscriptionStatus.Cancelled.ToString()},
+                     {currentSubscription.PeriodStartUtc}, {cancelledAt}, {cancelledAt})
+                ON CONFLICT ("UserId", "PlanId", "PeriodStartUtc", "PeriodEndUtc") DO NOTHING;
+                """,
+                cancellationToken);
+        }
+
+        logger.LogInformation("Subscription cancelled for user {UserId}", userId);
+    }
+
+    public async Task CloseWalletAsync(string userId, DateTimeOffset closedAt, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new ArgumentException("User id is required.", nameof(userId));
+        }
+
+        if (closedAt.Offset != TimeSpan.Zero)
+        {
+            closedAt = closedAt.ToUniversalTime();
+        }
+
+        // Close the wallet by setting balance to 0 and period end to now (expired)
+        await databaseContext.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE "Wallets"
+            SET "Balance" = 0,
+                "PeriodEndUtc" = {closedAt},
+                "UpdatedAtUtc" = {closedAt}
+            WHERE "UserId" = {userId}
+            """,
+            cancellationToken);
+
+        logger.LogInformation("Wallet closed for user {UserId}", userId);
     }
 }

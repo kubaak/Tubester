@@ -44,4 +44,9 @@ public enum UserEventType
     /// The user enqueued artificial intelligence powered playlist suggestion job.
     /// </summary>
     AiPlaylistSuggestionEnqueued = 7,
+
+    /// <summary>
+    /// The user requested deletion of all their account data.
+    /// </summary>
+    UserDataDeletionRequested = 8,
 }

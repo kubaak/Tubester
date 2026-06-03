@@ -99,4 +99,22 @@ public interface ICreditsStore
         IReadOnlyList<int> costs,
         DateTimeOffset occurredAtUtc,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Cancels the user's active subscription and ends the subscription period.
+    /// Preserves the subscription history for billing/accounting purposes.
+    /// </summary>
+    /// <param name="userId">The user ID whose subscription should be cancelled.</param>
+    /// <param name="cancelledAt">The timestamp when the cancellation occurred.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    Task CancelSubscriptionAsync(string userId, DateTimeOffset cancelledAt, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Closes and resets the user's wallet by zeroing out the balance and marking as expired.
+    /// Preserves ledger entries for accounting/audit purposes.
+    /// </summary>
+    /// <param name="userId">The user ID whose wallet should be closed.</param>
+    /// <param name="closedAt">The timestamp when the wallet was closed.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    Task CloseWalletAsync(string userId, DateTimeOffset closedAt, CancellationToken cancellationToken);
 }

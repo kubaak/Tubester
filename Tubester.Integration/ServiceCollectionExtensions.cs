@@ -2,7 +2,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Options;
-using Tubester.Abstractions.Auth;
 using Tubester.Integration.Configuration;
 
 namespace Tubester.Integration;
@@ -24,7 +23,6 @@ public static class ServiceCollectionExtensions
     {
         services.Configure<GoogleAuthOptions>(configuration.GetSection("GoogleAuth"));
         services.Configure<YouTubeApiOptions>(configuration.GetSection("YouTubeApi"));
-        services.AddHttpClient<IGoogleTokenRefresher, GoogleTokenRefresher>();
         services.AddScoped<IBackgroundYoutubeIntegration, BackgroundYoutubeIntegration>();
 
         return services;

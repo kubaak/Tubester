@@ -74,4 +74,35 @@ AND "IsCommentScanRunning" = false
         channel.CompleteCommentScan(DateTimeOffset.UtcNow);
         await db.SaveChangesAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// Deletes all channels belonging to a user and their associated settings.
+    /// This also cascades to videos, replies, and video playlists through FK constraints.
+    /// </summary>
+    /// <param name="userId">The user ID whose channels should be deleted.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>The number of channels deleted.</returns>
+    public async Task<int> DeleteByUserIdAsync(string userId, CancellationToken cancellationToken)
+    {
+        var deletedCount = await db.Set<Channel>()
+            .Where(c => c.UserId == userId)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        return deletedCount;
+    }
+
+    /// <summary>
+    /// Gets all channel IDs for a user.
+    /// </summary>
+    /// <param name="userId">The user ID.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>List of channel IDs.</returns>
+    public async Task<List<string>> GetChannelIdsByUserIdAsync(string userId, CancellationToken cancellationToken)
+    {
+        return await db.Set<Channel>()
+            .AsNoTracking()
+            .Where(c => c.UserId == userId)
+            .Select(c => c.ChannelId)
+            .ToListAsync(cancellationToken);
+    }
 }

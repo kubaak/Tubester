@@ -24,6 +24,7 @@ using Tubester.Application.Channels;
 using Tubester.Application.Credits;
 using Tubester.Application.DomainEvents;
 using Tubester.Application.Playlists;
+using Tubester.Application.Users;
 using Tubester.Application.Videos;
 using Tubester.Integration;
 using Tubester.Persistence;
@@ -69,7 +70,6 @@ builder.Services.AddScoped<IChannelSettingsRepository, ChannelSettingsRepository
 builder.Services.AddScoped<IAccountSettingsRepository, AccountSettingsRepository>();
 builder.Services.AddScoped<IVideoRepository, VideoRepository>();
 builder.Services.AddScoped<IPlaylistRepository, PlaylistRepository>();
-builder.Services.AddScoped<IUserTokenStore, UserTokenStore>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IUserEventLogger, UserEventLogger>();
 builder.Services.AddScoped<ICreditsStore, CreditsStore>();
@@ -85,6 +85,7 @@ builder.Services.AddScoped<IAiVideoImprovingService, AiVideoImprovingService>();
 builder.Services.AddScoped<IAiTemplateOrchestrationService, AiTemplateOrchestrationService>();
 builder.Services.AddScoped<ICommentScanService, CommentScanService>();
 builder.Services.AddScoped<IUserOnboardingService, UserOnboardingService>();
+builder.Services.AddScoped<IUserDataDeletionService, UserDataDeletionService>();
 builder.Services.AddSingleton<IDateTimeOffsetProvider, DateTimeOffsetProvider>();
 builder.Services.AddScoped<IApplicationTransactionRunner, EfApplicationTransactionRunner>();
 
