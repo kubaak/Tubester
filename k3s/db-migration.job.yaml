@@ -18,4 +18,11 @@ spec:
                 name: tubester-api-secrets
           command: ["./efbundle"]
           args: ["--connection", "$(ConnectionStrings__TubesterDb)"]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1654
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
       restartPolicy: Never

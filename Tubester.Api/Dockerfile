@@ -31,17 +31,21 @@ RUN dotnet publish Tubester.Api/Tubester.Api.csproj \
 # Build EF Core migrations bundle
 RUN dotnet tool install --global dotnet-ef
 ENV PATH="$PATH:/root/.dotnet/tools"
+
 RUN dotnet ef migrations bundle \
     --project Tubester.Persistence/Tubester.Persistence.csproj \
     --startup-project Tubester.Api/Tubester.Api.csproj \
     --output /app/efbundle \
     --force
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
+
 COPY --from=build /app .
 
 ENV ASPNETCORE_URLS=http://0.0.0.0:5000
 EXPOSE 5000
+
+USER $APP_UID
 
 ENTRYPOINT ["dotnet", "Tubester.Api.dll"]

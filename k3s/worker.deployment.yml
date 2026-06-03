@@ -25,3 +25,10 @@ spec:
           envFrom:
             - secretRef:
                 name: tubester-api-secrets
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1654
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
