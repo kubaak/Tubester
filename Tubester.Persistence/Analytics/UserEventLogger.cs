@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Tubester.Abstractions.Analytics;
 
 namespace Tubester.Persistence.Analytics;
@@ -38,5 +39,24 @@ public class UserEventLogger(TubesterDb tubesterDb) : IUserEventLogger
 
         await tubesterDb.UserEvents.AddAsync(userEvent, cancellationToken);
         await tubesterDb.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeleteByUserIdAsync(
+        string userId,
+        UserEventType deletionEventType,
+        DateTimeOffset deletedAt,
+        CancellationToken cancellationToken)
+    {
+        // First log the deletion audit event before deleting
+        await LogAsync(userId, deletionEventType, cancellationToken: cancellationToken);
+
+        // Delete all other user events using raw SQL to avoid EF tracking issues
+        await tubesterDb.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            DELETE FROM "analytics"."UserEvents"
+            WHERE "UserId" = {userId}
+              AND "EventType" != {deletionEventType.ToString()}
+            """,
+            cancellationToken);
     }
 }

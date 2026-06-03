@@ -4,7 +4,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Tubester.Abstractions.Channels;
 using Tubester.Abstractions.Users;
-using Tubester.Domain;
 using Tubester.IntegrationTests.TestHost;
 using Tubester.Persistence;
 using Xunit;

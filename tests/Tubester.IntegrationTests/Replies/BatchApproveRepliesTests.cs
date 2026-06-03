@@ -1,5 +1,4 @@
 ﻿using System.Net;
-using Google.Apis.YouTube.v3;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;

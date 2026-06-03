@@ -28,6 +28,43 @@ public sealed class UserOnboardingService(
             [LoggingConstants.ChannelId] = context.ChannelId
         });
 
+        var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
+
+        // Check if user exists and was previously deleted
+        var existingUser = await userRepository.GetByIdForUpdateAsync(context.UserId, cancellationToken);
+
+        if (existingUser is not null && existingUser.IsDeleted)
+        {
+            // User was previously deleted - restore from fresh Google login
+            // This is NOT treated as a new user; it's a reactivation
+            await userRepository.RestoreFromFreshLoginAsync(
+                context.UserId,
+                context.Email,
+                context.Name,
+                context.Picture,
+                nowUtc,
+                cancellationToken);
+
+            logger.LogInformation(
+                "Previously deleted user reactivated. UserId: {UserId}",
+                context.UserId);
+
+            // Assign fresh subscription for reactivated user (they need to set up again)
+            await EnsureFreeSubscriptionAsync(
+                context.UserId,
+                nowUtc,
+                cancellationToken);
+
+            // Reactivated users do NOT trigger initial comment scan automatically
+            // They need to go through the onboarding/channel selection flow again
+            logger.LogInformation(
+                "User reactivation completed. UserId: {UserId}. User must re-authorize and select channel",
+                context.UserId);
+
+            return;
+        }
+
+        // Normal flow for new or existing non-deleted users
         var user = await userRepository.UpsertUserAsync(
             context.UserId,
             context.Email,
@@ -37,7 +74,6 @@ public sealed class UserOnboardingService(
             cancellationToken);
 
         var isNewUser = user.IsNew;
-        var nowUtc = dateTimeOffsetProvider.GetUtcNowDateTimeOffset();
 
         await EnsureFreeSubscriptionAsync(
             context.UserId,

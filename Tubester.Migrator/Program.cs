@@ -100,13 +100,6 @@ await CopyTableAsync(
     nameof(destinationDbContext.Replies),
     cancellationTokenSource.Token);
 
-await CopyTableAsync(
-    sourceDbContext.UserTokens.AsNoTracking().AsAsyncEnumerable(),
-    destinationDbContext.UserTokens,
-    destinationDbContext,
-    nameof(destinationDbContext.UserTokens),
-    cancellationTokenSource.Token);
-
 Console.WriteLine("Migration completed.");
 
 static async Task CopyTableAsync<TEntity>(

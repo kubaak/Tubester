@@ -21,4 +21,17 @@ public interface IUserEventLogger
         string? commentId = null,
         object? metadata = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes all user events for a user, preserving only security audit events.
+    /// </summary>
+    /// <param name="userId">The user ID whose events should be deleted.</param>
+    /// <param name="deletionEventType">The event type to use for the deletion audit event.</param>
+    /// <param name="deletedAt">The timestamp when the deletion occurred.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    Task DeleteByUserIdAsync(
+        string userId,
+        UserEventType deletionEventType,
+        DateTimeOffset deletedAt,
+        CancellationToken cancellationToken);
 }

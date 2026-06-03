@@ -24,4 +24,19 @@ public sealed class AccountSettingsRepository(TubesterDb db) : IAccountSettingsR
 
         await db.SaveChangesAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// Deletes all account settings for a user.
+    /// </summary>
+    /// <param name="userId">The user ID whose account settings should be deleted.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>The number of account settings records deleted.</returns>
+    public async Task<int> DeleteByUserIdAsync(string userId, CancellationToken cancellationToken)
+    {
+        var deletedCount = await db.Set<AccountSettings>()
+            .Where(s => s.UserId == userId)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        return deletedCount;
+    }
 }
