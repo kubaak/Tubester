@@ -10,13 +10,13 @@
     <ItemGroup>
         <PackageReference Include="Hangfire.NetCore" Version="1.8.23" />
         <PackageReference Include="Hangfire.PostgreSql" Version="1.21.1" />
-        <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.5" />
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.5">
+        <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.8" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.8">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.5" />
-        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.8" />
+        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
     </ItemGroup>
 
     <ItemGroup>
