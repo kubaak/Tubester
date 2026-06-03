@@ -10,4 +10,6 @@ WORKDIR /app
 
 COPY --from=build /app/publish ./
 
+USER $APP_UID
+
 ENTRYPOINT ["dotnet", "Tubester.Worker.dll"]

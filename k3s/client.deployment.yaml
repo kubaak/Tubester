@@ -21,3 +21,10 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 80
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1654
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
