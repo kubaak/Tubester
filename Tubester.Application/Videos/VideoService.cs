@@ -433,6 +433,13 @@ public class VideoService(
             var tasks = playlists.Select(p => youTubeIntegration.AddVideoToPlaylistAsync(p.PlaylistId, video.VideoId, cancellationToken));
             await Task.WhenAll(tasks);
         }
+        
+        await videoRepository.UpdateExistingAsync(uploadPlaylistId, [video], 
+            static(v, _, nowUtc) =>
+            {
+                v.MarkAsClean(nowUtc);
+                return true;
+            }, cancellationToken);
 
         return new VideoDetailsDto
         {
