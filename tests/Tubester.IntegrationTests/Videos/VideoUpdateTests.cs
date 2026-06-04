@@ -19,6 +19,7 @@ public class VideoUpdateTests(TestFixture fixture)
         await fixture.CleanStateAsync();
 
         var targetVideo = TestHelpers.GetTargetVideo();
+        targetVideo.MarkAsDirty(TestFixture.TestingDateTimeOffset);
         var playlist1 = TestHelpers.GetPlaylist("PL1");
         var playlist2 = TestHelpers.GetPlaylist("PL2");
         await _helpers.SeedTestDataAsync(new TestDataOptions
@@ -78,8 +79,8 @@ public class VideoUpdateTests(TestFixture fixture)
 
         };
         TestHelpers.AssertVideoDetails(videoDetails, targetVideo, expectedPlaylistDtos);
-        await _helpers.AssertVideoAsync(targetVideo);
         TestHelpers.SetProperty(targetVideo, nameof(targetVideo.IsDirty), false);
+        await _helpers.AssertVideoAsync(targetVideo);
         await _helpers.AssertVideoPlaylistsAsync(targetVideo.VideoId, playlist1.PlaylistId, playlist2.PlaylistId);
 
         fixture.ApiFactory.MockYouTubeIntegration.Verify(youTubeIntegration =>
