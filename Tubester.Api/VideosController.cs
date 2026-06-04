@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Tubester.Abstractions.Account;
+using Tubester.Abstractions.Videos;
 using Tubester.Application.Contracts;
 using Tubester.Application.Contracts.Videos;
 using Tubester.Application.Exceptions;
@@ -270,6 +271,19 @@ public sealed class VideosController(
             return NotFound();
         }
 
+        return Ok(result);
+    }
+    
+    /// <summary>
+    /// Gets all videos with unsynced local changes.
+    /// </summary>
+    /// <param name="ct"></param>
+    /// <returns>List of dirty videos for the current channel.</returns>
+    [HttpGet("dirty")]
+    [ProducesResponseType(typeof(IReadOnlyList<VideoListItemDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<VideoListItemDto>>> GetDirtyVideos(CancellationToken ct = default)
+    {
+        var result = await videoService.GetDirtyVideosAsync(ct);
         return Ok(result);
     }
 }

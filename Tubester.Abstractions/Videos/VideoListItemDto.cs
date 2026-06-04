@@ -1,4 +1,4 @@
-namespace Tubester.Application.Contracts.Videos;
+namespace Tubester.Abstractions.Videos;
 
 /// <summary>
 /// Represents a video item for listing purposes.

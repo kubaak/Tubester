@@ -592,4 +592,10 @@ public class VideoService(
             ThumbnailUrl = video.ThumbnailUrl
         };
     }
+    
+    public Task<List<VideoListItemDto>> GetDirtyVideosAsync(CancellationToken cancellationToken)
+    {
+        var uploadPlaylistId = channelContext.GetRequiredUploadPlaylistId();
+        return videoRepository.GetDirtyVideosAsync(uploadPlaylistId, cancellationToken);
+    }
 }

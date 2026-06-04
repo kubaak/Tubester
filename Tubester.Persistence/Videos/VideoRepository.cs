@@ -18,6 +18,23 @@ public sealed class VideoRepository(TubesterDb db, IDateTimeOffsetProvider dateT
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<List<VideoListItemDto>> GetDirtyVideosAsync(string uploadPlaylistId, CancellationToken cancellationToken)
+    {
+        return await db.Videos
+            .AsNoTracking()
+            .Where(video => video.UploadsPlaylistId == uploadPlaylistId && video.IsDirty)
+            .OrderByDescending(video => video.PublishedAt)
+            .ThenByDescending(video => video.VideoId)
+            .Select(video => new VideoListItemDto
+            {
+                VideoId = video.VideoId,
+                Title = video.Title,
+                PublishedAt = video.PublishedAt,
+                ThumbnailUrl = video.ThumbnailUrl
+            })
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<Video?> GetVideoByIdAsync(string uploadPlaylistId, string videoId, CancellationToken cancellationToken)
     {
         return await db.Videos
