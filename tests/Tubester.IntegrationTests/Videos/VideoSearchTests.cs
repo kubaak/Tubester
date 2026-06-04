@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Text;
+using Tubester.Abstractions.Videos;
 using Tubester.Application.Contracts;
 using Tubester.Application.Contracts.Videos;
 using Tubester.Domain;
