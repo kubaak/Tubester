@@ -1,4 +1,5 @@
-﻿using Tubester.Abstractions.Playlists;
+﻿using Tubester.Abstractions;
+using Tubester.Abstractions.Playlists;
 
 namespace Tubester.Integration;
 
@@ -60,21 +61,51 @@ public sealed class AiPromptBuilder : IAiPromptBuilder
 
     public string BuildReplyPrompt(
         string videoTitle,
-        IEnumerable<string> tags,
         string commentText,
-        string language)
+        string language,
+        IReadOnlyList<RelevantReplyExample>? relevantExamples)
     {
         var targetLanguage = string.IsNullOrWhiteSpace(language)
             ? "English"
             : language;
 
+        var examplesSection = BuildExamplesSection(relevantExamples);
+
         return $$"""
                  YouTube reply. JSON only {"reply":"text or null"}
                  Video: {{videoTitle}}
+                 {{examplesSection}}
                  Comment: {{commentText}}
                  Language: {{targetLanguage}}
                  Rules: short, friendly, natural, not robotic, no unknown facts; null if spam/hateful/meaningless.
                  """;
+    }
+
+    private static string BuildExamplesSection(IReadOnlyList<RelevantReplyExample>? examples)
+    {
+        if (examples is not { Count: > 0 })
+        {
+            return string.Empty;
+        }
+
+        var lines = new List<string> { "Previous similar comment + reply pairs (for style reference only):" };
+
+        for (var i = 0; i < examples.Count; i++)
+        {
+            var example = examples[i];
+            var videoContext = string.IsNullOrWhiteSpace(example.VideoTitle)
+                ? string.Empty
+                : $" (video: {example.VideoTitle})";
+
+            var exampleLine = $"""
+                     Example {i + 1}{videoContext}:
+                     Comment: {example.CommentText}
+                     Reply: {example.ReplyText}
+                     """;
+            lines.Add(exampleLine);
+        }
+
+        return string.Join('\n', lines);
     }
 
     public string BuildPlaylistPrompt(

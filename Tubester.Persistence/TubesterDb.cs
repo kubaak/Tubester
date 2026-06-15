@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Pgvector;
 using Tubester.Abstractions.Users;
 using Tubester.Domain;
 using Tubester.Persistence.Analytics;
@@ -356,6 +357,21 @@ public class TubesterDb(DbContextOptions<TubesterDb> options) : DbContext(option
 
             entity.Property(config => config.UpdatedAtUtc)
                 .IsRequired();
+        });
+
+        b.HasPostgresExtension("vector");
+
+        // Configure Reply embedding properties for RAG
+        // Uses pgvector.EntityFrameworkCore for native vector storage in PostgreSQL
+        b.Entity<Reply>(entity =>
+        {
+            entity.Property(r => r.CommentEmbedding)
+                .HasColumnType("vector(768)");
+
+            entity.Property(r => r.CommentEmbeddingModel)
+                .HasMaxLength(200);
+
+            entity.Property(r => r.CommentEmbeddingGeneratedAt);
         });
 
         //Domain events are not meant to be persisted

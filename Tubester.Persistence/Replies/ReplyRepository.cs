@@ -1,4 +1,7 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using System.Data;
+using Microsoft.EntityFrameworkCore;
+using Pgvector;
+using Tubester.Abstractions;
 using Tubester.Abstractions.Replies;
 using Tubester.Domain;
 
@@ -149,5 +152,90 @@ public class ReplyRepository(TubesterDb db) : IReplyRepository
                 .Replace(@"\", @"\\")
                 .Replace("%", @"\%")
                 .Replace("_", @"\_");
+    }
+
+    public async Task<IReadOnlyList<RelevantReplyExample>> SearchRelevantApprovedRepliesAsync(
+    string channelId,
+    Vector commentEmbedding,
+    int limit,
+    double minSimilarityScore,
+    CancellationToken cancellationToken)
+    {
+        if (limit <= 0)
+        {
+            return [];
+        }
+
+        const string sql = """
+        SELECT
+            r."CommentText",
+            r."FinalText",
+            r."VideoId",
+            v."Title" AS "VideoTitle",
+            1 - (r."CommentEmbedding" <=> @embedding) AS "SimilarityScore"
+        FROM "Replies" r
+        INNER JOIN "Videos" v ON r."VideoId" = v."VideoId"
+        INNER JOIN "Channels" c ON v."UploadsPlaylistId" = c."UploadsPlaylistId"
+        WHERE c."ChannelId" = @channelId
+          AND r."Status" = @status
+          AND r."CommentEmbedding" IS NOT NULL
+          AND r."FinalText" IS NOT NULL
+          AND btrim(r."FinalText") <> ''
+          AND btrim(r."CommentText") <> ''
+          AND 1 - (r."CommentEmbedding" <=> @embedding) >= @minSimilarityScore
+        ORDER BY r."CommentEmbedding" <=> @embedding ASC
+        LIMIT @limit
+        """;
+
+        var results = new List<RelevantReplyExample>();
+
+        var connection = db.Database.GetDbConnection();
+
+        if (connection.State != ConnectionState.Open)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+
+        var embeddingParameter = command.CreateParameter();
+        embeddingParameter.ParameterName = "embedding";
+        embeddingParameter.Value = commentEmbedding;
+        command.Parameters.Add(embeddingParameter);
+
+        var channelIdParameter = command.CreateParameter();
+        channelIdParameter.ParameterName = "channelId";
+        channelIdParameter.Value = channelId;
+        command.Parameters.Add(channelIdParameter);
+
+        var statusParameter = command.CreateParameter();
+        statusParameter.ParameterName = "status";
+        statusParameter.Value = (int)ReplyStatus.Approved;
+        command.Parameters.Add(statusParameter);
+
+        var minSimilarityParameter = command.CreateParameter();
+        minSimilarityParameter.ParameterName = "minSimilarityScore";
+        minSimilarityParameter.Value = minSimilarityScore;
+        command.Parameters.Add(minSimilarityParameter);
+
+        var limitParameter = command.CreateParameter();
+        limitParameter.ParameterName = "limit";
+        limitParameter.Value = limit;
+        command.Parameters.Add(limitParameter);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            results.Add(new RelevantReplyExample(
+                CommentText: reader.GetString(0),
+                ReplyText: reader.GetString(1),
+                VideoId: reader.IsDBNull(2) ? null : reader.GetString(2),
+                VideoTitle: reader.IsDBNull(3) ? null : reader.GetString(3),
+                SimilarityScore: reader.GetDouble(4)));
+        }
+
+        return results;
     }
 }

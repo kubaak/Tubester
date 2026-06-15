@@ -273,7 +273,7 @@ public sealed class VideosController(
 
         return Ok(result);
     }
-    
+
     /// <summary>
     /// Gets all videos with unsynced local changes.
     /// </summary>
