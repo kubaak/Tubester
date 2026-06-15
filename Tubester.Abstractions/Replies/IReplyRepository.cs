@@ -1,3 +1,4 @@
+using Pgvector;
 using Tubester.Domain;
 
 namespace Tubester.Abstractions.Replies;
@@ -22,6 +23,17 @@ public interface IReplyRepository
         CancellationToken cancellationToken);
 
     Task<string[]> IgnoreManyAsync(IEnumerable<string> ids, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Searches for relevant approved replies using vector similarity.
+    /// Only returns replies with CommentEmbedding that match userId/channelId.
+    /// </summary>
+    Task<IReadOnlyList<RelevantReplyExample>> SearchRelevantApprovedRepliesAsync(
+        string channelId,
+        Vector commentEmbedding,
+        int limit,
+        double minSimilarityScore,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Gets a page of replies with optional status filtering and cursor-based pagination for a specific channel.

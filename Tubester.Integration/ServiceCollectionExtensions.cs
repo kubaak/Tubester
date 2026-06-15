@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Options;
+using Tubester.Abstractions;
 using Tubester.Integration.Configuration;
 
 namespace Tubester.Integration;
@@ -51,6 +52,22 @@ public static class ServiceCollectionExtensions
                 }
             );
 
+        // Register Ollama embedding service for RAG
+        services.AddHttpClient<OllamaEmbeddingService>((sp, http) =>
+            {
+                var ai = sp.GetRequiredService<IOptions<OllamaOptions>>().Value;
+                http.BaseAddress = new Uri(ai.Endpoint);
+            })
+            .AddStandardResilienceHandler();
+        services.AddScoped<OllamaEmbeddingService>();
+
+        // Register embedding service factory for runtime provider selection
+        services.AddScoped<IEmbeddingServiceFactory, EmbeddingServiceFactory>();
+
+        // Register Gemini embedding service
+        services.AddHttpClient<GeminiEmbeddingService>()
+            .AddStandardResilienceHandler();
+        services.AddScoped<GeminiEmbeddingService>();
         services.Configure<GeminiOptions>(configuration.GetSection("AI:Gemini"));
         services.AddSingleton<IGeminiClientFactory, GeminiClientFactory>();
         services.AddScoped<GeminiTextGenerationClient>();

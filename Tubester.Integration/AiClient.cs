@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Tubester.Abstractions;
 using Tubester.Abstractions.ApplicationConfiguration;
 using Tubester.Abstractions.Playlists;
 
@@ -60,9 +61,9 @@ public sealed partial class AiClient(
 
     public async Task<string?> SuggestReplyAsync(
         string videoTitle,
-        IEnumerable<string> tags,
         string commentText,
         string language,
+        IReadOnlyList<RelevantReplyExample>? relevantExamples,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(commentText))
@@ -70,17 +71,15 @@ public sealed partial class AiClient(
             return null;
         }
 
-        var tagList = tags.ToList();
-
         var aiTextGenerationClient = await textGenerationClientFactory.GetClientAsync(cancellationToken);
         logger.LogInformation(
-            "Getting suggested reply from {Provider}. TagCount: {TagCount}, Language: {Language}, CommentLength: {CommentLength}",
+            "Getting suggested reply from {Provider}.Language: {Language}, CommentLength: {CommentLength}, RelevantExamples: {ExampleCount}",
             aiTextGenerationClient.Provider,
-            tagList.Count,
             language,
-            commentText.Length);
+            commentText.Length,
+            relevantExamples?.Count ?? 0);
 
-        var prompt = promptBuilder.BuildReplyPrompt(videoTitle, tagList, commentText, language);
+        var prompt = promptBuilder.BuildReplyPrompt(videoTitle, commentText, language, relevantExamples);
 
         var result = await aiTextGenerationClient.GenerateTextAsync(
             AiOperation.Reply,

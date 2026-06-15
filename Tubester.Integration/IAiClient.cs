@@ -1,4 +1,5 @@
-﻿using Tubester.Abstractions.Playlists;
+﻿using Tubester.Abstractions;
+using Tubester.Abstractions.Playlists;
 
 namespace Tubester.Integration;
 
@@ -11,8 +12,12 @@ public interface IAiClient
         string context, bool generateTitle, bool generateDescription, bool generateTags,
         CancellationToken cancellationToken);
 
-    Task<string?> SuggestReplyAsync(string videoTitle, IEnumerable<string> tags, string commentText,
-        string language, CancellationToken cancellationToken);
+    Task<string?> SuggestReplyAsync(
+        string videoTitle,
+        string commentText,
+        string language,
+        IReadOnlyList<RelevantReplyExample>? relevantExamples,
+        CancellationToken cancellationToken);
 
     Task<IEnumerable<string>> SuggestPlaylistIdsAsync(
         PlaylistSuggestionContext context,

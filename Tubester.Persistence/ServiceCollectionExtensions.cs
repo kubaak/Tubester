@@ -23,7 +23,10 @@ public static class ServiceCollectionExtensions
         //todo AddDbContextFactory
         services.AddDbContext<TubesterDb>((serviceProvider, options) =>
         {
-            options.UseNpgsql(connectionString);
+            options.UseNpgsql(connectionString, npgsql =>
+            {
+                npgsql.UseVector();
+            });
             options.AddInterceptors(serviceProvider.GetRequiredService<DomainEventInterceptor>());
         });
         return services;

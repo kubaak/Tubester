@@ -1,4 +1,5 @@
-﻿using Tubester.Abstractions.Playlists;
+﻿using Tubester.Abstractions;
+using Tubester.Abstractions.Playlists;
 
 namespace Tubester.Integration;
 
@@ -12,9 +13,9 @@ public interface IAiPromptBuilder
 
     string BuildReplyPrompt(
         string videoTitle,
-        IEnumerable<string> tags,
         string commentText,
-        string language);
+        string language,
+        IReadOnlyList<RelevantReplyExample>? relevantExamples);
 
     string BuildPlaylistPrompt(
         PlaylistSuggestionContext context,

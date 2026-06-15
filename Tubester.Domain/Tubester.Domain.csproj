@@ -7,6 +7,10 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Pgvector" Version="0.3.2" />
+    </ItemGroup>
+
+    <ItemGroup>
         <InternalsVisibleTo Include="Tubester.Persistence" />
         <InternalsVisibleTo Include="Tubester.IntegrationTests" />
     </ItemGroup>

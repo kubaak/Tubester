@@ -3,6 +3,7 @@
 public class OllamaOptions
 {
     public string Endpoint { get; set; } = "http://localhost:11434";
+    public string? EmbeddingModel { get; set; }
     public int MetadataNumCtx { get; init; } = 4096;
     public int MetadataNumPredict { get; init; } = 256;
     public int ReplyNumCtx { get; init; } = 4096;

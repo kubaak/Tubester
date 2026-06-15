@@ -1,3 +1,4 @@
+using Pgvector;
 using Tubester.Domain.Events;
 using ArgumentException = System.ArgumentException;
 
@@ -19,6 +20,22 @@ public class Reply : Entity
     public DateTimeOffset? SuggestedAt { get; private set; }
     public DateTimeOffset? ApprovedAt { get; private set; }
     public DateTimeOffset? PostedAt { get; private set; }
+
+    /// <summary>
+    /// Embedding vector for the original comment text, used for RAG-based reply suggestions.
+    /// Only populated for approved replies.
+    /// </summary>
+    public Vector? CommentEmbedding { get; private set; }
+
+    /// <summary>
+    /// The embedding model used to generate CommentEmbedding.
+    /// </summary>
+    public string? CommentEmbeddingModel { get; private set; }
+
+    /// <summary>
+    /// When the comment embedding was generated.
+    /// </summary>
+    public DateTimeOffset? CommentEmbeddingGeneratedAt { get; private set; }
 
     public string ThumbnailUrl => $"https://i.ytimg.com/vi/{VideoId}/sddefault.jpg";
 
@@ -82,6 +99,17 @@ public class Reply : Entity
         }
 
         Status = ReplyStatus.Ignored;
+    }
+
+    /// <summary>
+    /// Sets the comment embedding for RAG-based reply suggestions.
+    /// Should only be called for approved replies.
+    /// </summary>
+    public void SetCommentEmbedding(Vector embedding, string model, DateTimeOffset generatedAt)
+    {
+        CommentEmbedding = embedding;
+        CommentEmbeddingModel = model;
+        CommentEmbeddingGeneratedAt = generatedAt;
     }
 
     public static Reply Create(string commentId, string videoId, string videoTitle, string commentText, DateTimeOffset pulledAt,

@@ -26,7 +26,8 @@ public sealed partial class CommentScanJob(
     IChannelRepository channelRepository,
     IChannelSettingsService channelSettingsRepository,
     ICreditsService creditsService,
-    IDateTimeOffsetProvider dateTimeOffsetProvider)
+    IDateTimeOffsetProvider dateTimeOffsetProvider,
+    IEmbeddingServiceFactory embeddingServiceFactory)
 {
     private static readonly Regex _nonEmojiRegex = MyRegex();
 
@@ -152,6 +153,10 @@ public sealed partial class CommentScanJob(
                         continue;
                     }
 
+                    // Generate and store embedding for the comment when it's first pulled.
+                    // This enables the comment to be found in future RAG searches as a successful reply example.
+                    await GenerateAndStoreCommentEmbeddingAsync(draftingReply, cancellationToken);
+
                     string replyText;
 
                     if (IsEmojiOnly(thread.Text))
@@ -192,11 +197,17 @@ public sealed partial class CommentScanJob(
 
                         try
                         {
+                            // Search for relevant approved replies for RAG context
+                            var relevantExamples = await SearchRelevantRepliesAsync(
+                                channelId,
+                                thread.Text,
+                                cancellationToken);
+
                             suggestion = await aiClient.SuggestReplyAsync(
                                 video.Title ?? string.Empty,
-                                video.Tags,
                                 thread.Text,
                                 replyLanguage,
+                                relevantExamples,
                                 cancellationToken);
                         }
                         catch
@@ -245,6 +256,89 @@ public sealed partial class CommentScanJob(
     private static bool IsEmojiOnly(string text)
     {
         return !_nonEmojiRegex.IsMatch(text);
+    }
+
+    /// <summary>
+    /// Generates and stores an embedding for the comment when it's first pulled.
+    /// This embedding enables the comment to be found in future RAG searches as a successful reply example.
+    /// </summary>
+    private async Task GenerateAndStoreCommentEmbeddingAsync(Reply reply, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(reply.CommentText))
+        {
+            logger.LogDebug(
+                "Skipping embedding generation for reply {CommentId}: empty comment text",
+                reply.CommentId);
+            return;
+        }
+
+        try
+        {
+            var embeddingService = await embeddingServiceFactory.GetServiceAsync(cancellationToken);
+            var embeddingResult = await embeddingService.EmbedAsync(reply.CommentText, cancellationToken);
+            reply.SetCommentEmbedding(
+                embeddingResult.Vector,
+                embeddingResult.Model,
+                dateTimeOffsetProvider.GetUtcNowDateTimeOffset());
+
+            logger.LogDebug(
+                "Generated embedding for reply {CommentId}. Model: {Model}, Dimensions: {Dimensions}",
+                reply.CommentId,
+                embeddingResult.Model,
+                embeddingResult.Vector.ToArray().Length);
+        }
+        catch (Exception ex)
+        {
+            // Log but don't fail the job if embedding generation fails
+            logger.LogWarning(
+                ex,
+                "Failed to generate embedding for reply {CommentId}. RAG examples will not include this reply",
+                reply.CommentId);
+        }
+    }
+
+    private async Task<IReadOnlyList<RelevantReplyExample>?> SearchRelevantRepliesAsync(
+        string channelId,
+        string commentText,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Generate embedding for the new comment
+            var embeddingService = await embeddingServiceFactory.GetServiceAsync(cancellationToken);
+            var embeddingResult = await embeddingService.EmbedAsync(commentText, cancellationToken);
+
+            // Search for relevant approved replies from the same user/channel
+            const int maxExamples = 3;
+            const double minSimilarityScore = 0.5; // Minimum cosine similarity threshold
+
+            var relevantExamples = await replyRepository.SearchRelevantApprovedRepliesAsync(
+                channelId,
+                embeddingResult.Vector,
+                maxExamples,
+                minSimilarityScore,
+                cancellationToken);
+
+            if (relevantExamples.Count == 0)
+            {
+                return null;
+            }
+
+            logger.LogDebug(
+                "Found {ExampleCount} relevant reply examples for RAG context",
+                relevantExamples.Count);
+
+            return relevantExamples;
+        }
+        catch (Exception ex)
+        {
+            // Log but don't fail the job if embedding/search fails
+            logger.LogWarning(
+                ex,
+                "Failed to search for relevant replies. Proceeding without RAG context");
+
+            return null;
+        }
     }
 
     [GeneratedRegex(@"\p{L}|\p{N}", RegexOptions.Compiled)]

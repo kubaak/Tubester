@@ -26,12 +26,12 @@ public class ReplyService(
     : IReplyService
 {
     public async Task<PagedResult<ReplyListItemDto>> GetRepliesAsync(
-    ReplyStatus[]? statuses,
-    string[]? videoIds,
-    string? originalComment,
-    int? pageSize,
-    string? pageToken,
-    CancellationToken ct)
+        ReplyStatus[]? statuses,
+        string[]? videoIds,
+        string? originalComment,
+        int? pageSize,
+        string? pageToken,
+        CancellationToken ct)
     {
         var options = replyListingOptions.Value;
         var effectivePageSize = pageSize ?? options.DefaultPageSize;

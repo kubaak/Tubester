@@ -41,7 +41,7 @@ public class DirtyTests(TestFixture fixture)
         var dirtyVideo2 = TestHelpers.GetTargetVideo("dirty-video-2");
         dirtyVideo2.MarkAsDirty(TestFixture.TestingDateTimeOffset);
         var cleanVideo = TestHelpers.GetTargetVideo("clean-video");
-        
+
         await _helpers.SeedTestDataAsync(new TestDataOptions
         {
             Videos = [dirtyVideo1, dirtyVideo2, cleanVideo]

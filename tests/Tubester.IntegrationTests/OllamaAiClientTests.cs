@@ -457,9 +457,9 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
 
         var reply = await aiClient.SuggestReplyAsync(
             "How to Cook Perfect Pasta",
-            new[] { "cooking", "pasta", "italian" },
             "This is an amazing recipe! I tried it and it turned out great.",
             "en",
+            null,
             CancellationToken.None);
 
         Assert.False(string.IsNullOrWhiteSpace(reply));
@@ -475,9 +475,9 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
 
         var reply = await aiClient.SuggestReplyAsync(
             "Dance Tutorial",
-            Array.Empty<string>(),
             "Love the choreography! When will you post the next part?",
             "en",
+            null,
             CancellationToken.None);
 
         Assert.False(string.IsNullOrWhiteSpace(reply));
@@ -493,9 +493,9 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
 
         var reply = await aiClient.SuggestReplyAsync(
             string.Empty,
-            new[] { "dance", "tutorial" },
             "This move is amazing! Can you slow it down for practice?",
             "en",
+            null,
             CancellationToken.None);
 
         Assert.False(string.IsNullOrWhiteSpace(reply));
