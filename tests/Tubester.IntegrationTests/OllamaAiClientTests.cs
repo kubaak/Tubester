@@ -1,8 +1,13 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Moq;
+using Tubester.Abstractions;
 using Tubester.Abstractions.ApplicationConfiguration;
 using Tubester.Abstractions.Playlists;
+using Tubester.Application.Jobs;
 using Tubester.Domain;
 using Tubester.Integration;
+using Tubester.Integration.Dtos;
 using Tubester.IntegrationTests.TestHost;
 using Xunit;
 
@@ -499,6 +504,85 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
             CancellationToken.None);
 
         Assert.False(string.IsNullOrWhiteSpace(reply));
+    }
+
+    [Fact(Skip = "Dev")]
+    public async Task CommentScanJob_WithSimilarPreviousReply_PassesRelevantExampleToLlm()
+    {
+        // Arrange
+        await _helpers.ResetDbAsync();
+
+        var targetVideo = TestHelpers.GetTargetVideo();
+        await _helpers.SeedTestDataAsync(new TestDataOptions
+        {
+            Videos = [targetVideo]
+        });
+
+        const string oldCommentText = "Where was this filmed?";
+        const string oldReplyText = "This was filmed in Palermo, Buenos Aires 😊";
+        const string newCommentText = "What city are you in?";
+        
+        using (var scope = _factory.TestHost.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Persistence.TubesterDb>();
+            var embeddingServiceFactory = scope.ServiceProvider.GetRequiredService<IEmbeddingServiceFactory>();
+            var embeddingService = await embeddingServiceFactory.GetServiceAsync(CancellationToken.None);
+            
+            var embedding = await embeddingService.EmbedAsync(oldCommentText, CancellationToken.None);
+
+            var oldReply = Reply.Create(
+                "old-comment-id",
+                targetVideo.VideoId,
+                targetVideo.Title ?? string.Empty,
+                oldCommentText,
+                DateTimeOffset.UtcNow.AddDays(-20),
+                DateTimeOffset.UtcNow.AddDays(-20));
+
+            oldReply.SuggestText(oldReplyText, DateTimeOffset.UtcNow.AddDays(-20));
+            oldReply.ApproveText(TestConstants.UserId, oldReplyText, DateTimeOffset.UtcNow.AddDays(-20));
+            oldReply.Post(TestConstants.UserId, DateTimeOffset.UtcNow.AddDays(-20));
+            oldReply.SetCommentEmbedding(
+                embedding.Vector,
+                embedding.Model,
+                DateTimeOffset.UtcNow.AddDays(-20));
+
+            db.Replies.Add(oldReply);
+            await db.SaveChangesAsync();
+        }
+
+        var newComment = new CommentThreadDto(
+            "new-comment-id",
+            targetVideo.VideoId,
+            "viewer-1",
+            newCommentText,
+            DateTimeOffset.UtcNow.AddDays(-1));
+
+        _factory.MockBackgroundYoutubeIntegration
+            .Setup(x => x.GetUnansweredTopLevelCommentsAsync(
+                TestConstants.ChannelId,
+                targetVideo.VideoId,
+                It.IsAny<CancellationToken>()))
+            .Returns(new[] { newComment }.ToAsyncEnumerable());
+
+        // Act
+        using var jobScope = _factory.TestHost.Services.CreateScope();
+        var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
+
+        await commentScanJob.Run(
+            TestConstants.ChannelId,
+            null,
+            new Hangfire.JobCancellationToken(false));
+
+        // Assert
+        using var verifyScope = _factory.TestHost.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<Persistence.TubesterDb>();
+
+        var createdReply = await verifyDb.Replies
+            .AsNoTracking()
+            .SingleAsync(r => r.CommentId == "new-comment-id");
+
+        Assert.NotNull(createdReply.SuggestedText);
+        Assert.NotNull(createdReply.CommentEmbedding);
     }
 
     private sealed class AiServiceUnavailableException(string message) : Exception(message);

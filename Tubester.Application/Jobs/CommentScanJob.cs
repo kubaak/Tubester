@@ -29,7 +29,7 @@ public sealed partial class CommentScanJob(
     IDateTimeOffsetProvider dateTimeOffsetProvider,
     IEmbeddingServiceFactory embeddingServiceFactory)
 {
-    private static readonly Regex _nonEmojiRegex = MyRegex();
+    private static readonly Regex NonEmojiRegex = MyRegex();
 
     [Queue("scanning")]
     [AutomaticRetry(Attempts = 3, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
@@ -67,19 +67,16 @@ public sealed partial class CommentScanJob(
             { LoggingConstants.UploadPlaylistId, channel.UploadsPlaylistId }
         });
 
-        var settings = await channelSettingsRepository.GetOrCreateAsync(channelId, cancellationToken);
+        var (_, isCommentAssistantEnabled, _, maxSuggestedRepliesPerSync, maxCommentAgeDays, replyLanguage, s, _) =
+            await channelSettingsRepository.GetOrCreateAsync(channelId, cancellationToken);
         var isInitialRun = options?.InitialRun ?? false;
-        var isCommentAssistantEnabled = settings.IsCommentAssistantEnabled;
         if (!isInitialRun && !isCommentAssistantEnabled)
         {
             logger.LogInformation("Skipping comment scan: comment assistant disabled");
             return 0;
         }
 
-        var maxSuggestedRepliesPerSync = settings.MaxSuggestedRepliesPerSync;
-        var maxCommentAgeDays = settings.MaxCommentAgeDays;
-        var responseForNonTextualComments = settings.ResponseForNonTextualComments ?? "🔥🙌";
-        var replyLanguage = settings.ReplyLanguage;
+        var responseForNonTextualComments = s ?? "🔥🙌";
 
         var userId = channel.UserId;
         var drafted = 0;
@@ -255,7 +252,7 @@ public sealed partial class CommentScanJob(
 
     private static bool IsEmojiOnly(string text)
     {
-        return !_nonEmojiRegex.IsMatch(text);
+        return !NonEmojiRegex.IsMatch(text);
     }
 
     /// <summary>
@@ -312,7 +309,7 @@ public sealed partial class CommentScanJob(
             const int maxExamples = 3;
             const double minSimilarityScore = 0.5; // Minimum cosine similarity threshold
 
-            var relevantExamples = await replyRepository.SearchRelevantApprovedRepliesAsync(
+            var relevantExamples = await replyRepository.SearchRelevantReplyExamplesAsync(
                 channelId,
                 embeddingResult.Vector,
                 maxExamples,

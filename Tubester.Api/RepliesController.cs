@@ -1,9 +1,12 @@
 ﻿using System.Security.Claims;
+using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Tubester.Abstractions.Channels;
 using Tubester.Application;
 using Tubester.Application.Contracts;
 using Tubester.Application.Contracts.Replies;
+using Tubester.Application.Jobs;
 using Tubester.Domain;
 
 namespace Tubester.Api;
@@ -124,8 +127,60 @@ public class RepliesController(IReplyService service) : ApiControllerBase
     }
 
     /// <summary>
+    /// Triggers a background job to backfill comment embeddings for existing eligible replies.
+    /// Only replies with Posted or Approved status that have non-empty CommentText and FinalText
+    /// and are missing embeddings will be processed.
+    /// </summary>
+    /// <param name="request">The backfill request options.</param>
+    /// <param name="currentChannelContext">The current channel context to get the upload playlist ID.</param>
+    /// <param name="backgroundJobClient">The background job client to enqueue the job.</param>
+    /// <returns>The job ID for tracking.</returns>
+    [HttpPost("embeddings/backfill")]
+    [Authorize(Policy = "AdminEmail")]
+    [Consumes("application/json")]
+    [ProducesResponseType(typeof(BackfillResponse), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public IActionResult BackfillCommentEmbeddings(
+        [FromBody] BackfillCommentEmbeddingsRequest request,
+        [FromServices] ICurrentChannelContext currentChannelContext,
+        [FromServices] IBackgroundJobClient backgroundJobClient)
+    {
+        var uploadPlaylistId = currentChannelContext.GetRequiredUploadPlaylistId();
+
+        var batchSize = request.BatchSize ?? 100;
+        if (batchSize is < 1 or > 500)
+        {
+            return BadRequest(new { error = "Batch size must be between 1 and 500." });
+        }
+
+        var maxComments = request.MaxComments ?? 100;
+        if (maxComments is < 1 or > 500)
+        {
+            return BadRequest(new { error = "Max comments must be between 1 and 500." });
+        }
+
+        var jobId = backgroundJobClient.Enqueue<ReplyEmbeddingBackfillJob>(
+            job => job.RunAsync(uploadPlaylistId, maxComments, batchSize, 60, CancellationToken.None));
+
+        return Accepted(new BackfillResponse(jobId));
+    }
+
+    /// <summary>
     /// 
     /// </summary>
     /// <param name="Error"></param>
     public sealed record ApiErrorDto(string Error);
 }
+
+/// <summary>
+/// Request to backfill comment embeddings.
+/// </summary>
+/// <param name="MaxComments">Number of replies to process per batch. Default is 100. Must be between 1 and 500.</param>
+public sealed record BackfillCommentEmbeddingsRequest(
+    int? MaxComments = 100, int? BatchSize = 100);
+
+/// <summary>
+/// Response containing the enqueued job ID.
+/// </summary>
+/// <param name="JobId">The Hangfire job ID for tracking the backfill operation.</param>
+public sealed record BackfillResponse(string JobId);

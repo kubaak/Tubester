@@ -1,6 +1,5 @@
 ﻿using System.Net;
 using Tubester.Abstractions.Videos;
-using Tubester.Application.Contracts.Videos;
 using Tubester.IntegrationTests.TestHost;
 using Xunit;
 

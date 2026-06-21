@@ -88,7 +88,11 @@ public class CapturingBackgroundJobClient : IBackgroundJobClient
 
             var argsArray = args.ToArray();
             var nullIndex = Array.FindIndex(argsArray, a => a is null);
-            argsArray[nullIndex] = new JobCancellationToken(false);
+            if (nullIndex != -1)
+            {
+                argsArray[nullIndex] = new JobCancellationToken(false);
+            }
+            
             if (method.ReturnType == typeof(Task))
             {
                 var task = (Task)method.Invoke(jobInstance, argsArray)!;

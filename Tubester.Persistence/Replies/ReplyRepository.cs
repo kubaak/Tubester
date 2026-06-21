@@ -154,7 +154,7 @@ public class ReplyRepository(TubesterDb db) : IReplyRepository
                 .Replace("_", @"\_");
     }
 
-    public async Task<IReadOnlyList<RelevantReplyExample>> SearchRelevantApprovedRepliesAsync(
+    public async Task<IReadOnlyList<RelevantReplyExample>> SearchRelevantReplyExamplesAsync(
     string channelId,
     Vector commentEmbedding,
     int limit,
@@ -177,7 +177,7 @@ public class ReplyRepository(TubesterDb db) : IReplyRepository
         INNER JOIN "Videos" v ON r."VideoId" = v."VideoId"
         INNER JOIN "Channels" c ON v."UploadsPlaylistId" = c."UploadsPlaylistId"
         WHERE c."ChannelId" = @channelId
-          AND r."Status" = @status
+          AND r."Status" = ANY(@statuses)
           AND r."CommentEmbedding" IS NOT NULL
           AND r."FinalText" IS NOT NULL
           AND btrim(r."FinalText") <> ''
@@ -209,10 +209,14 @@ public class ReplyRepository(TubesterDb db) : IReplyRepository
         channelIdParameter.Value = channelId;
         command.Parameters.Add(channelIdParameter);
 
-        var statusParameter = command.CreateParameter();
-        statusParameter.ParameterName = "status";
-        statusParameter.Value = (int)ReplyStatus.Approved;
-        command.Parameters.Add(statusParameter);
+        var statusesParameter = command.CreateParameter();
+        statusesParameter.ParameterName = "statuses";
+        statusesParameter.Value = new[]
+        {
+        (int)ReplyStatus.Approved,
+        (int)ReplyStatus.Posted
+    };
+        command.Parameters.Add(statusesParameter);
 
         var minSimilarityParameter = command.CreateParameter();
         minSimilarityParameter.ParameterName = "minSimilarityScore";
@@ -237,5 +241,31 @@ public class ReplyRepository(TubesterDb db) : IReplyRepository
         }
 
         return results;
+    }
+
+    public async Task<IReadOnlyList<Reply>> GetRepliesMissingCommentEmbeddingAsync(
+        string uploadPlaylistId,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        return await db.Replies
+            .Join(
+                db.Videos.Where(v => v.UploadsPlaylistId == uploadPlaylistId),
+                reply => reply.VideoId,
+                video => video.VideoId,
+                (reply, _) => reply)
+            .Where(reply => reply.Status == ReplyStatus.Posted || reply.Status == ReplyStatus.Approved)
+            .Where(reply => !string.IsNullOrWhiteSpace(reply.CommentText))
+            .Where(reply => !string.IsNullOrWhiteSpace(reply.FinalText))
+            .Where(reply => reply.CommentEmbedding == null)
+            .OrderBy(reply => reply.OriginalCommentAt)
+            .ThenBy(reply => reply.CommentId)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        await db.SaveChangesAsync(cancellationToken);
     }
 }

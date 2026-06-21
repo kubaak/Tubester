@@ -14,7 +14,7 @@ public sealed class OllamaEmbeddingService(
     ILogger<OllamaEmbeddingService> logger)
     : IEmbeddingService
 {
-    private const string DefaultModel = "nomic-embed-text";
+    private const string DefaultModel = "mxbai-embed-large";
 
     public async Task<EmbeddingResult> EmbedAsync(string text, CancellationToken cancellationToken)
     {

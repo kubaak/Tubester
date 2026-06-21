@@ -22,6 +22,8 @@ public sealed class WorkerTestHostFactory : IDisposable
     public Mock<IAiTextGenerationClientFactory> MockAiTextGenerationClientFactory { get; }
     public Mock<IYouTubeIntegration> MockYouTubeIntegration { get; }
     public Mock<IBackgroundYoutubeIntegration> MockBackgroundYoutubeIntegration { get; }
+    public Mock<IEmbeddingService> MockEmbeddingService { get; }
+    public Mock<IEmbeddingServiceFactory> MockEmbeddingServiceFactory { get; }
     public Mock<IDateTimeOffsetProvider> MockDateTimeOffsetProvider { get; }
     private readonly TestAiMode _aiMode;
 
@@ -34,6 +36,10 @@ public sealed class WorkerTestHostFactory : IDisposable
         MockAiTextGenerationClientFactory = new Mock<IAiTextGenerationClientFactory>();
         MockAiTextGenerationClientFactory.Setup(x => x.GetClientAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(MockAiTextGenerationClient.Object);
+        MockEmbeddingService = new Mock<IEmbeddingService>(MockBehavior.Strict);
+        MockEmbeddingServiceFactory = new Mock<IEmbeddingServiceFactory>();
+        MockEmbeddingServiceFactory.Setup(x => x.GetServiceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MockEmbeddingService.Object);
         MockYouTubeIntegration = new Mock<IYouTubeIntegration>(MockBehavior.Strict);
         MockBackgroundYoutubeIntegration = new Mock<IBackgroundYoutubeIntegration>(MockBehavior.Strict);
         MockDateTimeOffsetProvider = new Mock<IDateTimeOffsetProvider>(MockBehavior.Strict);
@@ -91,6 +97,8 @@ public sealed class WorkerTestHostFactory : IDisposable
         {
             services.Replace(ServiceDescriptor.Scoped<IAiTextGenerationClientFactory>(_ => MockAiTextGenerationClientFactory.Object));
             services.Replace(ServiceDescriptor.Scoped<IAiTextGenerationClient>(_ => MockAiTextGenerationClient.Object));
+            services.Replace(ServiceDescriptor.Scoped<IEmbeddingService>(_ => MockEmbeddingService.Object));
+            services.Replace(ServiceDescriptor.Scoped<IEmbeddingServiceFactory>(_ => MockEmbeddingServiceFactory.Object));
         }
 
         // Override background job client + external integrations with mocks
