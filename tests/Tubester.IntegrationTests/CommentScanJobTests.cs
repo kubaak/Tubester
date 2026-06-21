@@ -2,6 +2,8 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using Pgvector;
+using Tubester.Abstractions;
 using Tubester.Abstractions.ApplicationConfiguration;
 using Tubester.Application.Jobs;
 using Tubester.Domain;
@@ -62,9 +64,7 @@ public class CommentScanJobTests(TestFixture fixture)
     {
         // Arrange
         await fixture.CleanStateAsync();
-
-
-
+        var expectedEmbeddingResult = new EmbeddingResult(new Vector(new float[768]), "test-model");
         var targetVideo = TestHelpers.GetTargetVideo();
         await _helpers.SeedTestDataAsync(new TestDataOptions
         {
@@ -102,6 +102,10 @@ public class CommentScanJobTests(TestFixture fixture)
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(TestHelpers.CreateMockResult(jsonResponse));
 
+        fixture.WorkerFactory.MockEmbeddingService
+            .Setup(x => x.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedEmbeddingResult);
+
         // Act
         using var jobScope = fixture.WorkerServices.CreateScope();
         var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
@@ -115,6 +119,18 @@ public class CommentScanJobTests(TestFixture fixture)
                 It.IsAny<CancellationToken>()),
             Times.Exactly(2));
 
+        using var verifyScope = fixture.ApiServices.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<Persistence.TubesterDb>();
+        var replies = await verifyDb.Replies.AsNoTracking().ToListAsync();
+
+        Assert.Equal(2, replies.Count);
+        Assert.All(replies, r =>
+        {
+            Assert.NotNull(r.CommentEmbedding);
+            Assert.NotNull(r.CommentEmbeddingModel);
+            Assert.NotNull(r.CommentEmbeddingGeneratedAt);
+        });
+
         var expectedReply1 = Reply.Create(
             CommentId1,
             targetVideo.VideoId,
@@ -123,6 +139,7 @@ public class CommentScanJobTests(TestFixture fixture)
             TestFixture.TestingDateTimeOffset,
             TestFixture.TestingDateTimeOffset.AddDays(RecentCommentAgeDays));
         expectedReply1.SuggestText(SuggestedReplyText, TestFixture.TestingDateTimeOffset);
+        expectedReply1.SetCommentEmbedding(expectedEmbeddingResult.Vector, expectedEmbeddingResult.Model, TestFixture.TestingDateTimeOffset);
         await _helpers.AssertReplyAsync(expectedReply1);
 
         var expectedReply2 = Reply.Create(
@@ -133,6 +150,7 @@ public class CommentScanJobTests(TestFixture fixture)
             TestFixture.TestingDateTimeOffset,
             TestFixture.TestingDateTimeOffset.AddDays(OlderCommentAgeDays));
         expectedReply2.SuggestText(SuggestedReplyText, TestFixture.TestingDateTimeOffset);
+        expectedReply2.SetCommentEmbedding(expectedEmbeddingResult.Vector, expectedEmbeddingResult.Model, TestFixture.TestingDateTimeOffset);
         await _helpers.AssertReplyAsync(expectedReply2);
     }
 
@@ -376,8 +394,6 @@ public class CommentScanJobTests(TestFixture fixture)
         // Arrange
         await fixture.CleanStateAsync();
 
-
-
         var targetVideo = TestHelpers.GetTargetVideo();
         await _helpers.SeedTestDataAsync(new TestDataOptions
         {
@@ -531,8 +547,6 @@ public class CommentScanJobTests(TestFixture fixture)
         // Arrange
         await fixture.CleanStateAsync();
 
-
-
         var publicVideo = TestHelpers.GetTargetVideo(visibility: VideoVisibility.Public);
         var privateVideo = TestHelpers.GetTargetVideo("private-video-id", VideoVisibility.Private);
         var nonCommentableVideo = TestHelpers.GetTargetVideo("non-commentable-video-id", isCommentable: false);
@@ -622,5 +636,93 @@ public class CommentScanJobTests(TestFixture fixture)
         // Assert
         TestHelpers.SetProperty(targetVideo, nameof(targetVideo.CommentsAllowed), false);
         await _helpers.AssertVideoAsync(targetVideo);
+    }
+
+    [Fact]
+    public async Task Run_WhenSimilarApprovedReplyExists_PassesRelevantExamplesToAiTextGenerationClient()
+    {
+        // Arrange
+        await fixture.CleanStateAsync();
+
+        var expectedEmbeddingResult = new EmbeddingResult(
+            new Vector(Enumerable.Repeat(0.1f, 768).ToArray()),
+            "test-model");
+
+        var targetVideo = TestHelpers.GetTargetVideo();
+        await _helpers.SeedTestDataAsync(new TestDataOptions
+        {
+            Videos = [targetVideo]
+        });
+
+        const string previousCommentText = "Where was this filmed?";
+        const string previousReplyText = "This was filmed in Prague. Thanks for watching!";
+        const string newCommentText = "What city did you film this in?";
+
+        var previousReply = Reply.Create(
+            "previous-comment-id",
+            targetVideo.VideoId,
+            targetVideo.Title ?? string.Empty,
+            previousCommentText,
+            TestFixture.TestingDateTimeOffset.AddDays(-7),
+            TestFixture.TestingDateTimeOffset.AddDays(-7));
+        previousReply.SuggestText(previousReplyText, TestFixture.TestingDateTimeOffset.AddDays(-7));
+        previousReply.ApproveText(TestConstants.UserId, previousReplyText, TestFixture.TestingDateTimeOffset.AddDays(-7));
+        previousReply.SetCommentEmbedding(
+            expectedEmbeddingResult.Vector,
+            expectedEmbeddingResult.Model,
+            TestFixture.TestingDateTimeOffset.AddDays(-7));
+        previousReply.Post(TestConstants.UserId, TestFixture.TestingDateTimeOffset.AddDays(-7));
+
+        using (var scope = fixture.ApiServices.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<Persistence.TubesterDb>();
+            await dbContext.Replies.AddAsync(previousReply);
+            await dbContext.SaveChangesAsync();
+        }
+
+        var commentThreads = new List<CommentThreadDto>
+        {
+            new(
+                CommentId1,
+                targetVideo.VideoId,
+                Author1,
+                newCommentText,
+                TestFixture.TestingDateTimeOffset.AddDays(RecentCommentAgeDays))
+        };
+
+        fixture.WorkerFactory.MockBackgroundYoutubeIntegration
+            .Setup(x => x.GetUnansweredTopLevelCommentsAsync(
+                TestConstants.ChannelId,
+                targetVideo.VideoId,
+                It.IsAny<CancellationToken>()))
+            .Returns(commentThreads.ToAsyncEnumerable());
+
+        fixture.WorkerFactory.MockEmbeddingService
+            .Setup(x => x.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedEmbeddingResult);
+
+        var jsonResponse = JsonSerializer.Serialize(new { reply = SuggestedReplyText });
+        fixture.WorkerFactory.MockAiTextGenerationClient
+            .Setup(x => x.GenerateTextAsync(
+                AiOperation.Reply,
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(TestHelpers.CreateMockResult(jsonResponse));
+
+        // Act
+        using var jobScope = fixture.WorkerServices.CreateScope();
+        var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
+        await commentScanJob.Run(TestConstants.ChannelId, null, new Hangfire.JobCancellationToken(false));
+
+        // Assert
+        fixture.WorkerFactory.MockAiTextGenerationClient.Verify(
+            x => x.GenerateTextAsync(
+                AiOperation.Reply,
+                It.Is<string>(prompt =>
+                    prompt.Contains("Previous similar comment + reply pairs", StringComparison.Ordinal) &&
+                    prompt.Contains(previousCommentText, StringComparison.Ordinal) &&
+                    prompt.Contains(previousReplyText, StringComparison.Ordinal)),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 }

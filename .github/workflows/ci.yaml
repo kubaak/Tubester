@@ -11,7 +11,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg18
         env:
           POSTGRES_DB: tubester_test
           POSTGRES_USER: app

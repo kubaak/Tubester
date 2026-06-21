@@ -1,5 +1,4 @@
-﻿using System.Net.Http.Json;
-using System.Text.Json.Serialization;
+﻿using Google.GenAI.Types;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Pgvector;
@@ -8,7 +7,7 @@ using Tubester.Abstractions;
 namespace Tubester.Integration;
 
 public sealed class GeminiEmbeddingService(
-    HttpClient httpClient,
+    IGeminiClientFactory clientFactory,
     IOptions<GeminiOptions> options,
     ILogger<GeminiEmbeddingService> logger)
     : IEmbeddingService
@@ -23,54 +22,41 @@ public sealed class GeminiEmbeddingService(
         }
 
         var config = options.Value;
+        var client = clientFactory.CreateClient();
 
-        if (string.IsNullOrWhiteSpace(config.ApiKey))
+        EmbedContentResponse response;
+
+        try
         {
-            throw new InvalidOperationException("Gemini embedding API key is missing.");
+            response = await client.Models.EmbedContentAsync(
+                model: config.EmbeddingModel,
+                contents: text.Trim(),
+                config: new EmbedContentConfig
+                {
+                    TaskType = "RETRIEVAL_DOCUMENT",
+                    OutputDimensionality = config.OutputDimensionality
+                },
+                cancellationToken: cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "Gemini embedding request failed. Model: {Model}",
+                config.EmbeddingModel);
+
+            throw new InvalidOperationException("Gemini embedding request failed.", ex);
         }
 
-        var request = new GeminiEmbedContentRequest
-        {
-            Model = $"models/{config.Model}",
-            Content = new GeminiContent
-            {
-                Parts =
-                [
-                    new GeminiPart
-                    {
-                        Text = text.Trim()
-                    }
-                ]
-            },
-            TaskType = "RETRIEVAL_DOCUMENT",
-            OutputDimensionality = config.OutputDimensionality
-        };
-
-        var url =
-            $"https://generativelanguage.googleapis.com/v1beta/models/{config.Model}:embedContent?key={config.ApiKey}";
-
-        using var response = await httpClient.PostAsJsonAsync(
-            url,
-            request,
-            cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            var error = await response.Content.ReadAsStringAsync(cancellationToken);
-
-            logger.LogWarning(
-                "Gemini embedding request failed. StatusCode: {StatusCode}. Body: {Body}",
-                response.StatusCode,
-                error);
-
-            throw new InvalidOperationException(
-                $"Gemini embedding request failed with status code {response.StatusCode}.");
-        }
-
-        var result = await response.Content.ReadFromJsonAsync<GeminiEmbedContentResponse>(
-            cancellationToken);
-
-        var vector = result?.Embedding?.Values;
+        var vector = response.Embeddings?
+            .FirstOrDefault()?
+            .Values?
+            .Select(value => (float)value)
+            .ToArray();
 
         if (vector is null || vector.Length == 0)
         {
@@ -83,45 +69,11 @@ public sealed class GeminiEmbeddingService(
                 $"Gemini returned {vector.Length} dimensions, but {config.OutputDimensionality} were expected.");
         }
 
-        return new EmbeddingResult(new Vector(vector), config.Model);
-    }
+        logger.LogDebug(
+            "Gemini embedding generated. Model={Model}, Dimensions={Dimensions}",
+            config.EmbeddingModel,
+            vector.Length);
 
-    private sealed class GeminiEmbedContentRequest
-    {
-        [JsonPropertyName("model")]
-        public string Model { get; init; } = string.Empty;
-
-        [JsonPropertyName("content")]
-        public GeminiContent Content { get; init; } = new();
-
-        [JsonPropertyName("taskType")]
-        public string TaskType { get; init; } = "RETRIEVAL_DOCUMENT";
-
-        [JsonPropertyName("outputDimensionality")]
-        public int OutputDimensionality { get; init; }
-    }
-
-    private sealed class GeminiContent
-    {
-        [JsonPropertyName("parts")]
-        public GeminiPart[] Parts { get; init; } = [];
-    }
-
-    private sealed class GeminiPart
-    {
-        [JsonPropertyName("text")]
-        public string Text { get; init; } = string.Empty;
-    }
-
-    private sealed class GeminiEmbedContentResponse
-    {
-        [JsonPropertyName("embedding")]
-        public GeminiEmbedding? Embedding { get; init; }
-    }
-
-    private sealed class GeminiEmbedding
-    {
-        [JsonPropertyName("values")]
-        public float[] Values { get; init; } = [];
+        return new EmbeddingResult(new Vector(vector), config.EmbeddingModel);
     }
 }

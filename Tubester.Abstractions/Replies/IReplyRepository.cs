@@ -28,7 +28,7 @@ public interface IReplyRepository
     /// Searches for relevant approved replies using vector similarity.
     /// Only returns replies with CommentEmbedding that match userId/channelId.
     /// </summary>
-    Task<IReadOnlyList<RelevantReplyExample>> SearchRelevantApprovedRepliesAsync(
+    Task<IReadOnlyList<RelevantReplyExample>> SearchRelevantReplyExamplesAsync(
         string channelId,
         Vector commentEmbedding,
         int limit,
@@ -42,7 +42,7 @@ public interface IReplyRepository
     /// <param name="statuses">Optional set of statuses to include.</param>
     /// <param name="videoIds">Optional set of video IDs to include.</param>
     /// <param name="originalComment">Optional case-insensitive substring filter for original comment text.</param>
-    /// <param name="afterOriginalCommentAtUtc">Cursor: original comment timestamp to search after (exclusive).</param>
+    /// <param name="afterPulledAtUtc">Cursor: original comment timestamp to search after (exclusive).</param>
     /// <param name="afterCommentId">Cursor: comment ID to search after when timestamps are equal.</param>
     /// <param name="take">Maximum number of items to return.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -56,4 +56,22 @@ public interface IReplyRepository
         string? afterCommentId,
         int take,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets replies missing comment embeddings for a specific upload playlist.
+    /// Only returns replies with eligible statuses (Posted or Approved) and non-empty text fields.
+    /// </summary>
+    /// <param name="uploadPlaylistId">The uploads playlist ID to filter by.</param>
+    /// <param name="take">Maximum number of replies to return.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of eligible replies ordered by OriginalCommentAt, CommentId.</returns>
+    Task<IReadOnlyList<Reply>> GetRepliesMissingCommentEmbeddingAsync(
+        string uploadPlaylistId,
+        int take,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Saves changes to tracked entities.
+    /// </summary>
+    Task SaveChangesAsync(CancellationToken cancellationToken);
 }

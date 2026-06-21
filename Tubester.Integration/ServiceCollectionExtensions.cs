@@ -59,14 +59,11 @@ public static class ServiceCollectionExtensions
                 http.BaseAddress = new Uri(ai.Endpoint);
             })
             .AddStandardResilienceHandler();
-        services.AddScoped<OllamaEmbeddingService>();
 
         // Register embedding service factory for runtime provider selection
         services.AddScoped<IEmbeddingServiceFactory, EmbeddingServiceFactory>();
 
         // Register Gemini embedding service
-        services.AddHttpClient<GeminiEmbeddingService>()
-            .AddStandardResilienceHandler();
         services.AddScoped<GeminiEmbeddingService>();
         services.Configure<GeminiOptions>(configuration.GetSection("AI:Gemini"));
         services.AddSingleton<IGeminiClientFactory, GeminiClientFactory>();

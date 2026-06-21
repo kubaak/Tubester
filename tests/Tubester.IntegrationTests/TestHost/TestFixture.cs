@@ -3,6 +3,7 @@ using AutoFixture.AutoMoq;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using Tubester.Domain;
 using Tubester.Persistence;
 using Xunit;
@@ -75,6 +76,8 @@ public sealed class TestFixture : IAsyncLifetime
         ApiFactory.MockYouTubeIntegration.Invocations.Clear();
         WorkerFactory.MockYouTubeIntegration.Invocations.Clear();
         WorkerFactory.MockAiTextGenerationClient.Invocations.Clear();
+        WorkerFactory.MockEmbeddingService.Invocations.Clear();
+        WorkerFactory.MockEmbeddingService.Reset();
         WorkerFactory.MockBackgroundYoutubeIntegration.Invocations.Clear();
     }
 

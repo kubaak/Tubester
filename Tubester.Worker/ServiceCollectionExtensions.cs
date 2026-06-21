@@ -73,6 +73,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<AiPlaylistSuggestionJob>();
         services.AddScoped<AiTemplateFinalizeJob>();
         services.AddScoped<CreditPeriodMaintenanceJob>();
+        services.AddScoped<ReplyEmbeddingBackfillJob>();
 
         var connectionString = config.GetConnectionString("TubesterDb")
                                ?? throw new InvalidOperationException("Missing connection string 'TubesterDb'.");
@@ -98,7 +99,7 @@ public static class ServiceCollectionExtensions
         });
 
 
-        services.AddHangfireServer(o => o.Queues = ["scanning", "ai-templating", "ai-playlist-suggestion", "default"]);
+        services.AddHangfireServer(o => o.Queues = ["scanning", "ai-templating", "ai-playlist-suggestion", "embeddings", "default"]);
 
         return services;
     }
