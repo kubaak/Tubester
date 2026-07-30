@@ -17,7 +17,7 @@ using Tubester.Persistence;
 
 namespace Tubester.IntegrationTests.TestHost;
 
-public class ApiTestWebAppFactory : WebApplicationFactory<Program>
+public class ApiTestWebAppFactory : WebApplicationFactory<Api.Program>
 {
     private CapturingBackgroundJobClient CapturingJobClient { get; }
     public Mock<IYouTubeIntegration> MockYouTubeIntegration { get; }

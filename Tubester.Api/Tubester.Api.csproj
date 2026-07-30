@@ -19,11 +19,13 @@
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.1" />
+        
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\Tubester.Abstractions\Tubester.Abstractions.csproj"/>
-        <ProjectReference Include="..\\Tubester.Application\\Tubester.Application.csproj"/>
+        <ProjectReference Include="..\Tubester.Application\Tubester.Application.csproj"/>
+        <ProjectReference Include="..\Tubester.Observability\Tubester.Observability.csproj"/>
     </ItemGroup>
 
 </Project>

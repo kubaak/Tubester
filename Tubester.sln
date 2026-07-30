@@ -22,6 +22,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tubester.Abstractions", "Tu
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tubester.Migrator", "Tubester.Migrator\Tubester.Migrator.csproj", "{61658448-061C-44CF-BCE1-C826F75C5926}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tubester.Observability", "Tubester.Observability\Tubester.Observability.csproj", "{24083AE0-7DCF-4B0E-814C-D9E1FFFD00DD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -140,6 +142,18 @@ Global
 		{61658448-061C-44CF-BCE1-C826F75C5926}.Release|x64.Build.0 = Release|Any CPU
 		{61658448-061C-44CF-BCE1-C826F75C5926}.Release|x86.ActiveCfg = Release|Any CPU
 		{61658448-061C-44CF-BCE1-C826F75C5926}.Release|x86.Build.0 = Release|Any CPU
+		{24083AE0-7DCF-4B0E-814C-D9E1FFFD00DD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{24083AE0-7DCF-4B0E-814C-D9E1FFFD00DD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{24083AE0-7DCF-4B0E-814C-D9E1FFFD00DD}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{24083AE0-7DCF-4B0E-814C-D9E1FFFD00DD}.Debug|x64.Build.0 = Debug|Any CPU
+		{24083AE0-7DCF-4B0E-814C-D9E1FFFD00DD}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{24083AE0-7DCF-4B0E-814C-D9E1FFFD00DD}.Debug|x86.Build.0 = Debug|Any CPU
+		{24083AE0-7DCF-4B0E-814C-D9E1FFFD00DD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{24083AE0-7DCF-4B0E-814C-D9E1FFFD00DD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{24083AE0-7DCF-4B0E-814C-D9E1FFFD00DD}.Release|x64.ActiveCfg = Release|Any CPU
+		{24083AE0-7DCF-4B0E-814C-D9E1FFFD00DD}.Release|x64.Build.0 = Release|Any CPU
+		{24083AE0-7DCF-4B0E-814C-D9E1FFFD00DD}.Release|x86.ActiveCfg = Release|Any CPU
+		{24083AE0-7DCF-4B0E-814C-D9E1FFFD00DD}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

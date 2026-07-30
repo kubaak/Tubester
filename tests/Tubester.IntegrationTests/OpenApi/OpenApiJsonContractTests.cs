@@ -9,8 +9,8 @@ using Xunit;
 
 namespace Tubester.IntegrationTests.OpenApi;
 
-public class OpenApiJsonContractTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public class OpenApiJsonContractTests(WebApplicationFactory<Api.Program> factory)
+    : IClassFixture<WebApplicationFactory<Api.Program>>
 {
     /// <summary>
     /// Historically the OpenAPI spec contained also text/plain which in orval version 7.21 let to incorrectly generated client

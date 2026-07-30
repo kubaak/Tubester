@@ -1,0 +1,18 @@
+﻿apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: tubester-worker
+  namespace: monitoring
+    labels:
+      app: tubester-api
+spec:
+  namespaceSelector:
+    matchNames:
+      - tubester
+  selector:
+    matchLabels:
+      app: tubester-worker
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s

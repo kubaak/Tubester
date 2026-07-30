@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Tubester.Abstractions;
 using Tubester.Abstractions.ApplicationConfiguration;
+using Tubester.Abstractions.Observability;
 using Tubester.Abstractions.Playlists;
 
 namespace Tubester.Integration;
@@ -12,7 +13,8 @@ public sealed partial class AiClient(
     IAiTextGenerationClientFactory textGenerationClientFactory,
     IAiPromptBuilder promptBuilder,
     IAiJsonResponseParser jsonResponseParser,
-    ILogger<AiClient> logger)
+    ILogger<AiClient> logger,
+    ITubesterMetrics metrics)
     : IAiClient
 {
     public async Task<SuggestedMetadata> SuggestMetadataAsync(
@@ -42,21 +44,31 @@ public sealed partial class AiClient(
 
         var prompt = promptBuilder.BuildMetadataPrompt(context, generateTitle, generateDescription, generateTags);
 
-        var result = await aiTextGenerationClient.GenerateTextAsync(
-            AiOperation.Metadata,
-            prompt,
-            cancellationToken);
+        try
+        {
+            var result = await aiTextGenerationClient.GenerateTextAsync(
+                AiOperation.Metadata,
+                prompt,
+                cancellationToken);
 
-        LogUsage(result.Usage, AiOperation.Metadata);
+            metrics.AiCall(nameof(AiOperation.Metadata));
+            LogUsage(result.Usage, AiOperation.Metadata);
 
-        var parseResult = jsonResponseParser.DeserializeModelResponse<AiMetadataJsonResult>(
-            result.Text);
+            var parseResult = jsonResponseParser.DeserializeModelResponse<AiMetadataJsonResult>(
+                result.Text);
 
-        return AiSuggestionNormalizer.ToSuggestedMetadata(
-            parseResult,
-            generateTitle,
-            generateDescription,
-            generateTags);
+            return AiSuggestionNormalizer.ToSuggestedMetadata(
+                parseResult,
+                generateTitle,
+                generateDescription,
+                generateTags);
+        }
+        catch (Exception ex)
+        {
+            metrics.AiCallFailed(nameof(AiOperation.Metadata));
+            logger.LogError(ex, "AI metadata suggestion failed from {Provider}", aiTextGenerationClient.Provider);
+            throw;
+        }
     }
 
     public async Task<string?> SuggestReplyAsync(
@@ -81,17 +93,27 @@ public sealed partial class AiClient(
 
         var prompt = promptBuilder.BuildReplyPrompt(videoTitle, commentText, language, relevantExamples);
 
-        var result = await aiTextGenerationClient.GenerateTextAsync(
-            AiOperation.Reply,
-            prompt,
-            cancellationToken);
+        try
+        {
+            var result = await aiTextGenerationClient.GenerateTextAsync(
+                AiOperation.Reply,
+                prompt,
+                cancellationToken);
 
-        LogUsage(result.Usage, AiOperation.Reply);
+            metrics.AiCall(nameof(AiOperation.Reply));
+            LogUsage(result.Usage, AiOperation.Reply);
 
-        var parseResult = jsonResponseParser.DeserializeModelResponse<AiReplyJsonResult>(
-            result.Text);
+            var parseResult = jsonResponseParser.DeserializeModelResponse<AiReplyJsonResult>(
+                result.Text);
 
-        return AiSuggestionNormalizer.NormalizeReply(parseResult.Reply);
+            return AiSuggestionNormalizer.NormalizeReply(parseResult.Reply);
+        }
+        catch (Exception ex)
+        {
+            metrics.AiCallFailed(nameof(AiOperation.Reply));
+            logger.LogError(ex, "AI reply suggestion failed from {Provider}", aiTextGenerationClient.Provider);
+            throw;
+        }
     }
 
     public async Task<IEnumerable<string>> SuggestPlaylistIdsAsync(
@@ -116,21 +138,31 @@ public sealed partial class AiClient(
 
         var prompt = promptBuilder.BuildPlaylistPrompt(context, playlists);
 
-        var result = await aiTextGenerationClient.GenerateTextAsync(
-            AiOperation.PlaylistSuggestion,
-            prompt,
-            cancellationToken);
+        try
+        {
+            var result = await aiTextGenerationClient.GenerateTextAsync(
+                AiOperation.PlaylistSuggestion,
+                prompt,
+                cancellationToken);
 
-        logger.LogDebug("Playlist suggestion result: {Text}", result.Text);
+            metrics.AiCall(nameof(AiOperation.PlaylistSuggestion));
+            logger.LogDebug("Playlist suggestion result: {Text}", result.Text);
 
-        LogUsage(result.Usage, AiOperation.PlaylistSuggestion);
+            LogUsage(result.Usage, AiOperation.PlaylistSuggestion);
 
-        var parseResult = jsonResponseParser.DeserializeModelResponse<AiPlaylistJsonResult>(
-            result.Text);
+            var parseResult = jsonResponseParser.DeserializeModelResponse<AiPlaylistJsonResult>(
+                result.Text);
 
-        return AiSuggestionNormalizer.MapPlaylistIndexesToIds(
-            parseResult.I,
-            playlists);
+            return AiSuggestionNormalizer.MapPlaylistIndexesToIds(
+                parseResult.I,
+                playlists);
+        }
+        catch (Exception ex)
+        {
+            metrics.AiCallFailed(nameof(AiOperation.PlaylistSuggestion));
+            logger.LogError(ex, "AI playlist suggestion failed from {Provider}", aiTextGenerationClient.Provider);
+            throw;
+        }
     }
 
     private void LogUsage(AiUsage usage, AiOperation operation)

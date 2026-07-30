@@ -17,6 +17,7 @@ using Tubester.Api.Auth;
 using Tubester.Api.Extensions;
 using Tubester.Api.Hangfire;
 using Tubester.Api.Infrastructure;
+using Tubester.Observability;
 using Tubester.Application;
 using Tubester.Application.Account;
 using Tubester.Application.Auth;
@@ -40,6 +41,10 @@ using Tubester.Persistence.Videos;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Add Serilog first for startup logging
+builder.AddTubesterSerilog("Tubester.Api");
+
+// Configure forwarded headers
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedProto;
@@ -100,6 +105,14 @@ builder.Services.AddHangFireStorage(builder.Configuration);
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
+// Add OpenTelemetry metrics (API-specific instrumentation)
+builder.AddTubesterOpenTelemetryMetrics("Tubester.Api", true);
+
+// Add API-specific health checks
+builder.Services.AddTubesterPostgresHealthChecks(
+    builder.Configuration,
+    serviceDisplayName: "API");
+
 // Admin email authorization
 var adminEmails = builder.Configuration.GetSection("AdminEmails").Get<string[]>() ?? [];
 builder.Services.AddScoped<IAuthorizationHandler>(p =>
@@ -118,6 +131,11 @@ app.UseSwagger();
 app.UseSwaggerUI();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Map observability endpoints
+app.MapTubesterMetricsEndpoint();
+app.MapTubesterHealthEndpoints();
+
 var dashboardOptions = new DashboardOptions
 {
     Authorization = [new EmailHangfireAuthorizationFilter(adminEmails)]
@@ -129,7 +147,9 @@ if (app.Environment.IsDevelopment())
 {
     app.MapWhen(ctx => !ctx.Request.Path.StartsWithSegments("/api") &&
                        !ctx.Request.Path.StartsWithSegments("/hangfire") &&
-                       !ctx.Request.Path.StartsWithSegments("/swagger"), spa =>
+                       !ctx.Request.Path.StartsWithSegments("/swagger") &&
+                       !ctx.Request.Path.StartsWithSegments("/health") &&
+                       !ctx.Request.Path.StartsWithSegments("/metrics"), spa =>
     {
         spa.UseSpa(spaApp =>
         {

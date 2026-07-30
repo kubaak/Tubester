@@ -27,7 +27,7 @@ public sealed class GeminiAiClientTests : IAsyncLifetime, IDisposable
             _capturingJobClient,
             DateTimeOffset.UtcNow,
             TestAiMode.Real);
-        _helpers = new TestHelpers(_factory.TestHost.Services);
+        _helpers = new TestHelpers(_factory.Services);
     }
 
     public Task InitializeAsync()
@@ -54,7 +54,7 @@ public sealed class GeminiAiClientTests : IAsyncLifetime, IDisposable
             ConfigurationValueType.String, null,
             true, TestFixture.TestingDateTimeOffset);
         
-        await using var scope = _factory.TestHost.Services.CreateAsyncScope();
+        await using var scope = _factory.Services.CreateAsyncScope();
         var client = scope.ServiceProvider.GetRequiredService<GeminiTextGenerationClient>();
 
         var targetVideo = TestHelpers.GetTargetVideo();
@@ -106,7 +106,7 @@ public sealed class GeminiAiClientTests : IAsyncLifetime, IDisposable
             .Returns(new[] { newComment }.ToAsyncEnumerable());
 
         // Act
-        using var jobScope = _factory.TestHost.Services.CreateScope(); 
+        using var jobScope = _factory.Services.CreateScope(); 
         var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
 
         await commentScanJob.Run(

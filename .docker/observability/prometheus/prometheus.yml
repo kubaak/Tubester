@@ -1,0 +1,35 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files: []
+
+scrape_configs:
+  # Scrape Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Scrape Tubester API
+  - job_name: 'tubester-api'
+    static_configs:
+      - targets: ['host.docker.internal:5093']
+    metrics_path: /metrics
+    scheme: http
+    tls_config:
+      insecure_skip_verify: true  # For local development only
+
+  # Scrape Tubester Worker
+  # Business metrics (users, channels, videos, replies) are only available from Worker
+  # because they are process-local gauges refreshed by BusinessMetricsRefreshService
+  - job_name: 'tubester-worker'
+    static_configs:
+      - targets: ['host.docker.internal:5095']
+    metrics_path: /metrics
+    # Worker doesn't use HTTPS by default
+    scheme: http

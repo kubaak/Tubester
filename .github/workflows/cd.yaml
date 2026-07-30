@@ -59,6 +59,29 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
+      - name: Copy Kubernetes manifests to production server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          source: "k8s/prod"
+          target: "/tmp/tubester-deploy-${{ github.sha }}"
+
+      - name: Apply Kubernetes prerequisites
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            set -euo pipefail
+
+            export KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config}
+
+            kubectl apply -f /tmp/tubester-deploy-${{ github.sha }}/k8s/prod/namespace.yaml
+            kubectl apply -f /tmp/tubester-deploy-${{ github.sha }}/k8s/prod/configmap.yaml
+
       - name: Run database migration
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -67,7 +90,12 @@ jobs:
           key: ${{ secrets.PROD_SSH_KEY }}
           envs: API_FULL_IMAGE
           script: |
+            set -euo pipefail
+
+            export KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config}
+
             kubectl -n tubester delete job tubester-db-migration --ignore-not-found
+
             cat <<EOF | kubectl apply -f -
             apiVersion: batch/v1
             kind: Job
@@ -85,39 +113,41 @@ jobs:
                     - name: migration
                       image: ${API_FULL_IMAGE}
                       envFrom:
+                        - configMapRef:
+                            name: tubester-config
                         - secretRef:
                             name: tubester-api-secrets
                       command: ["./efbundle"]
                       args: ["--connection", "\$(ConnectionStrings__TubesterDb)"]
                   restartPolicy: Never
             EOF
+
             kubectl -n tubester wait --for=condition=complete --timeout=120s job/tubester-db-migration || \
               (echo "Migration failed. Logs:" && kubectl -n tubester logs job/tubester-db-migration && exit 1)
         env:
           API_FULL_IMAGE: ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
-      - name: Deploy API
+      - name: Apply Kubernetes manifests and deploy images
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.PROD_HOST }}
           username: ${{ secrets.PROD_USER }}
           key: ${{ secrets.PROD_SSH_KEY }}
-          envs: API_FULL_IMAGE
+          envs: API_FULL_IMAGE,WORKER_FULL_IMAGE
           script: |
+            set -euo pipefail
+
+            export KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config}
+
+            kubectl apply -k /tmp/tubester-deploy-${{ github.sha }}/k8s/prod
+
             kubectl -n tubester set image deployment/tubester-api api=${API_FULL_IMAGE}
-            kubectl -n tubester rollout status deployment/tubester-api
+            kubectl -n tubester set image deployment/tubester-worker worker=${WORKER_FULL_IMAGE}
+
+            kubectl -n tubester rollout status deployment/tubester-api --timeout=180s
+            kubectl -n tubester rollout status deployment/tubester-worker --timeout=180s
+
+            kubectl -n tubester get pods
         env:
           API_FULL_IMAGE: ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-
-      - name: Deploy Worker
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_USER }}
-          key: ${{ secrets.PROD_SSH_KEY }}
-          envs: WORKER_FULL_IMAGE
-          script: |
-            kubectl -n tubester set image deployment/tubester-worker worker=${WORKER_FULL_IMAGE}
-            kubectl -n tubester rollout status deployment/tubester-worker
-        env:
           WORKER_FULL_IMAGE: ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE_NAME }}:${{ env.IMAGE_TAG }}

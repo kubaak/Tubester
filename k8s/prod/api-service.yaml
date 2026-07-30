@@ -3,9 +3,12 @@ kind: Service
 metadata:
   name: tubester-api
   namespace: tubester
+  labels:
+    app: tubester-api
 spec:
   selector:
     app: tubester-api
   ports:
-    - port: 80
-      targetPort: 5000
+    - name: http
+      port: 8080
+      targetPort: http

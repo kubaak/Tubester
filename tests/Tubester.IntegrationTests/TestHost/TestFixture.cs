@@ -17,7 +17,7 @@ public sealed class TestFixture : IAsyncLifetime
     public CapturingBackgroundJobClient CapturingJobClient { get; } = new();
     public HttpClient HttpClient { get; private set; } = null!;
     public IServiceProvider ApiServices => ApiFactory.Services;
-    public IServiceProvider WorkerServices => WorkerFactory.TestHost.Services;
+    public IServiceProvider WorkerServices => WorkerFactory.Services;
     public IFixture Auto { get; private set; } = CreateAuto();
     public static DateTimeOffset TestingDateTimeOffset { get; } = new(2026, 4, 1, 0, 0, 0, TimeSpan.Zero);
 

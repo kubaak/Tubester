@@ -16,7 +16,13 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+    networks:
+      - tubester
 
 volumes:
   tubester_pgdata:
     external: true
+
+networks:
+  tubester:
+    name: tubester

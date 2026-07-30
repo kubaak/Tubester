@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Tubester.Abstractions;
 using Tubester.Abstractions.Channels;
 using Tubester.Abstractions.Credits;
+using Tubester.Abstractions.Observability;
 using Tubester.Abstractions.Replies;
 using Tubester.Abstractions.Videos;
 using Tubester.Application.Channels;
@@ -19,6 +20,7 @@ public record CommentScanOptions(bool InitialRun = false);
 
 public sealed partial class CommentScanJob(
     ILogger<CommentScanJob> logger,
+    ITubesterMetrics metrics,
     IBackgroundYoutubeIntegration youTubeIntegration,
     IAiClient aiClient,
     IVideoRepository videoRepository,
@@ -36,6 +38,7 @@ public sealed partial class CommentScanJob(
     public async Task Run(string channelId, CommentScanOptions? options, IJobCancellationToken jobCancellationToken)
     {
         jobCancellationToken.ThrowIfCancellationRequested();
+        metrics.CommentScanStarted();
 
         using var scope = logger.BeginScope(new Dictionary<string, object?>
         {
@@ -46,6 +49,13 @@ public sealed partial class CommentScanJob(
         {
             var count = await ScanOnceAsync(channelId, options, jobCancellationToken.ShutdownToken);
             logger.LogInformation("Comment scan completed. Drafted: {Count}", count);
+            metrics.CommentScanSucceeded();
+        }
+        catch (Exception ex)
+        {
+            metrics.CommentScanFailed();
+            logger.LogError(ex, "Comment scan failed for channel {ChannelId}", channelId);
+            throw;
         }
         finally
         {
@@ -194,6 +204,8 @@ public sealed partial class CommentScanJob(
 
                         try
                         {
+                            metrics.ReplyGenerationStarted();
+
                             // Search for relevant approved replies for RAG context
                             var relevantExamples = await SearchRelevantRepliesAsync(
                                 channelId,
@@ -206,6 +218,8 @@ public sealed partial class CommentScanJob(
                                 replyLanguage,
                                 relevantExamples,
                                 cancellationToken);
+
+                            metrics.ReplyGenerationSucceeded();
                         }
                         catch
                         {
@@ -221,7 +235,7 @@ public sealed partial class CommentScanJob(
                                     refundIdempotencyKey,
                                     cancellationToken);
                             }
-
+                            metrics.ReplyGenerationFailed();
                             throw;
                         }
 
