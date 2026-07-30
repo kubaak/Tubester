@@ -11,6 +11,7 @@ COPY Tubester.Application/Tubester.Application.csproj Tubester.Application/
 COPY Tubester.Domain/Tubester.Domain.csproj Tubester.Domain/
 COPY Tubester.Integration/Tubester.Integration.csproj Tubester.Integration/
 COPY Tubester.Persistence/Tubester.Persistence.csproj Tubester.Persistence/
+COPY Tubester.Observability/Tubester.Observability.csproj Tubester.Observability/
 
 RUN dotnet restore Tubester.Persistence/Tubester.Persistence.csproj
 RUN dotnet restore Tubester.Api/Tubester.Api.csproj
@@ -22,6 +23,7 @@ COPY Tubester.Application/ Tubester.Application/
 COPY Tubester.Domain/ Tubester.Domain/
 COPY Tubester.Integration/ Tubester.Integration/
 COPY Tubester.Persistence/ Tubester.Persistence/
+COPY Tubester.Observability/ Tubester.Observability/
 
 RUN dotnet publish Tubester.Api/Tubester.Api.csproj \
     -c Release \
@@ -43,8 +45,8 @@ WORKDIR /app
 
 COPY --from=build /app .
 
-ENV ASPNETCORE_URLS=http://0.0.0.0:5000
-EXPOSE 5000
+ENV ASPNETCORE_URLS=http://+:8080
+EXPOSE 8080
 
 USER $APP_UID
 

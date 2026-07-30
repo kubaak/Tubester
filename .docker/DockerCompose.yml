@@ -1,0 +1,155 @@
+﻿services:
+  db:
+    image: pgvector/pgvector:pg18
+    container_name: tubester-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-tubester}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - tubester_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-tubester}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - tubester
+
+  tubester-api:
+    build:
+      context: ..
+      dockerfile: Tubester.Api/Dockerfile
+    container_name: tubester-api
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ASPNETCORE_URLS: ${ASPNETCORE_URLS:-http://+:8080}
+      Observability__Enabled: ${OBSERVABILITY_ENABLED:-true}
+      Observability__Prometheus__Enabled: ${OBSERVABILITY_PROMETHEUS_ENABLED:-true}
+      Observability__Seq__Enabled: ${OBSERVABILITY_SEQ_ENABLED:-false}
+      ConnectionStrings__TubesterDb: Host=${POSTGRES_HOST:-tubester-postgres};Port=${POSTGRES_PORT:-5432};Database=${POSTGRES_DB:-tubester};Username=${POSTGRES_USER:-app};Password=${POSTGRES_PASSWORD:-devpassword}
+    expose:
+      - "8080"
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - tubester
+
+  tubester-worker:
+    build:
+      context: ..
+      dockerfile: Tubester.Worker/Dockerfile
+    container_name: tubester-worker
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ASPNETCORE_URLS: ${ASPNETCORE_URLS:-http://+:8080}
+      Observability__Enabled: ${OBSERVABILITY_ENABLED:-true}
+      Observability__Prometheus__Enabled: ${OBSERVABILITY_PROMETHEUS_ENABLED:-true}
+      Observability__Seq__Enabled: ${OBSERVABILITY_SEQ_ENABLED:-false}
+      Observability__WorkerHttpPort: ${OBSERVABILITY_WORKER_HTTP_PORT:-8080}
+      ConnectionStrings__TubesterDb: Host=${POSTGRES_HOST:-tubester-postgres};Port=${POSTGRES_PORT:-5432};Database=${POSTGRES_DB:-tubester};Username=${POSTGRES_USER:-app};Password=${POSTGRES_PASSWORD:-devpassword}
+    expose:
+      - "8080"
+    ports:
+      - "${WORKER_PORT:-8081}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - tubester
+
+  loki:
+    image: grafana/loki:3.3.2
+    container_name: tubester-loki
+    restart: unless-stopped
+    command:
+      - "-config.file=/etc/loki/local-config.yml"
+    expose:
+      - "3100"
+    volumes:
+      - ./observability/loki/local-config.yml:/etc/loki/local-config.yml:ro
+      - loki_data:/loki
+    networks:
+      - tubester
+
+  alloy:
+    image: grafana/alloy:v1.5.1
+    container_name: tubester-alloy
+    restart: unless-stopped
+    command:
+      - "run"
+      - "--server.http.listen-addr=0.0.0.0:12345"
+      - "--storage.path=/var/lib/alloy/data"
+      - "/etc/alloy/config.alloy"
+    expose:
+      - "12345"
+    volumes:
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy_data:/var/lib/alloy/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+      - tubester-api
+      - tubester-worker
+    networks:
+      - tubester
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: tubester-prometheus-prodlike
+    restart: unless-stopped
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./observability/prometheus/prometheus-prodlike.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_prodlike_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    depends_on:
+      - tubester-api
+      - tubester-worker
+    networks:
+      - tubester
+
+  grafana:
+    image: grafana/grafana:11.4.2
+    container_name: tubester-grafana-prodlike
+    restart: unless-stopped
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./observability/grafana/provisioning-prodlike:/etc/grafana/provisioning:ro
+      - grafana_prodlike_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - tubester
+
+volumes:
+  tubester_pgdata:
+    external: true
+  loki_data:
+  alloy_data:
+  prometheus_prodlike_data:
+  grafana_prodlike_data:
+
+networks:
+  tubester:
+    name: tubester

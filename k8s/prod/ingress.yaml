@@ -19,21 +19,21 @@ spec:
               service:
                 name: tubester-api
                 port:
-                  number: 80
+                  number: 8080
           - path: /swagger
             pathType: Prefix
             backend:
               service:
                 name: tubester-api
                 port:
-                  number: 80
+                  number: 8080
           - path: /hangfire
             pathType: Prefix
             backend:
               service:
                 name: tubester-api
                 port:
-                  number: 80
+                  number: 8080
           - path: /
             pathType: Prefix
             backend:

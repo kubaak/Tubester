@@ -1,5 +1,4 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using Pgvector;
 using Tubester.Abstractions.Users;
 using Tubester.Domain;
 using Tubester.Persistence.Analytics;

@@ -1,0 +1,60 @@
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: tubester-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    networks:
+      - tubester
+
+  grafana:
+    image: grafana/grafana:11.4.2
+    container_name: tubester-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    networks:
+      - tubester
+    depends_on:
+      - prometheus
+
+  seq:
+    image: datalust/seq:latest
+    container_name: tubester-seq
+    restart: unless-stopped
+    ports:
+      - "5341:5341"
+      - "5342:80"
+    environment:
+      - ACCEPT_EULA=Y
+      - SEQ_FIRSTRUN_ADMINPASSWORD=admin12345
+    volumes:
+      - seq_data:/data
+    networks:
+      - tubester
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  seq_data:
+
+networks:
+  tubester:
+    name: tubester

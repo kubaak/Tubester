@@ -11,6 +11,8 @@
         <PackageReference Include="Hangfire.RecurringJobExtensions" Version="1.1.6" />
         <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.8" />
         <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.8" />
+        <!-- Web host for HTTP endpoints (health checks, metrics) -->
+        <FrameworkReference Include="Microsoft.AspNetCore.App" />
     </ItemGroup>
 
     <ItemGroup>
@@ -23,5 +25,6 @@
         <ProjectReference Include="..\Tubester.Abstractions\Tubester.Abstractions.csproj" />
         <ProjectReference Include="..\Tubester.Application\Tubester.Application.csproj" />
         <ProjectReference Include="..\Tubester.Integration\Tubester.Integration.csproj" />
+        <ProjectReference Include="..\Tubester.Observability\Tubester.Observability.csproj" />
     </ItemGroup>
 </Project>

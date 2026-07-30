@@ -3,6 +3,7 @@ using Google.Apis.YouTube.v3;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Tubester.Abstractions.Auth;
+using Tubester.Abstractions.Observability;
 using Tubester.Integration;
 using Tubester.IntegrationTests.TestHost;
 using Xunit;
@@ -82,7 +83,8 @@ public class YouTubeIntegrationTests
         var integration = new YouTubeIntegration(
             currentUserTokenAccessor.Object,
             youTubeServiceFactory,
-            NullLogger<YouTubeIntegration>.Instance);
+            NullLogger<YouTubeIntegration>.Instance,
+            new Mock<ITubesterMetrics>().Object);
 
         return new YouTubeIntegrationTestContext(
             integration,

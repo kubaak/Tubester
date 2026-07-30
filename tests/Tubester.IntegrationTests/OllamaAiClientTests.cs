@@ -32,7 +32,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
             _capturingJobClient,
             DateTimeOffset.UtcNow,
             TestAiMode.Real);
-        _helpers = new TestHelpers(_factory.TestHost.Services);
+        _helpers = new TestHelpers(_factory.Services);
 
         _healthCheckClient = new HttpClient
         {
@@ -82,7 +82,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
         await _helpers.ResetDbAsync();
         await _helpers.SeedTestDataAsync();
         const string context = "A tutorial on how to cook the perfect pasta carbonara with authentic Italian ingredients";
-        using var scope = _factory.TestHost.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var aiClient = scope.ServiceProvider.GetRequiredService<IAiClient>();
         var suggestedMetadata = await aiClient.SuggestMetadataAsync(
             context,
@@ -107,7 +107,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
         await _helpers.ResetDbAsync();
         await _helpers.SeedTestDataAsync();
         const string context = "How to build a REST API with C# and .NET 8 from scratch for beginners";
-        using var scope = _factory.TestHost.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var aiClient = scope.ServiceProvider.GetRequiredService<IAiClient>();
 
         var result = await aiClient.SuggestMetadataAsync(
@@ -141,7 +141,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
     {
         await _helpers.ResetDbAsync();
         await _helpers.SeedTestDataAsync();
-        using var scope = _factory.TestHost.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var aiClient = scope.ServiceProvider.GetRequiredService<IAiClient>();
 
         var result = await aiClient.SuggestMetadataAsync(
@@ -161,7 +161,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
     {
         await _helpers.ResetDbAsync();
         await _helpers.SeedTestDataAsync();
-        using var scope = _factory.TestHost.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var aiClient = scope.ServiceProvider.GetRequiredService<IAiClient>();
 
         var result = await aiClient.SuggestMetadataAsync(
@@ -184,7 +184,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
     {
         await _helpers.ResetDbAsync();
         await _helpers.SeedTestDataAsync();
-        using var scope = _factory.TestHost.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var aiClient = scope.ServiceProvider.GetRequiredService<IAiClient>();
 
         var result = await aiClient.SuggestMetadataAsync(
@@ -207,7 +207,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
     {
         await _helpers.ResetDbAsync();
         await _helpers.SeedTestDataAsync();
-        using var scope = _factory.TestHost.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var aiClient = scope.ServiceProvider.GetRequiredService<IAiClient>();
 
         var result = await aiClient.SuggestMetadataAsync(
@@ -230,7 +230,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
     {
         await _helpers.ResetDbAsync();
         await _helpers.SeedTestDataAsync();
-        using var scope = _factory.TestHost.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var aiClient = scope.ServiceProvider.GetRequiredService<IAiClient>();
 
         var result = await aiClient.SuggestMetadataAsync(
@@ -253,7 +253,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
     {
         await _helpers.ResetDbAsync();
         await _helpers.SeedTestDataAsync();
-        using var scope = _factory.TestHost.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var aiClient = scope.ServiceProvider.GetRequiredService<IAiClient>();
 
         var playlists = new List<PlaylistCandidateDto>
@@ -286,7 +286,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
     {
         await _helpers.ResetDbAsync();
         await _helpers.SeedTestDataAsync();
-        using var scope = _factory.TestHost.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var aiClient = scope.ServiceProvider.GetRequiredService<IAiClient>();
 
         var playlists = new List<PlaylistCandidateDto>
@@ -318,7 +318,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
     {
         await _helpers.ResetDbAsync();
         await _helpers.SeedTestDataAsync();
-        using var scope = _factory.TestHost.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var aiClient = scope.ServiceProvider.GetRequiredService<IAiClient>();
 
         var suggestedIds = await aiClient.SuggestPlaylistIdsAsync(
@@ -338,7 +338,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
     {
         await _helpers.ResetDbAsync();
         await _helpers.SeedTestDataAsync();
-        using var scope = _factory.TestHost.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var aiClient = scope.ServiceProvider.GetRequiredService<IAiClient>();
 
         var playlists = new List<PlaylistCandidateDto>
@@ -378,7 +378,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
             ApplicationConfiguration.Create(ApplicationConfigurationKeys.AiPlaylistTemperature, "0.1", ConfigurationValueType.Decimal, "", false, TestFixture.TestingDateTimeOffset)
         );
         await _helpers.SeedTestDataAsync();
-        using var scope = _factory.TestHost.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var aiClient = scope.ServiceProvider.GetRequiredService<IAiClient>();
 
         var playlists = new List<PlaylistCandidateDto>
@@ -457,7 +457,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
     {
         await _helpers.ResetDbAsync();
         await _helpers.SeedTestDataAsync();
-        using var scope = _factory.TestHost.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var aiClient = scope.ServiceProvider.GetRequiredService<IAiClient>();
 
         var reply = await aiClient.SuggestReplyAsync(
@@ -475,7 +475,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
     {
         await _helpers.ResetDbAsync();
         await _helpers.SeedTestDataAsync();
-        using var scope = _factory.TestHost.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var aiClient = scope.ServiceProvider.GetRequiredService<IAiClient>();
 
         var reply = await aiClient.SuggestReplyAsync(
@@ -493,7 +493,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
     {
         await _helpers.ResetDbAsync();
         await _helpers.SeedTestDataAsync();
-        using var scope = _factory.TestHost.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var aiClient = scope.ServiceProvider.GetRequiredService<IAiClient>();
 
         var reply = await aiClient.SuggestReplyAsync(
@@ -522,7 +522,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
         const string oldReplyText = "This was filmed in Palermo, Buenos Aires 😊";
         const string newCommentText = "What city are you in?";
         
-        using (var scope = _factory.TestHost.Services.CreateScope())
+        using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<Persistence.TubesterDb>();
             var embeddingServiceFactory = scope.ServiceProvider.GetRequiredService<IEmbeddingServiceFactory>();
@@ -565,7 +565,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
             .Returns(new[] { newComment }.ToAsyncEnumerable());
 
         // Act
-        using var jobScope = _factory.TestHost.Services.CreateScope();
+        using var jobScope = _factory.Services.CreateScope();
         var commentScanJob = jobScope.ServiceProvider.GetRequiredService<CommentScanJob>();
 
         await commentScanJob.Run(
@@ -574,7 +574,7 @@ public sealed class OllamaAiClientTests : IAsyncLifetime, IDisposable
             new Hangfire.JobCancellationToken(false));
 
         // Assert
-        using var verifyScope = _factory.TestHost.Services.CreateScope();
+        using var verifyScope = _factory.Services.CreateScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<Persistence.TubesterDb>();
 
         var createdReply = await verifyDb.Replies

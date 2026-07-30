@@ -1,0 +1,27 @@
+﻿global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files: []
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'tubester-api'
+    static_configs:
+      - targets: ['tubester-api:8080']
+    metrics_path: /metrics
+    scheme: http
+
+  - job_name: 'tubester-worker'
+    static_configs:
+      - targets: ['tubester-worker:8080']
+    metrics_path: /metrics
+    scheme: http

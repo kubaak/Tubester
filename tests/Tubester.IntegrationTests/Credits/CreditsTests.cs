@@ -432,8 +432,6 @@ public sealed class CreditsTests(TestFixture fixture)
     public async Task AiReplyGenerated_WhenAiTextGenerationClientFails_RefundsCredits()
     {
         await fixture.CleanStateAsync();
-
-
         var video = TestHelpers.GetTargetVideo();
         await _helpers.SeedTestDataAsync(new TestDataOptions
         {

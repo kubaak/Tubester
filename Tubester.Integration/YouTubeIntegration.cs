@@ -8,6 +8,7 @@ using Google.Apis.YouTube.v3.Data;
 using Microsoft.Extensions.Logging;
 using Tubester.Abstractions.Auth;
 using Tubester.Abstractions.Channels;
+using Tubester.Abstractions.Observability;
 using Tubester.Integration.Dtos;
 
 namespace Tubester.Integration;
@@ -15,7 +16,8 @@ namespace Tubester.Integration;
 public sealed class YouTubeIntegration(
     ICurrentUserTokenAccessor currentUserTokenAccessor,
     IYouTubeServiceFactory youTubeServiceFactory,
-    ILogger<YouTubeIntegration> logger) : IYouTubeIntegration
+    ILogger<YouTubeIntegration> logger,
+    ITubesterMetrics metrics) : IYouTubeIntegration
 {
     public Task<ChannelDto?> GetChannelAsync(string channelId, CancellationToken cancellationToken)
     {
@@ -616,10 +618,12 @@ public sealed class YouTubeIntegration(
     {
         try
         {
+            metrics.YouTubeApiCall(context.Operation);
             return await request.ExecuteAsync(cancellationToken);
         }
         catch (GoogleApiException ex) when (IsUnauthorized(ex))
         {
+            metrics.YouTubeApiError(context.Operation);
             logger.LogWarning(
                 ex,
                 "Unauthorized YouTube API request while executing {YouTubeOperation}. ChannelId={ChannelId}, VideoId={VideoId}, UploadPlaylistId={UploadPlaylistId}, PlaylistId={PlaylistId}, ParentCommentId={ParentCommentId}, HttpStatusCode={HttpStatusCode}, GoogleReason={GoogleReason}, GoogleLocation={GoogleLocation}",
@@ -639,6 +643,7 @@ public sealed class YouTubeIntegration(
         }
         catch (GoogleApiException ex)
         {
+            metrics.YouTubeApiError(context.Operation);
             if (logGoogleApiErrors)
             {
                 logger.LogError(
@@ -659,6 +664,7 @@ public sealed class YouTubeIntegration(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            metrics.YouTubeApiError(context.Operation);
             logger.LogError(
                 ex,
                 "Unexpected YouTube integration error while executing {YouTubeOperation}. ChannelId={ChannelId}, VideoId={VideoId}, UploadPlaylistId={UploadPlaylistId}, PlaylistId={PlaylistId}, ParentCommentId={ParentCommentId}",
