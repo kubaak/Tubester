@@ -1,4 +1,4 @@
-﻿deploymentMode: SingleBinary
+﻿deploymentMode: Monolithic
 
 loki:
   auth_enabled: false
@@ -6,8 +6,22 @@ loki:
   commonConfig:
     replication_factor: 1
 
+  schemaConfig:
+    configs:
+      - from: "2026-04-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+
   storage:
     type: filesystem
+
+  storage_config:
+    filesystem:
+      directory: /var/loki/chunks
 
 singleBinary:
   replicas: 1
@@ -22,4 +36,25 @@ write:
   replicas: 0
 
 backend:
+  replicas: 0
+
+ingester:
+  replicas: 0
+
+querier:
+  replicas: 0
+
+queryFrontend:
+  replicas: 0
+
+queryScheduler:
+  replicas: 0
+
+distributor:
+  replicas: 0
+
+compactor:
+  replicas: 0
+
+indexGateway:
   replicas: 0
