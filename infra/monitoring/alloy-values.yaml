@@ -1,0 +1,17 @@
+﻿controller:
+  type: daemonset
+
+alloy:
+  configMap:
+    create: true
+    content: |
+      logging {
+        level = "info"
+        format = "logfmt"
+      }
+
+      loki.write "default" {
+        endpoint {
+          url = "http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push"
+        }
+      }

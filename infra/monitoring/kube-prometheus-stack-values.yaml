@@ -1,0 +1,30 @@
+﻿grafana:
+  enabled: true
+
+  admin:
+    existingSecret: grafana-admin-credentials
+    userKey: admin-user
+    passwordKey: admin-password
+
+  service:
+    type: ClusterIP
+
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    hosts:
+      - grafana.tubester.app
+    tls:
+      - secretName: grafana-tubester-tls
+        hosts:
+          - grafana.tubester.app
+
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorNamespaceSelector: {}
+
+alertmanager:
+  enabled: true
