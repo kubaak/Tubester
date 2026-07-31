@@ -1,0 +1,114 @@
+﻿name: CD infra
+
+on:
+  workflow_dispatch:
+    inputs:
+      install_monitoring:
+        description: "Install/upgrade kube-prometheus-stack"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      install_loki:
+        description: "Install/upgrade Loki"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      install_alloy:
+        description: "Install/upgrade Grafana Alloy"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+jobs:
+  deploy-infra:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Copy infra files to production server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          source: "infra"
+          target: "/tmp/tubester-infra-${{ github.sha }}"
+          
+      - name: Create Grafana admin secret
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          envs: GRAFANA_ADMIN_PASSWORD
+          script: |
+            set -euo pipefail
+
+            kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+
+            kubectl -n monitoring create secret generic grafana-admin-credentials \
+              --from-literal=admin-user=admin \
+              --from-literal=admin-password="${GRAFANA_ADMIN_PASSWORD}" \
+              --dry-run=client -o yaml | kubectl apply -f -
+        env:
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+
+      - name: Install or upgrade monitoring infrastructure
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            set -euo pipefail
+
+            kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+
+            helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
+            helm repo add grafana https://grafana.github.io/helm-charts || true
+            helm repo update
+
+            if [ "${{ github.event.inputs.install_monitoring }}" = "true" ]; then
+              echo "Installing/upgrading kube-prometheus-stack..."
+              helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+                --namespace monitoring \
+                --values /tmp/tubester-infra-${{ github.sha }}/infra/monitoring/kube-prometheus-stack-values.yaml \
+                --atomic \
+                --timeout 10m
+            fi
+
+            if [ "${{ github.event.inputs.install_loki }}" = "true" ]; then
+              echo "Installing/upgrading Loki..."
+              helm upgrade --install loki grafana/loki \
+                --namespace monitoring \
+                --values /tmp/tubester-infra-${{ github.sha }}/infra/monitoring/loki-values.yaml \
+                --atomic \
+                --timeout 10m
+            fi
+
+            if [ "${{ github.event.inputs.install_alloy }}" = "true" ]; then
+              echo "Installing/upgrading Grafana Alloy..."
+              helm upgrade --install alloy grafana/alloy \
+                --namespace monitoring \
+                --values /tmp/tubester-infra-${{ github.sha }}/infra/monitoring/alloy-values.yaml \
+                --atomic \
+                --timeout 10m
+            fi
+
+            echo "Verifying monitoring namespace..."
+            kubectl get pods -n monitoring
+
+            echo "Checking ServiceMonitor CRD..."
+            kubectl get crd servicemonitors.monitoring.coreos.com
