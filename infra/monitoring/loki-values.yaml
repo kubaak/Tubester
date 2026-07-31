@@ -1,4 +1,4 @@
-﻿deploymentMode: Monolithic
+﻿deploymentMode: SingleBinary
 
 loki:
   auth_enabled: false
@@ -32,13 +32,19 @@ singleBinary:
 gateway:
   enabled: true
 
-backend:
-  replicas: 0
+chunksCache:
+  enabled: false
+
+resultsCache:
+  enabled: false
 
 read:
   replicas: 0
 
 write:
+  replicas: 0
+
+backend:
   replicas: 0
 
 ingester:
