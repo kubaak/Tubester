@@ -8,22 +8,27 @@ spec:
   selector:
     matchLabels:
       app: tubester-client
+
   template:
     metadata:
       labels:
         app: tubester-client
+
     spec:
       imagePullSecrets:
         - name: ghcr-secret
+
       containers:
         - name: client
           image: ghcr.io/kubaak/tubester-client:latest
           imagePullPolicy: Always
+
           ports:
-            - containerPort: 80
+            - name: http
+              containerPort: 8080
+
           securityContext:
             runAsNonRoot: true
-            runAsUser: 1654
             allowPrivilegeEscalation: false
             capabilities:
               drop:
