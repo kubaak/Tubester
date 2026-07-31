@@ -55,6 +55,8 @@ jobs:
           envs: GRAFANA_ADMIN_PASSWORD
           script: |
             set -euo pipefail
+            
+            export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
             kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
 
@@ -73,7 +75,9 @@ jobs:
           key: ${{ secrets.PROD_SSH_KEY }}
           script: |
             set -euo pipefail
-
+            
+            export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+            
             kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
 
             helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
