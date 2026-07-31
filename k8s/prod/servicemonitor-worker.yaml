@@ -3,8 +3,8 @@ kind: ServiceMonitor
 metadata:
   name: tubester-worker
   namespace: monitoring
-    labels:
-      app: tubester-api
+  labels:
+    app: tubester-worker
 spec:
   namespaceSelector:
     matchNames:
