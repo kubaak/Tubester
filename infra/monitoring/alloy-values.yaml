@@ -65,9 +65,9 @@ alloy:
 
         stage.json {
           expressions = {
-            level       = "@l"
-            application = "Application"
-            environment = "Environment"
+            "level"       = "@l",
+            "application" = "Application",
+            "environment" = "Environment",
           }
         }
 
@@ -78,9 +78,9 @@ alloy:
 
         stage.labels {
           values = {
-            level       = ""
-            application = ""
-            environment = ""
+            "level"       = "level",
+            "application" = "application",
+            "environment" = "environment",
           }
         }
       }
