@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Tubester.Abstractions.Account;
 using Tubester.Application.Common;
 using Tubester.Application.Credits;
@@ -16,8 +17,32 @@ namespace Tubester.Api;
 [ProducesResponseType(StatusCodes.Status403Forbidden)]
 public sealed class AdminCreditsController(
     ICreditsService creditsService,
-    ICurrentUserContext currentUserContext) : ApiControllerBase
+    ICurrentUserContext currentUserContext,
+    ILogger<AdminCreditsController> logger) : ApiControllerBase
 {
+    /// <summary>
+    /// Logs a message at the specified log level.
+    /// </summary>
+    /// <param name="logLevel">The log level to use.</param>
+    /// <param name="message">The message to log.</param>
+    /// <returns>No content when the message is logged.</returns>
+    [HttpPost("logs")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public IActionResult LogMessage(
+        [FromQuery] LogLevel logLevel,
+        [FromQuery] string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return BadRequest("Message is required.");
+        }
+
+        logger.Log(logLevel, "{Message}", message);
+
+        return NoContent();
+    }
+
     /// <summary>
     /// Grants credits to a user.
     /// </summary>
