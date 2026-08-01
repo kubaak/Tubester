@@ -57,7 +57,23 @@ alloy:
 
       loki.source.kubernetes "pod_logs" {
         targets    = discovery.relabel.pod_logs.output
+        forward_to = [loki.process.tubester_logs.receiver]
+      }
+
+      loki.process "tubester_logs" {
         forward_to = [loki.write.default.receiver]
+
+        stage.json {
+          expressions = {
+            level = "@l"
+          }
+        }
+
+        stage.labels {
+          values = {
+            level = ""
+          }
+        }
       }
 
       loki.write "default" {
