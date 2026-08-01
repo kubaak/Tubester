@@ -65,22 +65,17 @@ alloy:
 
         stage.json {
           expressions = {
-            "level"       = "@l",
-            "application" = "Application",
-            "environment" = "Environment",
+            level       = "Level",
+            application = "Application",
+            environment = "Environment",
           }
-        }
-
-        stage.template {
-          source   = "level"
-          template = "{{ if .Value }}{{ .Value }}{{ else }}Information{{ end }}"
         }
 
         stage.labels {
           values = {
-            "level"       = "level",
-            "application" = "application",
-            "environment" = "environment",
+            level       = "",
+            application = "",
+            environment = "",
           }
         }
       }

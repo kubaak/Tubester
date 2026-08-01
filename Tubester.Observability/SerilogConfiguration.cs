@@ -36,6 +36,7 @@ public static class SerilogConfiguration
 
         var loggerConfig = new LoggerConfiguration()
             .ReadFrom.Configuration(configuration)
+            .Enrich.With<LogLevelEnricher>()
             .Enrich.WithProperty("Application", applicationName)
             .Enrich.WithProperty("Environment", environment.EnvironmentName);
 
