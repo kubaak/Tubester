@@ -12,7 +12,7 @@ alloy:
     create: true
     content: |
       logging {
-        level = "info"
+        level  = "info"
         format = "logfmt"
       }
 
@@ -65,13 +65,22 @@ alloy:
 
         stage.json {
           expressions = {
-            level = "@l"
+            level       = "@l"
+            application = "Application"
+            environment = "Environment"
           }
+        }
+
+        stage.template {
+          source   = "level"
+          template = "{{ if .Value }}{{ .Value }}{{ else }}Information{{ end }}"
         }
 
         stage.labels {
           values = {
-            level = ""
+            level       = ""
+            application = ""
+            environment = ""
           }
         }
       }
