@@ -23,12 +23,13 @@ public sealed class ChannelSyncService(
     ICurrentChannelContext channelContext,
     ICreditsStore creditsStore,
     IChannelSettingsService channelSettingsService,
+    ICommentScanService commentScanService,
     ILogger<ChannelSyncService> logger,
     IDateTimeOffsetProvider dateTimeOffsetProvider) : IChannelSyncService
 {
     private const int VideoBatchSize = 100;
 
-    public async Task<Channel> PullChannelAsync(
+    private async Task<Channel> PullChannelAsync(
         string userId,
         CancellationToken cancellationToken)
     {
@@ -108,11 +109,12 @@ public sealed class ChannelSyncService(
             await channelSettingsRepository.UpsertAsync(settings, cancellationToken);
         }
 
-        return await SyncInternalAsync(channel, nowUtc, cancellationToken);
+        return await SyncInternalAsync(channel, settings, nowUtc, cancellationToken);
     }
 
     private async Task<ChannelSyncResult> SyncInternalAsync(
         Channel channel,
+        ChannelSettings settings,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
@@ -142,6 +144,11 @@ public sealed class ChannelSyncService(
             result.PlaylistsUpdated,
             result.MembershipsAdded,
             result.MembershipsRemoved);
+
+        if (settings.IsCommentAssistantEnabled)
+        {
+            await commentScanService.ScanCommentsAsync(cancellationToken);
+        }
 
         return result;
     }
