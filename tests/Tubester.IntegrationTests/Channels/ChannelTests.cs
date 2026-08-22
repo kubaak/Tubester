@@ -5,6 +5,7 @@ using Moq;
 using Tubester.Abstractions.Credits;
 using Tubester.Abstractions.Users;
 using Tubester.Application.Channels;
+using Tubester.Application.Jobs;
 using Tubester.Domain;
 using Tubester.Integration.Dtos;
 using Tubester.IntegrationTests.TestHost;
@@ -118,6 +119,11 @@ public class ChannelTests(TestFixture fixture)
         Assert.Equal(0, syncResult.PlaylistsUpdated);
         Assert.Equal(3, syncResult.MembershipsAdded);
 
+        var commentScanJobs = fixture.CapturingJobClient.GetEnqueued<CommentScanJob>();
+        var commentScanJob = Assert.Single(commentScanJobs);
+        Assert.Equal(nameof(CommentScanJob.Run), commentScanJob.Job.Method.Name);
+        Assert.Equal(TestConstants.ChannelId, commentScanJob.Job.Args[0]);
+
         // Assert database state
         using var verificationScope = fixture.ApiServices.CreateScope();
         var verificationDatabaseContext = verificationScope.ServiceProvider.GetRequiredService<TubesterDb>();
@@ -220,6 +226,31 @@ public class ChannelTests(TestFixture fixture)
         Assert.NotNull(updatedChannel);
         Assert.NotNull(updatedChannel.LastUploadsCutoff);
         Assert.Equal(new DateTimeOffset(2024, 1, 2, 12, 0, 0, TimeSpan.Zero), updatedChannel.LastUploadsCutoff);
+    }
+
+    [Fact]
+    public async Task DoesNotQueueCommentScanWhenCommentAssistantIsDisabled()
+    {
+        // Arrange
+        await fixture.CleanStateAsync();
+        await _helpers.SeedTestDataAsync(new TestDataOptions
+        {
+            EnableCommentScan = false
+        });
+
+        fixture.ApiFactory.MockYouTubeIntegration
+            .Setup(x => x.GetAllVideosAsync(
+                TestConstants.UploadsPlaylistId,
+                It.IsAny<DateTimeOffset?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(TestHelpers.CreateAsyncEnumerable(Array.Empty<VideoDto>()));
+
+        // Act
+        var response = await fixture.HttpClient.PostAsync("/api/channels/sync/current", null);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Empty(fixture.CapturingJobClient.GetEnqueued<CommentScanJob>());
     }
 
     [Fact]

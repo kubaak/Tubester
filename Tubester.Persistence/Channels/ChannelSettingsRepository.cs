@@ -14,14 +14,40 @@ public sealed class ChannelSettingsRepository(TubesterDb db) : IChannelSettingsR
 
     public async Task UpsertAsync(ChannelSettings settings, CancellationToken cancellationToken)
     {
-        var existing = await db.Set<ChannelSettings>()
-            .FirstOrDefaultAsync(channelSettings => channelSettings.ChannelId == settings.ChannelId, cancellationToken);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "ChannelSettings" (
+                "ChannelId",
+                "IsCommentAssistantEnabled",
+                "IsSuggestRepliesForTopLevelCommentsOnly",
+                "MaxSuggestedRepliesPerSync",
+                "MaxCommentAgeDays",
+                "ReplyLanguage",
+                "ResponseForNonTextualComments",
+                "UpdatedAtUtc")
+            VALUES (
+                {settings.ChannelId},
+                {settings.IsCommentAssistantEnabled},
+                {settings.IsSuggestRepliesForTopLevelCommentsOnly},
+                {settings.MaxSuggestedRepliesPerSync},
+                {settings.MaxCommentAgeDays},
+                {settings.ReplyLanguage},
+                {settings.ResponseForNonTextualComments},
+                {settings.UpdatedAtUtc})
+            ON CONFLICT ("ChannelId") DO UPDATE
+            SET
+                "IsCommentAssistantEnabled" = EXCLUDED."IsCommentAssistantEnabled",
+                "IsSuggestRepliesForTopLevelCommentsOnly" = EXCLUDED."IsSuggestRepliesForTopLevelCommentsOnly",
+                "MaxSuggestedRepliesPerSync" = EXCLUDED."MaxSuggestedRepliesPerSync",
+                "MaxCommentAgeDays" = EXCLUDED."MaxCommentAgeDays",
+                "ReplyLanguage" = EXCLUDED."ReplyLanguage",
+                "ResponseForNonTextualComments" = EXCLUDED."ResponseForNonTextualComments",
+                "UpdatedAtUtc" = EXCLUDED."UpdatedAtUtc"
+            """, cancellationToken);
 
-        if (existing is null)
+        var entry = db.Entry(settings);
+        if (entry.State != EntityState.Detached)
         {
-            db.Set<ChannelSettings>().Add(settings);
+            entry.State = EntityState.Unchanged;
         }
-
-        await db.SaveChangesAsync(cancellationToken);
     }
 }
