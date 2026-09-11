@@ -14,6 +14,49 @@ Tubester is a .NET 10 backend for managing YouTube video metadata, playlists, an
 
 YouTube writes require write consent. Google authentication uses online access tokens without refresh tokens, so users may need to sign in again when a token expires.
 
+## Architecture
+
+The API handles user requests and enqueues background work in Hangfire's PostgreSQL storage. A separate worker executes those jobs. Both hosts share application services and the same database. pgvector stores comment embeddings used to retrieve relevant approved or posted reply examples.
+
+```mermaid
+flowchart LR
+    Client["Web Client<br/>Tubester-Client"]
+
+    subgraph Backend["Tubester Backend"]
+        direction TB
+        API["ASP.NET Core API<br/>Authentication & user operations"]
+        Worker["Hangfire Worker<br/>Background processing"]
+    end
+
+    subgraph Database["PostgreSQL"]
+        direction TB
+        Data[("Application Data<br/>pgvector embeddings")]
+        Jobs[("Hangfire Job Storage")]
+    end
+
+    subgraph External["External Services"]
+        direction TB
+        Google["Google OAuth"]
+        YouTube["YouTube Data API"]
+        AI["Gemini / Ollama<br/>Generation & embeddings"]
+    end
+
+    Client -->|HTTP| API
+
+    API -->|Authenticate| Google
+    API -->|Read / write| Data
+    API -->|Enqueue| Jobs
+    API -->|User-authorized operations| YouTube
+    API -->|AI operations| AI
+
+    Worker -->|Fetch jobs| Jobs
+    Worker -->|Read / write| Data
+    Worker -->|Background reads| YouTube
+    Worker -->|Generation & embeddings| AI
+```
+
+The API and worker expose health checks and Prometheus metrics. YouTube publishing is performed through user-authorized API operations, while background comment processing generates drafts for review.
+
 ## Repository layout
 
 | Project / directory                                                | Responsibility                                                                               |
@@ -31,9 +74,63 @@ YouTube writes require write consent. Google authentication uses online access t
 | [k8s/prod](k8s/prod)                                               | Kubernetes application manifests                                                             |
 | [infra/monitoring](infra/monitoring)                               | Monitoring configuration for metrics, dashboards, and log collection                         |
 
-The API enqueues jobs. The worker executes them using the same PostgreSQL database. Run both for background features. The worker listens on the `scanning`, `ai-templating`, `ai-playlist-suggestion`, `embeddings`, and `default` queues. The checked-in [recurring job configuration](Tubester.Worker/recurring-jobs.json) schedules daily credit-period maintenance (`0 0 * * *`).
+The API enqueues jobs. The worker executes them using the same PostgreSQL database. Run both for background features.
 
-The web client lives in the separate `Tubester-Client` repository. In Development, setting `Spa:Enabled=true` enables proxying non-API/UI-infrastructure routes to `http://localhost:5173`. The proxy is disabled by default. In Production, the client is deployed separately.
+The worker listens on the `scanning`, `ai-templating`, `ai-playlist-suggestion`, `embeddings`, and `default` queues. The checked-in [recurring job configuration](Tubester.Worker/recurring-jobs.json) schedules daily credit-period maintenance (`0 0 * * *`).
+
+The web client lives in the separate `Tubester-Client` repository. In Development, setting `Spa:Enabled=true` enables proxying non-API/UI-infrastructure routes to `http://localhost:5173`. The proxy is disabled by default.
+
+In Production, the client is deployed separately.
+
+### .NET project dependencies
+
+The diagram below focuses on the main architectural dependency direction rather than every individual test-project reference. Arrows point from a project to a project it directly references.
+
+```mermaid
+flowchart TD
+    subgraph Hosts["Host Projects"]
+        direction LR
+        API["Api"]
+        Worker["Worker"]
+        Migrator["Migrator"]
+    end
+
+    Application["Application"]
+
+    subgraph Infrastructure["Infrastructure"]
+        direction LR
+        Integration["Integration"]
+        Persistence["Persistence"]
+        Observability["Observability"]
+    end
+
+    Abstractions["Abstractions"]
+    Domain["Domain"]
+
+    API --> Application
+    API --> Abstractions
+    API --> Observability
+
+    Worker --> Application
+    Worker --> Abstractions
+    Worker --> Integration
+    Worker --> Observability
+
+    Migrator --> Persistence
+
+    Application --> Integration
+    Application --> Persistence
+    Application --> Abstractions
+
+    Integration --> Abstractions
+    Persistence --> Abstractions
+    Persistence --> Domain
+    Observability --> Abstractions
+
+    Abstractions --> Domain
+```
+
+Integration tests reference the host, application, persistence, integration, and domain projects as required for end-to-end and integration-level verification. Transitive dependencies and NuGet packages are omitted from the diagram.
 
 ## Local setup
 
