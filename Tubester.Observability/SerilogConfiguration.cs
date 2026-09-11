@@ -15,7 +15,7 @@ public static class SerilogConfiguration
     /// <summary>
     /// Configures and adds a Serilog logger to the application, enriching logs with application-specific metadata
     /// such as application name and environment name. It also integrates with Seq logging if enabled
-    /// in the configuration.
+    /// in the configuration. When Serilog:Enabled is false, existing logging providers are preserved.
     /// </summary>
     /// <param name="builder">The <see cref="IHostApplicationBuilder"/> used to configure the application.</param>
     /// <param name="applicationName">The name of the application, which will be included in the log metadata.</param>
@@ -29,6 +29,11 @@ public static class SerilogConfiguration
 
         builder.Services.Configure<ObservabilityOptions>(
             configuration.GetSection("Observability"));
+
+        if (!configuration.GetValue("Serilog:Enabled", true))
+        {
+            return builder;
+        }
 
         var observabilityOptions = configuration
             .GetSection("Observability")

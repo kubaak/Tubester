@@ -1,444 +1,270 @@
-# 🎥 Tubester
+# Tubester
 
-**Tubester** is a layered .NET solution that automates YouTube metadata updates, playlists and comment management.
-It integrates with the **YouTube Data API**, persists state with **EF Core**, and can use a local AI model to generate titles, descriptions, and replies.
+Tubester is a .NET 10 backend for managing YouTube video metadata, playlists, and comment replies. It combines an ASP.NET Core API, a Hangfire worker, PostgreSQL with pgvector, and AI generation through Gemini or Ollama.
 
-This solution demonstrates:
+## Capabilities
 
-- ASP.NET Core Web API + SPA host (`Tubester.Api`)
-- Background worker with Hangfire recurring jobs (`Tubester.Worker`)
-- Clean architecture separation (Domain, Persistence, Application, Abstractions, Integration)
-- EF Core with migrations (PostgreSQL)
-- Integration layer for YouTube Data API
-- Optional data migrator from legacy SQLite to PostgreSQL (`Tubester.Migrator`)
-- Integration tests (`tests/Tubester.IntegrationTests`)
+- Sign in with Google, with separate read and write consent for YouTube operations.
+- Synchronize channels, videos, and playlists; edit metadata and save local video drafts before publishing.
+- Generate video metadata and playlist suggestions using AI.
+- Scan comments, generate suggested replies, and review, edit, approve, or ignore drafts.
+- Store reply embeddings for relevant reply examples and support embedding backfill jobs.
+- Manage account and channel settings, credits, subscriptions, and administrator-controlled application configuration.
+- Expose structured logs, Prometheus metrics, health checks, and an administrator-only Hangfire dashboard.
 
----
+YouTube writes require write consent. Google authentication uses online access tokens without refresh tokens, so users may need to sign in again when a token expires.
 
-## ✨ Features
+## Repository layout
 
-- 🔑 OAuth2 authentication with YouTube Data API
-- 🏷 Sync video tags and append hashtags to descriptions
-- 📂 Add Shorts to playlists automatically
-- 💬 List unanswered comments and generate AI-powered draft replies
-- ✅ Review/edit/approve drafts via API (SPA client is hosted separately in `Tubester-Client`)
-- 📝 Persist drafts, replies, channels, videos and credits with EF Core
-- 🌍 Configurable persistence (PostgreSQL)
-- 🤖 Local AI integration via Ollama (no external API costs)
-- 🧰 Hangfire dashboard for background jobs (`/hangfire`)
-- 📊 **Observability**: Structured logging (Serilog), OpenTelemetry metrics, Prometheus, Grafana, health checks
+| Project / directory                                                | Responsibility                                                                               |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| [Tubester.Api](Tubester.Api)                                       | HTTP endpoints, Google/cookie authentication, authorization, Swagger, and Hangfire dashboard |
+| [Tubester.Worker](Tubester.Worker)                                 | Hangfire job execution and recurring job registration; HTTP health and metrics endpoints     |
+| [Tubester.Application](Tubester.Application)                       | Application services, jobs, credits, and domain event handlers                               |
+| [Tubester.Domain](Tubester.Domain)                                 | Entities and domain events                                                                   |
+| [Tubester.Abstractions](Tubester.Abstractions)                     | Shared contracts and interfaces                                                              |
+| [Tubester.Persistence](Tubester.Persistence)                       | EF Core mappings, PostgreSQL repositories, and migrations                                    |
+| [Tubester.Integration](Tubester.Integration)                       | YouTube, Gemini, and Ollama clients                                                          |
+| [Tubester.Observability](Tubester.Observability)                   | Serilog, OpenTelemetry, and health endpoint registration                                     |
+| [Tubester.Migrator](Tubester.Migrator)                             | Legacy SQLite-to-PostgreSQL data migration utility                                           |
+| [tests/Tubester.IntegrationTests](tests/Tubester.IntegrationTests) | API, persistence, job, and integration tests                                                 |
+| [k8s/prod](k8s/prod)                                               | Kubernetes application manifests                                                             |
+| [infra/monitoring](infra/monitoring)                               | Monitoring configuration for metrics, dashboards, and log collection                         |
 
----
+The API enqueues jobs. The worker executes them using the same PostgreSQL database. Run both for background features. The worker listens on the `scanning`, `ai-templating`, `ai-playlist-suggestion`, `embeddings`, and `default` queues. The checked-in [recurring job configuration](Tubester.Worker/recurring-jobs.json) schedules daily credit-period maintenance (`0 0 * * *`).
 
-## 🏗️ Architecture
+The web client lives in the separate `Tubester-Client` repository. In Development, setting `Spa:Enabled=true` enables proxying non-API/UI-infrastructure routes to `http://localhost:5173`. The proxy is disabled by default. In Production, the client is deployed separately.
 
-### Projects
+## Local setup
 
-- `Tubester.Domain` – pure business entities and domain logic.
-- `Tubester.Abstractions` – shared contracts and interfaces between layers.
-- `Tubester.Persistence` – EF Core DbContext, entity mappings, repositories.
-- `Tubester.Application` – application services and business rules (comments scanning, replies, credits, templates, etc.).
-- `Tubester.Integration` – integration with Google / YouTube Data API.
-- `Tubester.Api` – ASP.NET Core Web API, auth, DI wiring, Swagger, SPA host.
-- `Tubester.Worker` – background worker that registers and runs Hangfire recurring jobs.
-- `Tubester.Migrator` – one-off console tool to migrate data from legacy SQLite to PostgreSQL (see `README.migrator.md`).
-- `tests/Tubester.IntegrationTests` – integration tests for the API and persistence.
+Run the commands below from the solution root. Environment-variable examples use PowerShell.
 
-### Layers
+### Prerequisites
 
-- **Domain** – no EF or API dependencies.
-- **Persistence** – EF Core + database configuration.
-- **Application** – orchestrates domain, persistence and integrations.
-- **Integration** – external services (YouTube, HTTP, etc.).
-- **API / Worker** – hosting, HTTP endpoints, background jobs.
+- .NET 10 SDK.
+- PostgreSQL with the `vector` extension available. CI uses `pgvector/pgvector:pg18`.
+- Docker if using the database container below.
+- Google OAuth credentials for login and a YouTube Data API key for background reads.
+- Gemini credentials or a reachable Ollama server for AI features.
+- The separate client and its Node.js prerequisites if using the web UI. Swagger can be used without the client.
 
-In development the API also proxies the SPA client from `Tubester-Client` (Vite, default at `http://localhost:5173`).
-In production the built SPA is served from `wwwroot`.
-
----
-
-## ⚡ Getting Started
-
-### 1. Clone and restore
-
-```bash
-git clone https://github.com/kubaak/Tubester.git
-cd Tubester
-dotnet restore
-```
-
-If you also want the web client, clone it next to this repo:
-
-```bash
-git clone https://github.com/kubaak/Tubester-Client.git
-```
-
-### 2. Configure API secrets
-
-```bash
-dotnet user-secrets init --project Tubester.Api
-
-dotnet user-secrets set "YouTube:ClientId" "your-client-id" --project Tubester.Api
-dotnet user-secrets set "YouTube:ClientSecret" "your-client-secret" --project Tubester.Api
-
-# Optional – local AI via Ollama
-dotnet user-secrets set "YouTube:AI:Endpoint" "http://localhost:11434" --project Tubester.Api
-dotnet user-secrets set "YouTube:AI:Model" "gemma3:12b" --project Tubester.Api
-```
-
-### 3. Database
-
-Create / update the database schema from the solution root:
+### 1. Restore and start a development database
 
 ```powershell
-dotnet ef database update -p Tubester.Persistence -s Tubester.Api
+dotnet restore Tubester.sln
+dotnet tool install --global dotnet-ef --version 10.0.8
 ```
 
-To add a new migration:
+If `dotnet-ef` is already installed, use `dotnet tool update --global dotnet-ef --version 10.0.8` to align it with this repository's EF Core version.
+
+For a local database matching the Development settings:
 
 ```powershell
-dotnet ef migrations add <MigrationName> -p Tubester.Persistence -s Tubester.Api
+docker run --name tubester-postgres -d -p 127.0.0.1:5432:5432 -e POSTGRES_DB=tubester -e POSTGRES_USER=app -e POSTGRES_PASSWORD=devpassword -v tubester-postgres-data:/var/lib/postgresql pgvector/pgvector:pg18
+docker exec tubester-postgres pg_isready -U app -d tubester
 ```
 
-Roolback to a specific migration:
+Wait until PostgreSQL accepts connections. These credentials are for local development only. Migrations enable the `vector` extension; the database server must provide it and the migration account must have permission to create it.
+
+### 2. Configure authentication and secrets
+
+Both host projects already declare a `UserSecretsId`; initialization is unnecessary. Their secret stores are separate.
 
 ```powershell
-dotnet ef database update <TargetMigrationName> -p Tubester.Persistence -s Tubester.Api
+dotnet user-secrets set "GoogleAuth:ClientId" "YOUR_GOOGLE_CLIENT_ID" --project Tubester.Api
+dotnet user-secrets set "GoogleAuth:ClientSecret" "YOUR_GOOGLE_CLIENT_SECRET" --project Tubester.Api
+dotnet user-secrets set "AdminEmails:0" "you@example.com" --project Tubester.Api
+dotnet user-secrets set "YouTubeApi:ApiKey" "YOUR_YOUTUBE_API_KEY" --project Tubester.Worker
 ```
 
-For details on migrating from the legacy SQLite database to PostgreSQL, see `README.migrator.md`.
+For a custom database, set the same connection string in both projects:
 
----
-
-## 🌐 Running the API + SPA
-
-From the solution root:
-
-```bash
-dotnet run --project Tubester.Api
+```powershell
+dotnet user-secrets set "ConnectionStrings:TubesterDb" "Host=localhost;Port=5432;Database=tubester;Username=app;Password=YOUR_PASSWORD" --project Tubester.Api
+dotnet user-secrets set "ConnectionStrings:TubesterDb" "Host=localhost;Port=5432;Database=tubester;Username=app;Password=YOUR_PASSWORD" --project Tubester.Worker
 ```
 
-- Swagger UI (development): `https://localhost:5094/swagger`
-- Hangfire dashboard: `https://localhost:5094/hangfire`
-- SPA client (development): served from `Tubester-Client` dev server via proxy on non-`/api` routes.
+Configure the Google OAuth web application with these local redirect URIs:
 
----
-
-## 🛠 Running the Worker
-
-The worker hosts recurring jobs (for example credit maintenance):
-
-```bash
-dotnet run --project Tubester.Worker
+```text
+http://localhost:5094/api/auth/google/callback
+http://localhost:5094/api/auth/google/write/callback
 ```
 
-The jobs and their status can be inspected via the Hangfire dashboard exposed by the API instance.
+The login endpoints are `/api/auth/login/google` and `/api/auth/login/google/write`. HTTP on localhost supports local login in browsers that allow Secure cookies on localhost, such as Chrome and Firefox. Safari requires HTTPS; see the optional HTTPS setup below. For production, register the same callback paths under your public HTTPS origin.
 
----
+### 3. Apply database migrations
 
-## 📊 Observability
+Neither host automatically applies application migrations on startup.
 
-Tubester supports two local observability modes:
-
-1. **Normal local development**
-   - API and Worker can run from the IDE or `dotnet run`.
-   - Logs go to console and Seq.
-   - Prometheus scrapes `/metrics`.
-   - Grafana shows metrics.
-
-2. **Production-like local observability**
-   - API and Worker run as Docker containers.
-   - Apps write structured logs to stdout.
-   - Grafana Alloy reads Docker container logs.
-   - Alloy forwards logs to Loki.
-   - Grafana queries Loki for logs.
-   - Prometheus scrapes API and Worker metrics over the Docker network.
-
-Tubester includes a comprehensive observability stack with structured logging, metrics, and health checks.
-
-### Quick Start
-
-To run the full observability stack:
-
-```bash
-# Start the API/Worker first, then:
-docker compose -f docker-compose.observability.yml up -d
+```powershell
+$env:ASPNETCORE_ENVIRONMENT = "Development"
+dotnet ef database update --project Tubester.Persistence --startup-project Tubester.Api
 ```
 
-This starts:
+Development selects the checked-in local connection string and loads API user secrets. For another environment, explicitly supply the target connection through `ConnectionStrings__TubesterDb`.
 
-- **Prometheus** (port 9090) - metrics collection and storage
-- **Grafana** (port 3000) - dashboards and visualization
-- **Seq** (port 5341) - structured log aggregation
+To create a schema migration during development:
 
-### Accessing Observability Tools
-
-| Tool       | URL                   | Default Credentials |
-| ---------- | --------------------- | ------------------- |
-| Prometheus | http://localhost:9090 | -                   |
-| Grafana    | http://localhost:3000 | admin / admin       |
-| Seq        | http://localhost:5341 | -                   |
-
-### Metrics Endpoints
-
-| Service         | Endpoint   | Metrics Available                        |
-| --------------- | ---------- | ---------------------------------------- |
-| Tubester.Api    | `/metrics` | Request/runtime/process metrics          |
-| Tubester.Worker | `/metrics` | Business metrics (users, channels, etc.) |
-
-⚠️ **Important**: The `/metrics` endpoint is not exposed publicly by default. It should only be accessible internally or through a protected path in production.
-
-> **Business Metrics Location**: Business metric gauges (users, channels, videos, replies) are refreshed by the Worker process and are only visible from `Tubester.Worker:/metrics`. The API `/metrics` endpoint does not include these gauges because `BusinessMetricsGauges` is process-local and must be scraped from the Worker.
-
-### Health Check Endpoints
-
-| Service         | Endpoint        | Purpose         | Checks                           |
-| --------------- | --------------- | --------------- | -------------------------------- |
-| Tubester.Api    | `/health/live`  | Liveness probe  | Self-check only (lightweight)    |
-| Tubester.Api    | `/health/ready` | Readiness probe | PostgreSQL/Hangfire connectivity |
-| Tubester.Worker | `/health/live`  | Liveness probe  | Self-check only (lightweight)    |
-| Tubester.Worker | `/health/ready` | Readiness probe | PostgreSQL/Hangfire connectivity |
-
-### Kubernetes Probes
-
-Example Kubernetes deployment configuration for health checks:
-
-#### Tubester.Api
-
-```yaml
-livenessProbe:
-  httpGet:
-    path: /health/live
-    port: 80
-  initialDelaySeconds: 10
-  periodSeconds: 15
-  timeoutSeconds: 5
-  failureThreshold: 3
-
-readinessProbe:
-  httpGet:
-    path: /health/ready
-    port: 80
-  initialDelaySeconds: 15
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 3
+```powershell
+dotnet ef migrations add YourMigrationName --project Tubester.Persistence --startup-project Tubester.Api
 ```
 
-#### Tubester.Worker
+The legacy data-copy utility is separate from EF schema migrations. See [README.migrator.md](README.migrator.md) and verify its source and destination configuration before use.
 
-```yaml
-livenessProbe:
-  httpGet:
-    path: /health/live
-    port: 8080
-  initialDelaySeconds: 10
-  periodSeconds: 15
-  timeoutSeconds: 5
-  failureThreshold: 3
+### 4. Configure AI
 
-readinessProbe:
-  httpGet:
-    path: /health/ready
-    port: 8080
-  initialDelaySeconds: 15
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 3
+AI connection settings come from host configuration, but provider and generation-model selection come from the database's `ApplicationConfigurations` table. Setting `AI__Model` in the environment does not replace that database configuration.
+
+The migrations seed `Ai:Provider=Gemini`, `Ai:Model=gemini-2.5-flash`, and `Ai:PlaylistModel=gemini-2.5-flash-lite`. For that configuration, supply the Gemini key to both hosts:
+
+```powershell
+dotnet user-secrets set "AI:Gemini:ApiKey" "YOUR_GEMINI_API_KEY" --project Tubester.Api
+dotnet user-secrets set "AI:Gemini:ApiKey" "YOUR_GEMINI_API_KEY" --project Tubester.Worker
 ```
 
-**Note**: The Worker's health endpoints are served on port 8080 by default (configurable via `Observability:WorkerHttpPort`).
+To use Ollama, set `Ai:Provider` to `Ollama` and select installed models for `Ai:Model` and `Ai:PlaylistModel` through the administrator API at `/api/application-configurations` (available in Swagger). Configure `AI:Ollama:Endpoint` in both hosts if it differs from `http://localhost:11434`.
 
-### Configuration
+Reply embeddings are stored as `vector(768)`. Configure an embedding model that returns 768 dimensions. Gemini defaults to `gemini-embedding-001` with `AI:Gemini:OutputDimensionality=768`. Ollama's fallback model is `mxbai-embed-large`; verify dimensional compatibility and explicitly set `AI:Ollama:EmbeddingModel` before using embeddings. Do not mix embeddings from different models without planning a backfill.
 
-Observability can be configured via `appsettings.json` or environment variables:
+### 5. Run the API and worker
 
-```json
-{
-  "Observability": {
-    "Enabled": true,
-    "Prometheus": {
-      "Enabled": true,
-      "ExposePublicly": false
-    },
-    "Seq": {
-      "Enabled": false,
-      "Url": "http://localhost:5341"
-    },
-    "BusinessMetrics": {
-      "RefreshIntervalSeconds": 60
-    }
-  }
-}
+In separate terminals:
+
+```powershell
+dotnet run --project Tubester.Api --launch-profile http
 ```
 
-#### Environment Variables
-
-| Variable                   | Description            |
-| -------------------------- | ---------------------- |
-| `OBSERVABILITY_SEQ_URL`    | Seq server URL         |
-| `OBSERVABILITY_SEQ_APIKEY` | Seq API key (optional) |
-
-### Available Metrics
-
-#### Business Metrics (Gauges)
-
-| Metric                    | Type  | Description              |
-| ------------------------- | ----- | ------------------------ |
-| `tubester_users_total`    | Gauge | Total number of users    |
-| `tubester_channels_total` | Gauge | Total number of channels |
-| `tubester_videos_total`   | Gauge | Total number of videos   |
-| `tubester_replies_total`  | Gauge | Total number of replies  |
-
-#### Comment Scan Metrics
-
-| Metric                                  | Type    | Description                   |
-| --------------------------------------- | ------- | ----------------------------- |
-| `tubester_comment_scan_started_total`   | Counter | Total comment scans started   |
-| `tubester_comment_scan_succeeded_total` | Counter | Total comment scans succeeded |
-| `tubester_comment_scan_failed_total`    | Counter | Total comment scans failed    |
-
-#### Reply Generation Metrics
-
-| Metric                                      | Type    | Description                       |
-| ------------------------------------------- | ------- | --------------------------------- |
-| `tubester_reply_generation_started_total`   | Counter | Total reply generations started   |
-| `tubester_reply_generation_succeeded_total` | Counter | Total reply generations succeeded |
-| `tubester_reply_generation_failed_total`    | Counter | Total reply generations failed    |
-
-#### Embedding Generation Metrics
-
-| Metric                                          | Type    | Description                           | Labels     |
-| ----------------------------------------------- | ------- | ------------------------------------- | ---------- |
-| `tubester_embedding_generation_started_total`   | Counter | Total embedding generations started   | `provider` |
-| `tubester_embedding_generation_succeeded_total` | Counter | Total embedding generations succeeded | `provider` |
-| `tubester_embedding_generation_failed_total`    | Counter | Total embedding generations failed    | `provider` |
-
-#### YouTube API Metrics
-
-| Metric                              | Type    | Description              | Labels      |
-| ----------------------------------- | ------- | ------------------------ | ----------- |
-| `tubester_youtube_api_calls_total`  | Counter | Total YouTube API calls  | `operation` |
-| `tubester_youtube_api_errors_total` | Counter | Total YouTube API errors | `operation` |
-
-#### AI Metrics
-
-| Metric                          | Type    | Description          | Labels                  |
-| ------------------------------- | ------- | -------------------- | ----------------------- |
-| `tubester_ai_calls_total`       | Counter | Total AI calls       | `provider`, `operation` |
-| `tubester_ai_call_errors_total` | Counter | Total AI call errors | `provider`, `operation` |
-
-#### ASP.NET Core Instrumentation (via OpenTelemetry)
-
-- `http.server.request.duration` - HTTP request duration histogram
-- `http.server.request.count` - HTTP request count
-- `http.client.request.duration` - HTTP client request duration
-
-#### Runtime Instrumentation (via OpenTelemetry)
-
-- `process.cpu.time` - CPU time used by the process
-- `process.memory.usage` - Memory usage
-- `process.threads` - Thread count
-- `runtime.memory.heap` - GC heap metrics
-- `runtime.gc.collections` - GC collection counts
-
-### Grafana Dashboard
-
-A pre-configured dashboard is available in `observability/grafana/provisioning/dashboards/tubester-overview.json`.
-
-Panels include:
-
-- Business metrics (users, channels, videos, replies)
-- API request rate and error rate
-- API response duration (p50, p95)
-- Comment scan job counters
-- YouTube API call rates
-- AI call rates and errors
-
----
-
-## ✅ Tests
-
-From the solution root:
-
-```bash
-dotnet test
+```powershell
+dotnet run --project Tubester.Worker --launch-profile http
 ```
 
----
+| Service            | Local URL                                       |
+| ------------------ | ----------------------------------------------- |
+| Swagger UI         | `http://localhost:5094/swagger`                 |
+| OpenAPI document   | `http://localhost:5094/swagger/v1/swagger.json` |
+| Hangfire dashboard | `http://localhost:5094/hangfire`                |
+| API readiness      | `http://localhost:5094/health/ready`            |
+| Worker readiness   | `http://localhost:5095/health/ready`            |
 
-## 💻 Local development workflow
+Sign in through Swagger's Google login links. Hangfire and administrator endpoints require an email listed in `AdminEmails`.
 
-Typical local loop:
+The `http` and `https` profiles run without the SPA proxy by default, so the API can run independently of the client. To enable the web UI, start the separate client's development server on port 5173 using its own setup instructions, then run `dotnet run --project Tubester.Api --launch-profile full-stack --urls http://localhost:5094` and open `http://localhost:5094`. This profile sets `Spa__Enabled=true`; you can also enable the proxy through the `Spa:Enabled` configuration setting. The API does not launch the client automatically. The `--urls` argument overrides the full-stack profile's HTTPS address for local HTTP development.
 
-1. Ensure the database is up to date:
-   ```bash
-   dotnet ef database update -p Tubester.Persistence -s Tubester.Api
-   ```
-2. (Optional) Seed sample data in development by enabling `Seed:Enable = true` in configuration.
-3. Start the API (and Hangfire dashboard):
-   ```bash
-   dotnet run --project Tubester.Api
-   ```
-4. Start the SPA client (in the `Tubester-Client` repo):
-   ```bash
-   npm install
-   npm run dev
-   ```
-5. (Optional) start the worker if you want recurring jobs to run:
-   ```bash
-   dotnet run --project Tubester.Worker
-   ```
-6. Run tests as needed:
-   ```bash
-   dotnet test
-   ```
-7. (Optional) Start observability stack:
-   ```bash
-   docker compose -f docker-compose.observability.yml up -d
-   ```
+For optional local HTTPS (required by Safari for these cookies), run `dotnet dev-certs https --trust`, then use `dotnet run --project Tubester.Api --launch-profile https`, or the `full-stack` profile without the `--urls` override. Open `https://localhost:5094` and register both Google callback URIs above with `https://` instead of `http://`. See [MDN's cookie documentation](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Cookies) for the localhost exception.
 
-## Tubester production Kubernetes baseline
+Development settings disable Serilog in both hosts, preserving standard .NET logging configured through the `Logging` section. To enable Serilog locally, set `Serilog:Enabled=true` in each host's user secrets. This also enables the configured Seq sink at `http://localhost:5341`; set `Observability:Seq:Enabled=false` if you only want console logs.
 
-This directory contains the production Kubernetes source of truth for Tubester on k3s.
+## Configuration reference
 
-The target platform is k3s with the bundled Traefik ingress controller. Do not install a second Traefik instance for this baseline.
+Use user secrets for local credentials and environment variables or an external secret store for production. Standard .NET environment configuration uses `__` in place of `:`. Production connection strings are empty in the checked-in settings and must be supplied.
 
-## Namespace
+| Environment variable                                             | Applies to              | Purpose                                                          |
+| ---------------------------------------------------------------- | ----------------------- | ---------------------------------------------------------------- |
+| `ConnectionStrings__TubesterDb`                                  | API, worker, migrations | PostgreSQL connection string, shared by EF Core and Hangfire     |
+| `GoogleAuth__ClientId`, `GoogleAuth__ClientSecret`               | API                     | Google OAuth web client credentials                              |
+| `YouTubeApi__ApiKey`                                             | Worker                  | YouTube background API reads                                     |
+| `AdminEmails__0`, `AdminEmails__1`, …                            | API                     | Administrator email allowlist                                    |
+| `AI__Gemini__ApiKey`                                             | API, worker             | Gemini credential                                                |
+| `AI__Gemini__EmbeddingModel`, `AI__Gemini__OutputDimensionality` | API, worker             | Gemini embedding configuration; dimensions must match the schema |
+| `AI__Ollama__Endpoint`                                           | API, worker             | Ollama base URL reachable from each process/container            |
+| `AI__Ollama__EmbeddingModel`                                     | API, worker             | Ollama embedding model                                           |
+| `ASPNETCORE_URLS`                                                | API, worker             | Listening addresses; containers use `http://+:8080`              |
+| `ASPNETCORE_ENVIRONMENT`, `DOTNET_ENVIRONMENT`                   | API, worker             | Set both to `Production` in deployment                           |
+| `Observability__Enabled`, `Observability__Prometheus__Enabled`   | API, worker             | Enable metrics instrumentation/export                            |
+| `Observability__Seq__Enabled`, `Observability__Seq__Url`         | API, worker             | Optional Seq sink                                                |
 
-Production resources run in the `tubester` namespace.
+See [application configuration keys](Tubester.Abstractions/ApplicationConfiguration/ApplicationConfigurationKeys.cs) for database-controlled AI generation settings, including temperature and per-operation token limits.
 
-ServiceMonitor resources are created in the `monitoring` namespace and assume `kube-prometheus-stack` / Prometheus Operator is already installed.
+## Tests
 
-## Secrets
+Tests use a real PostgreSQL database with pgvector. They do not provision it. Most external integrations are mocked, and developer-only live AI tests are marked skipped.
 
-Do not commit real secrets.
+**Use a dedicated disposable database.** Test cleanup truncates tables in the `public` and `analytics` schemas. Never point tests at development data you need to retain or at production.
 
-Use `secret.example.yaml` as a template only. Create the real secret manually:
+For the local container above, create a separate database once and run the suite:
 
-## GitHub
-
-### Publish a package
-
-todo versioned tags and private packages
-
-#### Login to Github (Bash)
-
-```
-read -s GH_TOKEN
-echo "$GH_TOKEN" | docker login ghcr.io -u kubaak --password-stdin
+```powershell
+docker exec tubester-postgres createdb -U app tubester_test
+$env:ConnectionStrings__TubesterDb = "Host=localhost;Port=5432;Database=tubester_test;Username=app;Password=devpassword"
+$env:Tubester_INTEGRATIONTESTS_CONNECTION_STRING = $env:ConnectionStrings__TubesterDb
+dotnet ef database update --project Tubester.Persistence --startup-project Tubester.Api
+dotnet build Tubester.sln --configuration Release
+dotnet test Tubester.sln --no-build --configuration Release
+Remove-Item Env:ConnectionStrings__TubesterDb
+Remove-Item Env:Tubester_INTEGRATIONTESTS_CONNECTION_STRING
 ```
 
-#### Tag
+Both connection variables are set so host services and test DbContext overrides target the same database. Remove them before starting the application again. The [CI workflow](.github/workflows/ci.yaml) restores, builds, migrates a pgvector database, and runs tests for pull requests targeting `main`.
 
-```js
-docker tag tubester-api ghcr.io/kubaak/tubester-api:latest
-docker tag tubester-client ghcr.io/kubaak/tubester-client:latest
+## Production deployment
+
+### Images and delivery
+
+Build from the solution root so Docker can access all referenced projects:
+
+```powershell
+docker build -f Tubester.Api/Dockerfile -t tubester-api:local .
+docker build -f Tubester.Worker/Dockerfile -t tubester-worker:local .
 ```
 
-#### Push
+Both images listen on port 8080 and run as the .NET image's non-root user. The API image also contains `./efbundle` for applying migrations. The client image is built outside this repository.
 
-```
-docker push ghcr.io/kubaak/tubester-api:latest
-docker push ghcr.io/kubaak/tubester-client:latest
-```
+The [backend delivery workflow](.github/workflows/cd.yaml) runs on pushes to `main` or manual dispatch. It publishes API and worker images to GHCR with `sha-<commit>` and `latest` tags, runs the migration bundle from the commit-tagged API image, then deploys and waits for API/worker rollouts. It requires the GitHub `production` environment secrets `PROD_HOST`, `PROD_USER`, and `PROD_SSH_KEY`, plus server-side Kubernetes access. It does not run the test suite itself.
+
+### Kubernetes prerequisites and rollout
+
+The [production manifests](k8s/prod/kustomization.yaml) target k3s with its bundled Traefik ingress. Application resources use the `tubester` namespace; ServiceMonitors use an existing `monitoring` namespace and require Prometheus Operator CRDs.
+
+Before deployment:
+
+1. Provision PostgreSQL with pgvector, backups, and database credentials. The manifests do not provision PostgreSQL or AI services.
+2. Configure DNS, HTTPS, and Traefik's `letsencrypt` certificate resolver. Replace `tubester.app` in [ingress.yaml](k8s/prod/ingress.yaml) for another domain and register matching Google callback URLs.
+3. Create the namespace with `kubectl apply -f k8s/prod/namespace.yaml`. Provision `tubester-api-secrets` and the GHCR pull secret `ghcr-secret` through your secret-management process.
+4. Use [secret.example.yaml](k8s/prod/secret.example.yaml) only as a structural template. Its `Hangfire__AdminEmails__0` entry is stale: use `AdminEmails__0`. Add the AI connection settings required by the selected provider. Both hosts consume `tubester-api-secrets`; never commit populated secrets.
+5. Select matching immutable API/worker image tags and the intended client image. Checked-in deployment manifests use `latest`; the backend workflow subsequently sets commit-specific API/worker images.
+6. Back up the database and run migrations from the release's API image before rolling out the hosts. Review compatibility with running instances. The [migration job](k8s/prod/db-migration.job.yaml) is separate from Kustomize and requires its image to be set to the release being deployed.
+7. Review `kubectl kustomize k8s/prod`, apply the configured manifests, and verify rollout status, readiness, Google login, and a queued job completing on the worker.
+
+`kubectl apply -k k8s/prod` does not create secrets or run migrations. The [rollback job](k8s/prod/db-migration-rollback.job.yaml) contains a historical image and migration target; it is not a ready-to-run rollback for an arbitrary release. Choose and review the target explicitly, including possible data loss. Rolling back application images does not roll back the database.
+
+### Runtime considerations
+
+- Keep the API behind a trusted proxy and restrict direct access. Its forwarded-header configuration clears the trusted proxy/network lists, accepting forwarded headers from any reachable peer.
+- Persist and share ASP.NET Core Data Protection keys before relying on sessions across container restarts or multiple API replicas. The checked-in deployment has no persistent key volume or external key-store configuration.
+- Swagger is enabled in all environments, and the supplied ingress exposes `/swagger`. Restrict that route at the edge if it should not be public.
+- `AdminEmails` controls administrator endpoints and Hangfire. The `GoogleAuth` allowlist fields present in settings are not enforced by the current Google authentication registration.
+- Keep health and metrics access internal. `Observability:Prometheus:ExposePublicly` is not consulted by endpoint mapping and does not provide access control.
+
+## Operations and observability
+
+| Endpoint        | Hosts          | Behavior                                                        |
+| --------------- | -------------- | --------------------------------------------------------------- |
+| `/health/live`  | API and worker | Lightweight process self-check                                  |
+| `/health/ready` | API and worker | PostgreSQL connectivity check                                   |
+| `/metrics`      | API and worker | Prometheus export when observability and Prometheus are enabled |
+| `/hangfire`     | API            | Administrator-only job dashboard                                |
+
+Readiness does not validate the application schema, Hangfire job execution, YouTube, or AI availability. Kubernetes probes use port 8080; local launch profiles use API port 5094 and worker port 5095. Configure listening ports through ASP.NET Core hosting settings, not `Observability:WorkerHttpPort`.
+
+Serilog is enabled by default, with compact JSON console output in the base settings and optional Seq delivery. Development overrides `Serilog:Enabled` to `false` and uses standard .NET logging. Set `Serilog__Enabled` to override this behavior through the environment. Metrics configuration is independent of this switch.
+
+Metrics include custom job/YouTube/AI counters and HTTP-client, runtime, and process instrumentation; the API additionally enables ASP.NET Core instrumentation. Scrape both processes because metrics are process-local. Metric definitions are in [TubesterMetrics.cs](Tubester.Observability/TubesterMetrics.cs).
+
+`BusinessMetricsRefreshService` exists but is not registered by either host, so periodically refreshed user/channel/video/reply totals are not active. Changing `BusinessMetrics:RefreshIntervalSeconds` alone does not activate the service.
+
+Monitoring deployment values are in [infra/monitoring](infra/monitoring), with deployment automation in [cd-infra.yml](.github/workflows/cd-infra.yml). A local observability Docker Compose stack and provisioned Grafana overview dashboard are not included.
+
+## Troubleshooting
+
+| Symptom                                        | Check                                                                                                                                                              |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Startup reports a missing connection string    | Set `ConnectionStrings:TubesterDb` for each host; confirm the selected environment                                                                                 |
+| Migration cannot create `vector`               | Use PostgreSQL with pgvector installed and an account allowed to create the extension                                                                              |
+| Google login fails or loops                    | Check matching callback URIs (including scheme and port) and `GoogleAuth` credentials; use optional HTTPS if your browser rejects Secure cookies on HTTP localhost |
+| Administrator endpoint or Hangfire returns 403 | Set top-level `AdminEmails` to the signed-in email; do not use `Hangfire:AdminEmails`                                                                              |
+| Background jobs remain queued                  | Run the worker against the same database and inspect its logs and Hangfire queues                                                                                  |
+| AI generation fails                            | Check database provider/model selection, provider credentials, and network reachability from the executing host                                                    |
+| Embedding persistence fails                    | Ensure the embedding model returns 768 dimensions                                                                                                                  |
+| Development root page returns a proxy error    | Start the client on port 5173, or disable `Spa:Enabled` for API-only development                                                                                   |
+| Development root page returns 404              | Expected with the SPA proxy disabled; use `/swagger` or enable the `full-stack` launch profile with the client running                                             |
