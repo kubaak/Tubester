@@ -142,8 +142,8 @@ var dashboardOptions = new DashboardOptions
 };
 
 app.UseHangfireDashboard("/hangfire", dashboardOptions);
-//In local development to get redirected back to the client after the login
-if (app.Environment.IsDevelopment())
+// Opt in when developing with the client to support redirects back to its UI.
+if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("Spa:Enabled"))
 {
     app.MapWhen(ctx => !ctx.Request.Path.StartsWithSegments("/api") &&
                        !ctx.Request.Path.StartsWithSegments("/hangfire") &&
@@ -154,10 +154,7 @@ if (app.Environment.IsDevelopment())
         spa.UseSpa(spaApp =>
         {
             spaApp.Options.SourcePath = "../Tubester-Client";
-            if (app.Environment.IsDevelopment())
-            {
-                spaApp.UseProxyToSpaDevelopmentServer("http://localhost:5173");
-            }
+            spaApp.UseProxyToSpaDevelopmentServer("http://localhost:5173");
         });
     });
 }
