@@ -2,7 +2,7 @@
 
 Tubester is a .NET 10 backend for managing YouTube video metadata, playlists, and comment replies. It combines an ASP.NET Core API, a Hangfire worker, PostgreSQL with pgvector, and AI generation through Gemini or Ollama.
 
-[🌐 Portfolio — Jakub Heidtke](https://jakubheidtke.com) · [💻 Frontend repository](https://github.com/kubaak/Tubester-Client) · [▶️ Architecture video](https://youtu.be/juMRLnXjOgI)
+[🚀 Live app](https://tubester.app) · [🌐 Portfolio — Jakub Heidtke](https://jakubheidtke.com) · [💻 Frontend repository](https://github.com/kubaak/Tubester-Client) · [▶️ Architecture video](https://youtu.be/juMRLnXjOgI)
 
 ## Capabilities
 
@@ -405,4 +405,4 @@ Monitoring deployment values are in [infra/monitoring](infra/monitoring), with d
 
 ---
 
-[🌐 Portfolio — Jakub Heidtke](https://jakubheidtke.com) · [💻 Frontend repository](https://github.com/kubaak/Tubester-Client) · [▶️ Architecture video](https://youtu.be/juMRLnXjOgI)
+[🚀 Live app](https://tubester.app) · [🌐 Portfolio — Jakub Heidtke](https://jakubheidtke.com) · [💻 Frontend repository](https://github.com/kubaak/Tubester-Client) · [▶️ Architecture video](https://youtu.be/juMRLnXjOgI)
