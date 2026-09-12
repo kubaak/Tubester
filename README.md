@@ -2,6 +2,8 @@
 
 Tubester is a .NET 10 backend for managing YouTube video metadata, playlists, and comment replies. It combines an ASP.NET Core API, a Hangfire worker, PostgreSQL with pgvector, and AI generation through Gemini or Ollama.
 
+[🌐 Portfolio — Jakub Heidtke](https://jakubheidtke.com) · [💻 Frontend repository](https://github.com/kubaak/Tubester-Client) · [▶️ Architecture video](https://youtu.be/juMRLnXjOgI)
+
 ## Capabilities
 
 - Sign in with Google, with separate read and write consent for YouTube operations.
@@ -90,8 +92,6 @@ flowchart TD
     Review --> Publish[Publish to YouTube]
 ```
 
-If no examples match, or embedding/search fails, generation proceeds without retrieved context. Comments without letters or numbers (such as emoji-only comments) skip text generation and use the channel's configured non-textual response, defaulting to `🔥🙌`. An empty or null model reply also uses that fallback.
-
 See [CommentScanJob](Tubester.Application/Jobs/CommentScanJob.cs), [ReplyRepository](Tubester.Persistence/Replies/ReplyRepository.cs), [AiClient](Tubester.Integration/AiClient.cs), and [AiPromptBuilder](Tubester.Integration/AiPromptBuilder.cs) for the implementation.
 
 ## Repository layout
@@ -115,7 +115,7 @@ The API enqueues jobs. The worker executes them using the same PostgreSQL databa
 
 The worker listens on the `scanning`, `ai-templating`, `ai-playlist-suggestion`, `embeddings`, and `default` queues. The checked-in [recurring job configuration](Tubester.Worker/recurring-jobs.json) schedules daily credit-period maintenance (`0 0 * * *`).
 
-The web client lives in the separate `Tubester-Client` repository. In Development, setting `Spa:Enabled=true` enables proxying non-API/UI-infrastructure routes to `http://localhost:5173`. The proxy is disabled by default.
+The web client lives in the separate [Tubester-Client frontend repository](https://github.com/kubaak/Tubester-Client). In Development, setting `Spa:Enabled=true` enables proxying non-API/UI-infrastructure routes to `http://localhost:5173`. The proxy is disabled by default.
 
 In Production, the client is deployed separately.
 
@@ -402,3 +402,7 @@ Monitoring deployment values are in [infra/monitoring](infra/monitoring), with d
 | Embedding persistence fails                    | Ensure the embedding model returns 768 dimensions                                                                                                                  |
 | Development root page returns a proxy error    | Start the client on port 5173, or disable `Spa:Enabled` for API-only development                                                                                   |
 | Development root page returns 404              | Expected with the SPA proxy disabled; use `/swagger` or enable the `full-stack` launch profile with the client running                                             |
+
+---
+
+[🌐 Portfolio — Jakub Heidtke](https://jakubheidtke.com) · [💻 Frontend repository](https://github.com/kubaak/Tubester-Client) · [▶️ Architecture video](https://youtu.be/juMRLnXjOgI)
