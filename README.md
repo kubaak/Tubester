@@ -57,6 +57,43 @@ flowchart LR
 
 The API and worker expose health checks and Prometheus metrics. YouTube publishing is performed through user-authorized API operations, while background comment processing generates drafts for review.
 
+## How reply generation works
+
+Comment Reply Generation Flow
+
+```mermaid
+flowchart TD
+    Sync[Channel Synchronization] --> Scan[Comment Scan Job]
+    Scan --> YouTube[YouTube Integration]
+    YouTube --> Comments[Fetch New Unanswered Comments]
+
+    Comments --> Store[Store / Update Comments]
+    Store --> Eligible{Eligible for Reply?}
+
+    Eligible -->|No| Skip[Skip]
+    Eligible -->|Yes| Claim[Atomically Claim Comment]
+
+    Claim --> Embed[Generate Comment Embedding]
+    Embed --> Search[Search Similar Previous Comments]
+
+    Search --> Context{Relevant Replies Found?}
+
+    Context -->|Yes| PromptWithContext[Build Prompt with Previous Replies]
+    Context -->|No| BasicPrompt[Build Prompt without Examples]
+
+    PromptWithContext --> AI[AI Provider]
+    BasicPrompt --> AI
+
+    AI --> Suggestion[Generate Suggested Reply]
+    Suggestion --> Save[Save Draft Reply]
+    Save --> Review[Creator Reviews Reply]
+    Review --> Publish[Publish to YouTube]
+```
+
+If no examples match, or embedding/search fails, generation proceeds without retrieved context. Comments without letters or numbers (such as emoji-only comments) skip text generation and use the channel's configured non-textual response, defaulting to `🔥🙌`. An empty or null model reply also uses that fallback.
+
+See [CommentScanJob](Tubester.Application/Jobs/CommentScanJob.cs), [ReplyRepository](Tubester.Persistence/Replies/ReplyRepository.cs), [AiClient](Tubester.Integration/AiClient.cs), and [AiPromptBuilder](Tubester.Integration/AiPromptBuilder.cs) for the implementation.
+
 ## Repository layout
 
 | Project / directory                                                | Responsibility                                                                               |
